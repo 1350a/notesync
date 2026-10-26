@@ -13,13 +13,13 @@ function AttachmentPreview({ name, type, dataUrl }: { name: string; type: string
       <img
         src={dataUrl}
         alt={name}
-        className="mb-2 max-h-52 max-w-full rounded-xl border border-white/10 object-contain"
+        className="mb-2 max-h-52 max-w-full rounded-xl border border-[var(--border)] object-contain"
       />
     );
   }
   if (type === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
     return (
-      <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-300">
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2 text-sm text-[var(--text-secondary)]">
         <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path
             strokeLinecap="round"
@@ -32,7 +32,7 @@ function AttachmentPreview({ name, type, dataUrl }: { name: string; type: string
     );
   }
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-300">
+    <div className="mb-2 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2 text-sm text-[var(--text-secondary)]">
       <span className="truncate">📎 {name}</span>
     </div>
   );
@@ -40,6 +40,7 @@ function AttachmentPreview({ name, type, dataUrl }: { name: string; type: string
 
 /**
  * 消息气泡：用户消息（右侧）与 AI 回复（左侧），支持附件预览。
+ * 颜色全部引用主题 CSS 变量，随主题全局同步。
  */
 export default function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
@@ -49,8 +50,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-lg ${
           isUser
-            ? "rounded-br-md bg-indigo-600 text-white"
-            : "rounded-bl-md bg-zinc-800/90 text-zinc-100 border border-white/10"
+            ? "rounded-br-md bg-[var(--accent)] text-[var(--accent-text)]"
+            : "rounded-bl-md border border-[var(--border)] bg-[var(--ai-bubble)] text-[var(--text)]"
         }`}
       >
         {message.attachments && message.attachments.length > 0 && (
@@ -66,11 +67,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
           </p>
         ) : (
           !message.attachments?.length && (
-            <p className="text-sm text-zinc-400 italic">（空消息）</p>
+            <p className="text-sm text-[var(--text-muted)] italic">（空消息）</p>
           )
         )}
         {message.model && !isUser && (
-          <p className="mt-1 text-right text-[10px] text-zinc-500">{message.model}</p>
+          <p className="mt-1 text-right text-[10px] text-[var(--text-muted)]">{message.model}</p>
         )}
       </div>
     </div>
