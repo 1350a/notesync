@@ -181,7 +181,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex h-screen w-full overflow-hidden bg-[var(--bg)] text-[var(--text)]">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -195,12 +195,12 @@ export default function ChatPage() {
       {/* 中间消息区 */}
       <main className="flex min-w-0 flex-1 flex-col">
         {/* 顶栏 */}
-        <header className="flex items-center justify-between border-b border-white/10 bg-zinc-950/90 px-4 py-3">
+        <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-deep)] px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="text-lg">🧠</span>
             <div>
               <h1 className="text-sm font-semibold">错题认知诊断引擎</h1>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-[var(--text-muted)]">
                 多轮对话 · 定位薄弱点 · 生成复习方案
               </p>
             </div>
@@ -222,10 +222,10 @@ export default function ChatPage() {
             {active && active.messages.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
                 <span className="text-4xl">📚</span>
-                <h2 className="text-lg font-medium text-zinc-200">
+                <h2 className="text-lg font-medium text-[var(--text-secondary)]">
                   开始第一轮诊断
                 </h2>
-                <p className="max-w-md text-sm text-zinc-500">
+                <p className="max-w-md text-sm text-[var(--text-muted)]">
                   粘贴或输入你的错题文字，也可上传错题图片/PDF。
                   <br />
                   通过多轮追问定位知识薄弱点，生成个性化复习方案。
@@ -235,10 +235,10 @@ export default function ChatPage() {
             {!active && (
               <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
                 <span className="text-4xl">💬</span>
-                <h2 className="text-lg font-medium text-zinc-200">
+                <h2 className="text-lg font-medium text-[var(--text-secondary)]">
                   新建一个会话开始诊断
                 </h2>
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-[var(--text-muted)]">
                   每个会话是一个独立的对话分支，互不干扰。
                 </p>
               </div>
@@ -248,10 +248,10 @@ export default function ChatPage() {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-white/10 bg-zinc-800/90 px-4 py-3 text-sm text-zinc-400">
-                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400" />
-                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400 [animation-delay:0.15s]" />
-                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400 [animation-delay:0.3s]" />
+                <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[var(--border)] bg-[var(--ai-bubble)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)] [animation-delay:0.15s]" />
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)] [animation-delay:0.3s]" />
                   <span className="ml-1">诊断思考中…</span>
                 </div>
               </div>
