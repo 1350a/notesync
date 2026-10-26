@@ -1,15 +1,88 @@
 @import "tailwindcss";
 
-:root {
-  --background: #09090b;
-  --foreground: #f4f4f5;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* ================= 主题变量 ================= */
+/* 默认：暗色科技感 */
+:root,
+[data-theme="dark"] {
+  --bg: #09090b;
+  --bg-deep: #111113;
+  --panel: #18181b;
+  --panel-soft: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent: #6366f1;
+  --accent-strong: #818cf8;
+  --accent-soft: rgba(99, 102, 241, 0.2);
+  --accent-text: #ffffff;
+  --hover: rgba(255, 255, 255, 0.1);
+  --ai-bubble: #27272a;
+  --scrollbar: rgba(255, 255, 255, 0.12);
+  --scrollbar-hover: rgba(255, 255, 255, 0.2);
+
+  /* 兼容旧变量（diagnose 页） */
+  --bg-color: var(--bg);
+  --text-color: var(--text);
+  --card-bg: var(--panel);
+  --primary-color: var(--accent);
+}
+
+/* 浅绿色主题 */
+[data-theme="green"] {
+  --bg: #e9f3ea;
+  --bg-deep: #dcebdd;
+  --panel: #f7fbf7;
+  --panel-soft: rgba(22, 163, 74, 0.06);
+  --border: rgba(20, 83, 45, 0.14);
+  --text: #1c2e1f;
+  --text-secondary: #4d6452;
+  --text-muted: #6b8270;
+  --accent: #16a34a;
+  --accent-strong: #15803d;
+  --accent-soft: rgba(22, 163, 74, 0.16);
+  --accent-text: #ffffff;
+  --hover: rgba(22, 163, 74, 0.08);
+  --ai-bubble: #ffffff;
+  --scrollbar: rgba(20, 83, 45, 0.25);
+  --scrollbar-hover: rgba(20, 83, 45, 0.4);
+
+  --bg-color: var(--bg);
+  --text-color: var(--text);
+  --card-bg: var(--panel);
+  --primary-color: var(--accent);
+}
+
+/* 浅蓝色主题 */
+[data-theme="blue"] {
+  --bg: #e8f1fb;
+  --bg-deep: #d8e8f8;
+  --panel: #f5faff;
+  --panel-soft: rgba(37, 99, 235, 0.06);
+  --border: rgba(30, 64, 175, 0.14);
+  --text: #17263d;
+  --text-secondary: #40536e;
+  --text-muted: #64748b;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --accent-text: #ffffff;
+  --hover: rgba(37, 99, 235, 0.08);
+  --ai-bubble: #ffffff;
+  --scrollbar: rgba(30, 64, 175, 0.25);
+  --scrollbar-hover: rgba(30, 64, 175, 0.4);
+
+  --bg-color: var(--bg);
+  --text-color: var(--text);
+  --card-bg: var(--panel);
+  --primary-color: var(--accent);
 }
 
 html,
@@ -18,12 +91,13 @@ body {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* 暗色滚动条 */
+/* 主题化滚动条 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -32,9 +106,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--scrollbar);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--scrollbar-hover);
 }
