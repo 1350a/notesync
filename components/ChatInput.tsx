@@ -29,6 +29,7 @@ function readFileAsDataUrl(file: File): Promise<Attachment> {
 
 /**
  * 底部输入区：纯文字粘贴输入 + 图片/PDF 附件上传 + 模型选择 + 发送按钮。
+ * 颜色全部引用主题 CSS 变量，随主题全局同步。
  */
 export default function ChatInput({
   models,
@@ -90,14 +91,14 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t border-white/10 bg-zinc-950/90 p-3">
+    <div className="border-t border-[var(--border)] bg-[var(--bg-deep)] p-3">
       {/* 附件预览区 */}
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {attachments.map((att, i) => (
             <div
               key={i}
-              className="relative flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-zinc-300"
+              className="relative flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-2 py-1.5 text-xs text-[var(--text-secondary)]"
             >
               {att.type.startsWith("image/") && att.dataUrl ? (
                 <img src={att.dataUrl} alt={att.name} className="h-8 w-8 rounded-md object-cover" />
@@ -108,7 +109,7 @@ export default function ChatInput({
               <button
                 onClick={() => removeAttachment(i)}
                 title="移除附件"
-                className="ml-1 rounded-md p-0.5 text-zinc-500 transition hover:bg-red-500/20 hover:text-red-400"
+                className="ml-1 rounded-md p-0.5 text-[var(--text-muted)] transition hover:bg-red-500/20 hover:text-red-400"
               >
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -124,7 +125,7 @@ export default function ChatInput({
         <button
           onClick={() => fileInputRef.current?.click()}
           title="上传错题图片/PDF"
-          className="rounded-xl bg-white/5 p-2.5 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+          className="rounded-xl bg-[var(--panel-soft)] p-2.5 text-[var(--text-secondary)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path
@@ -157,7 +158,7 @@ export default function ChatInput({
           }}
           rows={1}
           placeholder="粘贴或输入你的错题内容，按 Enter 发送，Shift+Enter 换行…"
-          className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-indigo-500/50 focus:bg-white/10"
+          className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2.5 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:bg-[var(--hover)]"
         />
 
         {/* 发送按钮 */}
@@ -165,7 +166,7 @@ export default function ChatInput({
           onClick={submit}
           disabled={disabled || (!text.trim() && attachments.length === 0)}
           title="发送"
-          className="rounded-xl bg-indigo-500 p-2.5 text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl bg-[var(--accent)] p-2.5 text-[var(--accent-text)] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path
@@ -179,11 +180,11 @@ export default function ChatInput({
 
       {/* 模型选择行 */}
       <div className="mt-2 flex items-center gap-2 px-1">
-        <label className="text-xs text-zinc-500">模型：</label>
+        <label className="text-xs text-[var(--text-muted)]">模型：</label>
         <select
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
-          className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 outline-none transition focus:border-indigo-500/50"
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-deep)] px-2 py-1 text-xs text-[var(--text-secondary)] outline-none transition focus:border-[var(--accent)]"
         >
           {models.length === 0 && <option value="">（未检测到模型）</option>}
           {models.map((m) => (
@@ -192,7 +193,7 @@ export default function ChatInput({
             </option>
           ))}
         </select>
-        <span className="ml-auto text-[10px] text-zinc-600">支持粘贴文字 / 上传图片 / PDF</span>
+        <span className="ml-auto text-[10px] text-[var(--text-muted)]">支持粘贴文字 / 上传图片 / PDF</span>
       </div>
     </div>
   );
