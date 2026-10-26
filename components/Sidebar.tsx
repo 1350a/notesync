@@ -1,6 +1,7 @@
 "use client";
 
 import type { Conversation } from "@/lib/types";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -13,7 +14,8 @@ interface SidebarProps {
 }
 
 /**
- * 左侧会话列表栏：展示全部会话（对话分支），支持新建/切换/删除。
+ * 左侧会话列表栏：展示全部会话（对话分支），支持新建/切换/删除；
+ * 底部提供主题切换入口（暗色/浅绿/浅蓝）。
  */
 export default function Sidebar({
   conversations,
@@ -26,7 +28,7 @@ export default function Sidebar({
 }: SidebarProps) {
   return (
     <aside
-      className={`flex h-full flex-col border-r border-white/10 bg-zinc-950/80 transition-all duration-300 ${
+      className={`flex h-full flex-col border-r border-[var(--border)] bg-[var(--bg-deep)] transition-all duration-300 ${
         collapsed ? "w-14" : "w-64"
       }`}
     >
@@ -35,7 +37,7 @@ export default function Sidebar({
         <button
           onClick={onNew}
           title="新建会话"
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500/90 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--accent-text)] transition hover:bg-[var(--accent-strong)] disabled:opacity-50"
         >
           <svg
             className="h-4 w-4"
@@ -56,7 +58,7 @@ export default function Sidebar({
           <button
             onClick={onToggle}
             title={collapsed ? "展开侧边栏" : "收起侧边栏"}
-            className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+            className="rounded-lg p-2 text-[var(--text-secondary)] transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
           >
             <svg
               className="h-4 w-4"
@@ -86,7 +88,7 @@ export default function Sidebar({
       {/* 会话列表 */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-3">
         {conversations.length === 0 && !collapsed && (
-          <p className="px-2 py-6 text-center text-sm text-zinc-500">
+          <p className="px-2 py-6 text-center text-sm text-[var(--text-muted)]">
             还没有会话
             <br />
             点击「新建会话」开始
@@ -97,8 +99,8 @@ export default function Sidebar({
             key={conv.id}
             className={`group flex items-center gap-2 rounded-xl px-2 py-2 transition ${
               conv.id === activeId
-                ? "bg-indigo-500/20 text-white"
-                : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                ? "bg-[var(--accent-soft)] text-[var(--text)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
             }`}
           >
             <button
@@ -115,7 +117,7 @@ export default function Sidebar({
                   onDelete(conv.id);
                 }}
                 title="删除会话"
-                className="rounded-md p-1 text-zinc-500 opacity-0 transition hover:bg-red-500/20 hover:text-red-400 group-hover:opacity-100"
+                className="rounded-md p-1 text-[var(--text-muted)] opacity-0 transition hover:bg-red-500/20 hover:text-red-400 group-hover:opacity-100"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -136,12 +138,15 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* 底部提示 */}
-      {!collapsed && (
-        <div className="border-t border-white/10 px-3 py-2">
-          <p className="text-xs text-zinc-500">
-            会话自动保存在本地浏览器
-          </p>
+      {/* 底部：主题切换 + 提示 */}
+      {!collapsed ? (
+        <div className="flex items-center justify-between border-t border-[var(--border)] px-3 py-2.5">
+          <ThemeSwitcher />
+          <p className="text-[10px] text-[var(--text-muted)]">本地保存</p>
+        </div>
+      ) : (
+        <div className="border-t border-[var(--border)] py-2.5">
+          <ThemeSwitcher collapsed />
         </div>
       )}
     </aside>
