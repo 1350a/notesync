@@ -177,13 +177,27 @@ export default function ChatPage() {
     abortRef.current = controller;
 
     try {
+      // 发送给服务端的历史：去掉末尾空 AI 消息（完整回复落盘时才替换它）
+      const messagesToSend = (() => {
+        const msgs = [...(conv?.messages ?? [])];
+        const last = msgs[msgs.length - 1];
+        if (
+          last &&
+          last.role === "assistant" &&
+          !last.content.trim() &&
+          (!last.questions || last.questions.length === 0)
+        ) {
+          msgs.pop();
+        }
+        return msgs;
+      })();
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: convId,
           model: conv.model,
-          messages: conv.messages,
+          messages: messagesToSend,
         }),
         signal: controller.signal,
       });
@@ -243,9 +257,9 @@ export default function ChatPage() {
         imageSummary,
         thinking,
       };
-      // 一次性落盘：用完整消息替换末尾的空消息
+      // 一次性落盘：用完整消息替换末尾的空消息（先去掉末尾空消息，再追加完整消息）
       const updated = updateConversation(convId, {
-        messages: [...(conv!.messages ?? []), assistantMessage].slice(0, -1).concat([assistantMessage]),
+        messages: [...(conv!.messages ?? []).slice(0, -1), assistantMessage],
       });
       if (updated) {
         setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
