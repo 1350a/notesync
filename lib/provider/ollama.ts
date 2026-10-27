@@ -96,6 +96,75 @@ export class OllamaProvider implements LLMProvider {
       clearTimeout(timer);
     }
   }
+
+  /**
+   * 流式补全：解析 ollama /api/chat 的 NDJSON 行（{"message":{"content":...}}），
+   * 逐段 yield 文本增量。
+   */
+  async *streamComplete(options: CompleteOptions): AsyncGenerator<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+    options.signal?.addEventListener("abort", () => controller.abort());
+
+    const messages: ProviderMessage[] = options.messages.map((m) => ({
+      role: m.role,
+      content: contentToText(m.content),
+    }));
+
+    try {
+      const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: options.model || DEFAULT_OLLAMA_MODEL,
+          messages,
+          stream: true,
+          ...(options.json ? { format: "json" } : {}),
+          options: { temperature: 0.7 },
+        }),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(
+          `ollama 返回错误（HTTP ${res.status}）：${errText || "请确认模型已下载：ollama pull " + (options.model || DEFAULT_OLLAMA_MODEL)}`
+        );
+      }
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("ollama 流式响应缺少 body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const chunk = JSON.parse(trimmed) as {
+              message?: { content?: string };
+              done?: boolean;
+              error?: string;
+            };
+            if (chunk.error) throw new Error(`ollama 返回错误：${chunk.error}`);
+            const delta = chunk.message?.content;
+            if (typeof delta === "string" && delta.length > 0) yield delta;
+            if (chunk.done) return;
+          } catch (err) {
+            if (err instanceof Error && err.message.startsWith("ollama 返回错误")) throw err;
+            // 忽略无法解析的数据行
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 /** 单例导出 */
