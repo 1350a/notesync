@@ -4,6 +4,8 @@ import type { Message } from "@/lib/types";
 
 interface ChatMessageProps {
   message: Message;
+  /** 点击"回答此问题"时的回调（harness 追问阶段问题） */
+  onAnswer?: (question: string) => void;
 }
 
 /** 渲染图片/PDF 附件预览 */
@@ -38,12 +40,45 @@ function AttachmentPreview({ name, type, dataUrl }: { name: string; type: string
   );
 }
 
+/** 追问阶段：渲染待回答的问题列表 + 回答按钮 */
+function QuestionCard({ questions, onAnswer }: { questions: string[]; onAnswer?: (q: string) => void }) {
+  return (
+    <div className="mb-2 rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] p-3">
+      <p className="mb-1.5 text-xs font-semibold text-[var(--accent)]">
+        需要补充信息，请回答以下问题：
+      </p>
+      <ul className="space-y-1.5">
+        {questions.map((q, i) => (
+          <li key={i} className="flex items-start justify-between gap-2 text-sm">
+            <span className="flex-1 text-[var(--text-secondary)]">
+              {i + 1}. {q}
+            </span>
+            {onAnswer && (
+              <button
+                onClick={() => onAnswer(q)}
+                className="shrink-0 rounded-lg border border-[var(--accent)] px-2 py-0.5 text-xs text-[var(--accent)] transition hover:bg-[var(--accent)] hover:text-[var(--accent-text)]"
+              >
+                回答此问题
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /**
  * 消息气泡：用户消息（右侧）与 AI 回复（左侧），支持附件预览。
+ * harness 追问阶段（phase=question）额外展示待回答的问题列表。
  * 颜色全部引用主题 CSS 变量，随主题全局同步。
  */
-export default function ChatMessage({ message }: ChatMessageProps) {
+export default function ChatMessage({ message, onAnswer }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const isQuestion =
+    message.phase === "question" &&
+    Array.isArray(message.questions) &&
+    message.questions.length > 0;
 
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
@@ -61,12 +96,13 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             ))}
           </div>
         )}
+        {isQuestion && <QuestionCard questions={message.questions ?? []} onAnswer={onAnswer} />}
         {message.content ? (
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
             {message.content}
           </p>
         ) : (
-          !message.attachments?.length && (
+          !message.attachments?.length && !isQuestion && (
             <p className="text-sm text-[var(--text-muted)] italic">（空消息）</p>
           )
         )}
