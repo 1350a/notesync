@@ -29,6 +29,8 @@ export default function ChatPage() {
   const [ollamaMessage, setOllamaMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  /** 当前待回答的追问问题（harness 追问阶段） */
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
@@ -101,6 +103,7 @@ export default function ChatPage() {
 
   /** 发送消息：追加用户消息 -> 调用 /api/chat -> 追加 AI 回复 */
   const handleSend = async (content: string, attachments: Attachment[]) => {
+    setPendingQuestion(null);
     let conv = active;
     if (!conv) {
       conv = createConversation(makeTitle(content || "新会话"), newModelRef.current);
@@ -139,6 +142,9 @@ export default function ChatPage() {
         content: string;
         model?: string;
         error?: string;
+        phase?: "question" | "answer";
+        questions?: string[];
+        provider?: string;
       };
 
       const assistantMessage: Message = {
@@ -148,6 +154,8 @@ export default function ChatPage() {
         attachments: [],
         createdAt: Date.now(),
         model: data.model || conv.model,
+        phase: data.phase,
+        questions: data.questions ?? [],
       };
       const updated = appendMessage(conv!.id, assistantMessage);
       if (updated) {
@@ -244,7 +252,11 @@ export default function ChatPage() {
               </div>
             )}
             {active?.messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                onAnswer={(q) => setPendingQuestion(q)}
+              />
             ))}
             {loading && (
               <div className="flex justify-start">
@@ -267,6 +279,8 @@ export default function ChatPage() {
           onModelChange={handleModelChange}
           onSend={handleSend}
           disabled={loading}
+          externalQuestion={pendingQuestion}
+          onExternalQuestionCleared={() => setPendingQuestion(null)}
         />
       </main>
     </div>
