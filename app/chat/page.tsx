@@ -20,6 +20,24 @@ import type {
   Message,
   ModelsResponse,
 } from "@/lib/types";
+import type { ThinkingStep } from "@/lib/agent/types";
+
+/** 解析单条 SSE 事件（以 \n 分隔的 event/data 行） */
+function parseSseEvent(chunk: string): { event: string; data: Record<string, unknown> } | null {
+  const lines = chunk.split("\n");
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  if (dataLines.length === 0) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) as Record<string, unknown> };
+  } catch {
+    return null;
+  }
+}
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -32,6 +50,7 @@ export default function ChatPage() {
   /** 当前待回答的追问问题（harness 追问阶段） */
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
@@ -101,7 +120,7 @@ export default function ChatPage() {
     }
   };
 
-  /** 发送消息：追加用户消息 -> 调用 /api/chat -> 追加 AI 回复 */
+  /** 发送消息：追加用户消息 -> 调用 /api/chat(SSE) -> 流式渲染 AI 回复 */
   const handleSend = async (content: string, attachments: Attachment[]) => {
     setPendingQuestion(null);
     let conv = active;
@@ -126,56 +145,126 @@ export default function ChatPage() {
     };
     conv = appendMessage(conv.id, userMessage) ?? conv;
     setConversations((prev) => prev.map((c) => (c.id === conv!.id ? conv! : c)));
+
+    // 先插入一条空的 AI 消息，用于流式渲染
+    const assistantId = genId();
+    const streamMessage: Message = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      attachments: [],
+      createdAt: Date.now(),
+    };
+    conv = appendMessage(conv.id, streamMessage) ?? conv;
+    const convId = conv.id;
+    setConversations((prev) => prev.map((c) => (c.id === convId ? conv! : c)));
     setLoading(true);
+
+    // 流式更新当前 AI 消息（仅更新内存 state，落盘在结束统一进行）
+    const patchStream = (patch: Partial<Message>) => {
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          const msgs = [...c.messages];
+          const last = msgs[msgs.length - 1];
+          msgs[msgs.length - 1] = { ...last, ...patch };
+          return { ...c, messages: msgs };
+        })
+      );
+    };
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversationId: conv.id,
+          conversationId: convId,
           model: conv.model,
           messages: conv.messages,
         }),
+        signal: controller.signal,
       });
-      const data = (await res.json()) as {
-        content: string;
-        model?: string;
-        error?: string;
-        phase?: "question" | "answer";
-        questions?: string[];
-        provider?: string;
-      };
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("响应流不可用");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullContent = "";
+      let phase: "question" | "answer" | undefined;
+      let questions: string[] = [];
+      let finalModel: string | undefined;
+      let imageSummary: string | undefined;
+      let thinking: ThinkingStep[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const ev = parseSseEvent(chunk);
+          if (!ev) continue;
+          if (ev.event === "token") {
+            fullContent += ev.data.text ?? "";
+            patchStream({ content: fullContent });
+          } else if (ev.event === "done") {
+            const d = ev.data;
+            phase = d.phase === "question" || d.phase === "answer" ? d.phase : undefined;
+            questions = Array.isArray(d.questions)
+              ? d.questions.filter((q): q is string => typeof q === "string")
+              : [];
+            finalModel = typeof d.model === "string" ? d.model : undefined;
+            imageSummary = typeof d.imageSummary === "string" ? d.imageSummary : undefined;
+            thinking = Array.isArray(d.thinking) ? (d.thinking as ThinkingStep[]) : [];
+            if (typeof d.content === "string" && d.content) {
+              fullContent = d.content;
+              patchStream({ content: fullContent });
+            }
+          } else if (ev.event === "error") {
+            fullContent = `⚠️ ${ev.data.error ?? "模型请求失败"}`;
+            patchStream({ content: fullContent });
+          }
+        }
+      }
 
       const assistantMessage: Message = {
-        id: genId(),
+        id: assistantId,
         role: "assistant",
-        content: data.error ? `⚠️ ${data.error}` : data.content,
+        content: fullContent || "（空回复）",
         attachments: [],
         createdAt: Date.now(),
-        model: data.model || conv.model,
-        phase: data.phase,
-        questions: data.questions ?? [],
+        model: finalModel || conv.model,
+        phase,
+        questions,
+        imageSummary,
+        thinking,
       };
-      const updated = appendMessage(conv!.id, assistantMessage);
+      // 一次性落盘：用完整消息替换末尾的空消息
+      const updated = updateConversation(convId, {
+        messages: [...(conv!.messages ?? []), assistantMessage].slice(0, -1).concat([assistantMessage]),
+      });
       if (updated) {
         setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       }
-    } catch {
-      const failed: Message = {
-        id: genId(),
-        role: "assistant",
-        content: "⚠️ 网络异常，请确认 ollama 已启动后重试。",
-        attachments: [],
-        createdAt: Date.now(),
-      };
-      const updated = appendMessage(conv!.id, failed);
-      if (updated) {
-        setConversations((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        patchStream({ content: "已停止生成。" });
+      } else {
+        patchStream({ content: "⚠️ 网络异常，请确认 ollama 已启动后重试。" });
       }
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
+  };
+
+  /** 中止当前生成 */
+  const handleStop = () => {
+    abortRef.current?.abort();
   };
 
   /** 切换模型（更新当前会话） */
@@ -278,6 +367,7 @@ export default function ChatPage() {
           selectedModel={active?.model ?? newModelRef.current}
           onModelChange={handleModelChange}
           onSend={handleSend}
+          onStop={handleStop}
           disabled={loading}
           externalQuestion={pendingQuestion}
           onExternalQuestionCleared={() => setPendingQuestion(null)}
