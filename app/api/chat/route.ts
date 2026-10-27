@@ -1,6 +1,7 @@
 import type { ChatRequest } from "@/lib/types";
 import { runHarnessStream, DEFAULT_OLLAMA_MODEL } from "@/lib/harness";
 import { extractPdfText } from "@/lib/pdf";
+import { extractImageText } from "@/lib/ocr";
 
 /**
  * POST /api/chat
@@ -23,31 +24,47 @@ export async function POST(request: Request) {
   const model = body.model || DEFAULT_OLLAMA_MODEL;
   const messages = body.messages ?? [];
 
-  // 对历史最后一条用户消息做 PDF 解析（若附件含 PDF 且尚未解析过，注入文本到 content）
+  // 对历史最后一条用户消息做 PDF 解析 / 图片 OCR（若尚未注入过，识别文本并入 content）
   let history = messages;
   {
-    const pdfNotes: string[] = [];
+    const injectNotes: string[] = [];
     for (let i = history.length - 1; i >= 0; i--) {
       const m = history[i];
       if (m.role !== "user") continue;
-      const pdfAtts = (m.attachments ?? []).filter(
+      const atts = m.attachments ?? [];
+      const pdfAtts = atts.filter(
         (att) =>
           att.type === "application/pdf" || att.name.toLowerCase().endsWith(".pdf")
       );
-      if (pdfAtts.length === 0 || m.content.includes("[PDF内容：")) break;
+      const imgAtts = atts.filter((att) => att.type.startsWith("image/"));
+      const alreadyInjected =
+        m.content.includes("[PDF内容：") || m.content.includes("[图片OCR识别内容：");
+      if ((pdfAtts.length === 0 && imgAtts.length === 0) || alreadyInjected) break;
       for (const att of pdfAtts) {
         if (att.dataUrl) {
           const pdfText = await extractPdfText(att.dataUrl);
-          pdfNotes.push(`[PDF内容：${pdfText || "解析失败或为空"}]`);
+          injectNotes.push(`[PDF内容：${pdfText || "解析失败或为空"}]`);
         } else {
-          pdfNotes.push(`[PDF附件：${att.name}（无数据，无法解析）]`);
+          injectNotes.push(`[PDF附件：${att.name}（无数据，无法解析）]`);
         }
       }
-      if (pdfNotes.length > 0) {
+      for (const att of imgAtts) {
+        if (att.dataUrl) {
+          const ocrText = await extractImageText(att.dataUrl);
+          if (ocrText) {
+            injectNotes.push(`[图片OCR识别内容：${ocrText}]`);
+          } else {
+            injectNotes.push(`[图片OCR识别：未识别到文字或识别失败]`);
+          }
+        } else {
+          injectNotes.push(`[图片附件：${att.name}（无数据，无法OCR）]`);
+        }
+      }
+      if (injectNotes.length > 0) {
         history = [...history];
         history[i] = {
           ...m,
-          content: [...pdfNotes, m.content].filter(Boolean).join("\n\n"),
+          content: [...injectNotes, m.content].filter(Boolean).join("\n\n"),
         };
       }
       break;
