@@ -5,6 +5,9 @@
 /** 消息角色 */
 export type MessageRole = "user" | "assistant" | "system";
 
+/** 诊断阶段：question=追问阶段（展示待回答的问题），answer=最终回答阶段（诊断正文） */
+export type HarnessPhase = "question" | "answer";
+
 /** 消息附件：支持图片（dataUrl）与 PDF（dataUrl，暂不解析内容） */
 export interface Attachment {
   /** 文件名，如 "错题.png" */
@@ -27,6 +30,10 @@ export interface Message {
   createdAt: number;
   /** 使用的模型（assistant 消息记录） */
   model?: string;
+  /** 诊断阶段（assistant 消息记录，harness 返回） */
+  phase?: HarnessPhase;
+  /** 追问阶段待回答的问题列表（assistant 消息记录） */
+  questions?: string[];
 }
 
 /** 一个会话（对话分支） */
@@ -76,8 +83,14 @@ export interface ChatRequest {
 
 /** /api/chat 响应体 */
 export interface ChatResponse {
-  /** AI 回复文本 */
+  /** AI 回复文本（answer 阶段为诊断正文；question 阶段通常为空） */
   content: string;
   model?: string;
   error?: string;
+  /** 诊断阶段：question=追问阶段，answer=最终回答阶段 */
+  phase?: HarnessPhase;
+  /** 追问阶段待回答的问题列表 */
+  questions?: string[];
+  /** 实际使用的 provider：deepseek | ollama */
+  provider?: string;
 }
