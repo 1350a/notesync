@@ -6,13 +6,21 @@
  * 题目文字继续诊断，不再因"看不到图"而误判信息不足、反复追问。
  *
  * 设计：
- * - 单例 worker 惰性初始化（首次调用下载 core 与语言包，之后复用）
+ * - 单例 worker 惰性初始化（本地 core + tessdata 语言包，首次初始化后复用）
  * - 超时控制：单次识别超时返回空串，不阻塞诊断主流程
  * - 结果缓存：同一 dataUrl 只识别一次（会话生命周期内）
  * - 大小限制：超过阈值跳过（与 harness MAX_IMAGE_DATA_URL 对齐）
+ *
+ * 本地化说明：
+ * - langPath 指向项目 tessdata/ 目录（chi_sim.traineddata.gz 随仓库分发，离线可用）
+ * - corePath 指向 node_modules/tesseract.js-core（Next 通过 serverExternalPackages 外部化，
+ *   运行时直接 require，不经打包器）
+ * - 语言仅用 chi_sim：tesseract.js v7 对 "chi_sim+eng" 多语言在自定义 langPath 下
+ *   存在加载乱码 bug（Failed loading language），单语言稳定
  */
 import { createWorker } from "tesseract.js";
 import type { Worker } from "tesseract.js";
+import path from "node:path";
 
 /** 单张图片 dataUrl 上限（base64 字符串长度，约 9MB 原图），超过则跳过 OCR */
 const MAX_OCR_DATA_URL = 12 * 1024 * 1024;
@@ -28,8 +36,12 @@ const ocrCache = new Map<string, string>();
 /** 惰性获取 OCR worker；初始化失败后置空，允许下次调用重试 */
 function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker("chi_sim+eng", 1, {
+    const tessdataDir = path.join(process.cwd(), "tessdata");
+    const coreDir = path.join(process.cwd(), "node_modules", "tesseract.js-core");
+    workerPromise = createWorker("chi_sim", 1, {
       logger: () => {},
+      langPath: tessdataDir,
+      corePath: coreDir,
     }).catch((err) => {
       workerPromise = null;
       throw err;
