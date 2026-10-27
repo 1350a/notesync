@@ -3,12 +3,34 @@ import type { ModelsResponse, OllamaModel } from "@/lib/types";
 /** ollama 服务地址 */
 const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 
+/** DeepSeek API Key（.env.local 中配置） */
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
+
+/** 配置了 DeepSeek key 时使用云端模型，否则走本地 ollama */
+const USE_DEEPSEEK = Boolean(DEEPSEEK_API_KEY);
+
+/** DeepSeek 官方模型列表 */
+const DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro"];
+
 /**
  * GET /api/models
- * 拉取本地 ollama 模型列表（ollama /api/tags），供前端切换模型。
- * ollama 未运行时返回 available=false 与友好提示，不抛错。
+ * 配置了 DeepSeek key 时返回云端模型列表；否则拉取本地 ollama 模型列表
+ * （ollama /api/tags），供前端切换模型。ollama 未运行时返回 available=false
+ * 与友好提示，不抛错。
  */
 export async function GET() {
+  if (USE_DEEPSEEK) {
+    const models: OllamaModel[] = DEEPSEEK_MODELS.map((name) => ({
+      name,
+      model: name,
+      modified_at: new Date().toISOString(),
+      size: 0,
+      digest: "",
+      details: { family: "deepseek" },
+    }));
+    return Response.json({ models, available: true } satisfies ModelsResponse);
+  }
+
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
