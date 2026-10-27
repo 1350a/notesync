@@ -14,6 +14,23 @@ export function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** 清理旧版 bug 残留的脏消息：同 id 去重（保留后出现者），丢弃无内容的空 AI 消息 */
+function cleanMessages(messages: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  for (const m of messages) {
+    byId.set(m.id, m); // 后出现者覆盖先出现者
+  }
+  return Array.from(byId.values()).filter(
+    (m) =>
+      !(
+        m.role === "assistant" &&
+        !m.content.trim() &&
+        (!m.questions || m.questions.length === 0) &&
+        (!m.thinking || m.thinking.length === 0)
+      )
+  );
+}
+
 /** 读取全部会话（按更新时间倒序） */
 export function loadConversations(): Conversation[] {
   if (typeof window === "undefined") return [];
@@ -22,7 +39,9 @@ export function loadConversations(): Conversation[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Conversation[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.sort((a, b) => b.updatedAt - a.updatedAt);
+    return parsed
+      .map((c) => ({ ...c, messages: cleanMessages(c.messages ?? []) }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   } catch {
     return [];
   }
