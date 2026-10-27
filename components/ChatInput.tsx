@@ -9,6 +9,10 @@ interface ChatInputProps {
   onModelChange: (model: string) => void;
   onSend: (content: string, attachments: Attachment[]) => void;
   disabled?: boolean;
+  /** 待回答的追问问题（harness 追问阶段点击"回答此问题"时设置，作为输入提示） */
+  externalQuestion?: string | null;
+  /** 外部追问问题被发送或取消后回调清空 */
+  onExternalQuestionCleared?: () => void;
 }
 
 /** 读取文件为 Data URL（图片直接预览，PDF 记录文件名） */
@@ -37,6 +41,8 @@ export default function ChatInput({
   onModelChange,
   onSend,
   disabled = false,
+  externalQuestion = null,
+  onExternalQuestionCleared,
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -87,11 +93,26 @@ export default function ChatInput({
     onSend(content, attachments);
     setText("");
     setAttachments([]);
+    if (externalQuestion) onExternalQuestionCleared?.();
     textareaRef.current?.focus();
   };
 
   return (
     <div className="border-t border-[var(--border)] bg-[var(--bg-deep)] p-3">
+      {/* 回答追问提示条 */}
+      {externalQuestion && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+          <span className="font-semibold text-[var(--accent)]">回答追问：</span>
+          <span className="flex-1 truncate">{externalQuestion}</span>
+          <button
+            onClick={() => onExternalQuestionCleared?.()}
+            title="取消回答追问"
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-[var(--text-muted)] transition hover:bg-red-500/20 hover:text-red-400"
+          >
+            取消
+          </button>
+        </div>
+      )}
       {/* 附件预览区 */}
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
@@ -157,7 +178,11 @@ export default function ChatInput({
             }
           }}
           rows={1}
-          placeholder="粘贴或输入你的错题内容，按 Enter 发送，Shift+Enter 换行…"
+          placeholder={
+            externalQuestion
+              ? `回答追问：${externalQuestion}`
+              : "粘贴或输入你的错题内容，按 Enter 发送，Shift+Enter 换行…"
+          }
           className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2.5 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:bg-[var(--hover)]"
         />
 
