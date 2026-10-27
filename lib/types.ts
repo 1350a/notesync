@@ -2,6 +2,8 @@
  * 错题认知诊断引擎 - 共享类型定义
  */
 
+import type { ThinkingStep } from "@/lib/agent/types";
+
 /** 消息角色 */
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -34,6 +36,10 @@ export interface Message {
   phase?: HarnessPhase;
   /** 追问阶段待回答的问题列表（assistant 消息记录） */
   questions?: string[];
+  /** 图片内容一句话摘要（模型识别后跨轮记忆，assistant 消息记录） */
+  imageSummary?: string;
+  /** Agent 思考过程（工具调用/知识库检索记录，assistant 消息记录） */
+  thinking?: ThinkingStep[];
 }
 
 /** 一个会话（对话分支） */
