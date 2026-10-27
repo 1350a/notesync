@@ -25,20 +25,54 @@ function normalizeModel(model: string): string {
   return model;
 }
 
-/** 将内部消息转换为 OpenAI 兼容 messages（图片/PDF 附件以文本标注随消息发送） */
+/** 单张图片 dataUrl 上限（base64 字符串长度，约 9MB 原图），防请求体超 DeepSeek 48MiB 限制 */
+const MAX_IMAGE_DATA_URL = 12 * 1024 * 1024;
+
+/** 将内部消息转换为 OpenAI 兼容 messages。
+ * DeepSeek 下仅最后一条（本轮新消息）携带真实图片数据（多模态 content 数组）；
+ * 历史消息只保留文本标注，避免每轮重复上传大图、突破请求体上限。
+ * ollama（qwen2.5 纯文本）继续使用文本标注。 */
 function toOpenAIMessages(messages: ChatRequest["messages"]) {
-  return messages.map((m) => {
+  return messages.map((m, idx) => {
+    const isLast = idx === messages.length - 1;
+    const images =
+      USE_DEEPSEEK && isLast
+        ? (m.attachments ?? []).filter(
+            (att) =>
+              att.type.startsWith("image/") &&
+              att.dataUrl &&
+              att.dataUrl.length <= MAX_IMAGE_DATA_URL
+          )
+        : [];
+
     const attachmentNotes = (m.attachments ?? [])
       .map((att) => {
         if (att.type.startsWith("image/")) {
+          if (att.dataUrl && att.dataUrl.length > MAX_IMAGE_DATA_URL) {
+            return `[用户上传了图片附件：${att.name}（图片过大，未随请求上传）]`;
+          }
           return `[用户上传了图片附件：${att.name}]`;
         }
         return `[用户上传了PDF附件：${att.name}]`;
       })
       .join("\n");
 
-    const content = [attachmentNotes, m.content].filter(Boolean).join("\n\n");
-    return { role: m.role, content: content || "（空消息）" };
+    const text =
+      [attachmentNotes, m.content].filter(Boolean).join("\n\n") || "（空消息）";
+
+    if (images.length > 0) {
+      return {
+        role: m.role,
+        content: [
+          { type: "text", text },
+          ...images.map((att) => ({
+            type: "image_url",
+            image_url: { url: att.dataUrl as string },
+          })),
+        ],
+      };
+    }
+    return { role: m.role, content: text };
   });
 }
 
@@ -132,8 +166,12 @@ export async function POST(request: Request) {
   } catch (err) {
     const msg =
       err instanceof Error && err.name === "AbortError"
-        ? "请求 ollama 超时，请确认服务已启动且模型推理未卡住。"
-        : "无法连接本地 ollama 服务，请确认已安装并运行 ollama（默认端口 11434）。";
+        ? USE_DEEPSEEK
+          ? "请求 DeepSeek 超时，请稍后重试。"
+          : "请求 ollama 超时，请确认服务已启动且模型推理未卡住。"
+        : USE_DEEPSEEK
+          ? "无法连接 DeepSeek 服务，请检查网络后重试。"
+          : "无法连接本地 ollama 服务，请确认已安装并运行 ollama（默认端口 11434）。";
     return Response.json(
       { content: "", error: msg } satisfies ChatResponse,
       { status: 200 }
