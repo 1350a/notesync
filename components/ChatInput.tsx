@@ -9,6 +9,8 @@ interface ChatInputProps {
   onModelChange: (model: string) => void;
   onSend: (content: string, attachments: Attachment[]) => void;
   disabled?: boolean;
+  /** 生成中点击"停止"（中止流式请求） */
+  onStop?: () => void;
   /** 待回答的追问问题（harness 追问阶段点击"回答此问题"时设置，作为输入提示） */
   externalQuestion?: string | null;
   /** 外部追问问题被发送或取消后回调清空 */
@@ -41,6 +43,7 @@ export default function ChatInput({
   onModelChange,
   onSend,
   disabled = false,
+  onStop,
   externalQuestion = null,
   onExternalQuestionCleared,
 }: ChatInputProps) {
@@ -186,21 +189,33 @@ export default function ChatInput({
           className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-[var(--border)] bg-[var(--panel-soft)] px-3 py-2.5 text-sm text-[var(--text)] placeholder-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:bg-[var(--hover)]"
         />
 
-        {/* 发送按钮 */}
-        <button
-          onClick={submit}
-          disabled={disabled || (!text.trim() && attachments.length === 0)}
-          title="发送"
-          className="rounded-xl bg-[var(--accent)] p-2.5 text-[var(--accent-text)] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-            />
-          </svg>
-        </button>
+        {/* 发送 / 停止按钮 */}
+        {disabled ? (
+          <button
+            onClick={onStop}
+            title="停止生成"
+            className="rounded-xl bg-red-500/20 p-2.5 text-red-400 transition hover:bg-red-500/30"
+          >
+            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={!text.trim() && attachments.length === 0}
+            title="发送"
+            className="rounded-xl bg-[var(--accent)] p-2.5 text-[var(--accent-text)] transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* 模型选择行 */}
