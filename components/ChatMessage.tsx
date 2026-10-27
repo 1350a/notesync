@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { Message } from "@/lib/types";
+import type { ThinkingStep } from "@/lib/agent/types";
 
 interface ChatMessageProps {
   message: Message;
@@ -68,6 +70,55 @@ function QuestionCard({ questions, onAnswer }: { questions: string[]; onAnswer?:
   );
 }
 
+/** Agent 思考过程面板（工具调用/知识库检索，默认折叠） */
+function ThinkingPanel({ steps }: { steps: ThinkingStep[] }) {
+  const [open, setOpen] = useState(false);
+  if (steps.length === 0) return null;
+  return (
+    <div className="mb-2 rounded-xl border border-[var(--border)] bg-[var(--panel-soft)]">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--text-muted)] transition hover:text-[var(--text-secondary)]"
+      >
+        <span
+          className={`inline-block transition-transform ${open ? "rotate-90" : ""}`}
+        >
+          ▸
+        </span>
+        <span>诊断过程（{steps.length} 步）</span>
+      </button>
+      {open && (
+        <ol className="space-y-1.5 border-t border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+          {steps.map((step, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
+              <div className="min-w-0 flex-1">
+                <p>{step.message}</p>
+                {step.type === "tool" && step.tool && (
+                  <p className="mt-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+                    {step.tool}
+                    {step.args ? ` ${JSON.stringify(step.args).slice(0, 60)}` : ""}
+                  </p>
+                )}
+                {step.result && (
+                  <p className="mt-0.5 line-clamp-2 text-[10px] text-[var(--text-muted)]">
+                    {step.result}
+                  </p>
+                )}
+                {step.sources && step.sources.length > 0 && (
+                  <p className="mt-0.5 text-[10px] text-[var(--accent)]">
+                    参考：{step.sources.join("、")}
+                  </p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /**
  * 消息气泡：用户消息（右侧）与 AI 回复（左侧），支持附件预览。
  * harness 追问阶段（phase=question）额外展示待回答的问题列表。
@@ -95,6 +146,9 @@ export default function ChatMessage({ message, onAnswer }: ChatMessageProps) {
               <AttachmentPreview key={i} {...att} />
             ))}
           </div>
+        )}
+        {!isUser && message.thinking && message.thinking.length > 0 && (
+          <ThinkingPanel steps={message.thinking} />
         )}
         {isQuestion && <QuestionCard questions={message.questions ?? []} onAnswer={onAnswer} />}
         {message.content ? (
