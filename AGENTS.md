@@ -7,3 +7,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## 项目规范
+
+- 双后端：配置 `DEEPSEEK_API_KEY` 时走 DeepSeek 云端（模型 `deepseek-flash`，base_url `https://api.deepseek.com`，Bearer 鉴权），否则回退本地 ollama（`http://localhost:11434`，`qwen2.5:7b`，无鉴权）；回退行为不可破坏，key 存 `.env.local`（已被 .gitignore 排除）
+- harness 协议：`/api/chat` 返回结构化响应——`phase=question` 时带 `questions` 追问列表（模型判断信息不足时主动向用户提问），`phase=answer` 时带 `content` 诊断内容；前端按 phase 渲染追问卡片并引导用户回答
+- provider 分层：模型调用在 `lib/provider/`（统一接口 + deepseek/ollama 两个实现），harness 编排在 `lib/harness/`；路由层只做薄转发
+- 图片：仅本轮新消息以 `image_url` 多模态上传，历史消息图片保留文本标注；单图 dataUrl >12MB 降级为文本标注；DeepSeek 请求体上限 48MiB
+- git：每写/改一个文件单独 `git add` + `git commit`（需单命令执行，一行多命令时 commit 会静默失效）；功能开发开新分支；commit message 说明文件用途
+- 构建：改代码后先 `npm run build` 通过再提交
