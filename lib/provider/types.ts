@@ -58,6 +58,8 @@ export interface LLMProvider {
   readonly name: ProviderName;
   /** 发送补全请求，返回模型输出文本 */
   complete(options: CompleteOptions): Promise<string>;
+  /** 流式补全：逐段产出增量文本（未实现时返回 undefined，调用方降级为非流式） */
+  streamComplete?(options: CompleteOptions): AsyncGenerator<string>;
   /** 拉取可用模型列表；失败返回空数组（不抛错） */
   listModels(): Promise<ProviderModel[]>;
   /** 当前 Provider 是否可用 */
