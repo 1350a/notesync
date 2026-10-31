@@ -16,7 +16,7 @@ import type {
 /** ollama 服务地址 */
 const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 /** 默认回退模型 */
-const DEFAULT_OLLAMA_MODEL = "qwen2.5:7b";
+const DEFAULT_OLLAMA_MODEL = "deepseek-local";
 /** 单次请求超时（ms） */
 const REQUEST_TIMEOUT = 120_000;
 
