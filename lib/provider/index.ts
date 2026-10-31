@@ -10,7 +10,7 @@ import { ollamaProvider } from "./ollama";
 import type { LLMProvider, ProviderModel } from "./types";
 
 /** ollama 默认回退模型（无 DeepSeek key 时使用） */
-export const DEFAULT_OLLAMA_MODEL = "qwen2.5:7b";
+export const DEFAULT_OLLAMA_MODEL = "deepseek-local";
 
 /** 判断某个模型名是否属于 DeepSeek 官方模型 */
 export function isDeepSeekModel(model: string): boolean {
