@@ -7,7 +7,7 @@ import type { Conversation, Message } from "./types";
 /** localStorage 存储键 */
 const STORAGE_KEY = "mistake-diagnosis-conversations";
 /** 默认模型 */
-export const DEFAULT_MODEL = "qwen2.5:7b";
+export const DEFAULT_MODEL = "deepseek-local";
 
 /** 生成短 ID */
 export function genId(): string {
