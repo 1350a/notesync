@@ -1,5 +1,10 @@
 /**
+ * 【历史遗留 - 简易重构后已停用】
  * 本地 ollama Provider 适配
+ *
+ * 说明：简易重构遵循 AGENTS.md（模型三选一、不检测本地 ollama、不自动回退），
+ * 本文件已不再被任何代码引用（lib/provider/index.ts 中的 import 已注释停用）。
+ * 代码保留原样以便恢复；如需重新启用，请恢复 lib/provider/index.ts 的引用。
  *
  * 使用 ollama 原生 /api/chat 端点（OpenAI 兼容 /v1 也可用，但原生端点
  * 原生支持 format:"json" 结构化输出，对 harness 更友好）。
