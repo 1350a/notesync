@@ -6,8 +6,8 @@ import type { Conversation, Message } from "./types";
 
 /** localStorage 存储键 */
 const STORAGE_KEY = "mistake-diagnosis-conversations";
-/** 默认模型 */
-export const DEFAULT_MODEL = "deepseek-local";
+/** 默认模型（简易重构版：不再使用 ollama 本地模型，改为云端三选一默认模型） */
+export const DEFAULT_MODEL = "deepseek-v4-flash";
 
 /** 生成短 ID */
 export function genId(): string {
