@@ -9,13 +9,22 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
     "@tesseract.js-data/chi_sim": "^1.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
+    "ai": "^7.0.159",
+    "framer-motion": "^14.9.0",
     "next": "16.4.3",
+    "onnxruntime-web": "^1.31.1",
+    "orama": "^2.0.6",
     "pdfjs-dist": "^5.6.205",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "tesseract.js": "^7.0.0"
+    "react-markdown": "^10.1.0",
+    "remark-math": "^6.0.0",
+    "tailwindcss-animate": "^1.0.7",
+    "tesseract.js": "^7.0.0",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
@@ -24,6 +33,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
+    "prettier": "^3.9.10",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
