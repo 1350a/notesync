@@ -1,55 +1,27 @@
-'use client'
-import { useState } from 'react'
+/**
+ * 简易重构版：diagnose 路由已注释停用。
+ * 说明：外壳重写为简易聊天首页后，放弃原“上传诊断”入口，
+ * 本路由页面/跳转全部停用（不删除），旧代码保留在底部注释块便于恢复。
+ */
 export default function DiagnosePage() {
-  const [selectedFile, setSelectedFile] = useState<File|null>(null)
-  const [previewUrl, setPreviewUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      setPreviewUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
-    }
-  }
-  const clearFile = () => {
-    setSelectedFile(null)
-    setPreviewUrl('')
-  }
-  const startDiagnose = () => {
-    if (!selectedFile) return
-    setLoading(true)
-  }
-  return (<div className="min-h-screen p-8 relative overflow-hidden" style={{backgroundColor:"var(--bg-color)"}}>
-    <div className="absolute top-10 left-10 text-9xl opacity-10 rotate-12">📖</div>
-    <div className="absolute bottom-20 right-16 text-8xl opacity-10 -rotate-12">✏️</div>
-    <div className="absolute top-1/3 right-10 text-7xl opacity-10">📚</div>
-
-    <main className="max-w-4xl mx-auto relative z-10">
-      <h1 className="text-4xl font-bold mb-8" style={{color:"var(--text-color)"}}>错题认知诊断引擎</h1>
-      <div style={{backgroundColor:"var(--card-bg)"}} className="backdrop-blur-lg rounded-2xl p-6 shadow-xl">
-        <p style={{color:"var(--text-color)"}} className="mb-4">上传你的错题照片或PDF</p >
-        <input type="file" accept="image/*,.pdf" id="fileUpload" className="hidden" onChange={handleFileChange}/>
-        <div className="flex gap-3 flex-wrap">
-          <button style={{backgroundColor:"var(--primary-color)"}} className="hover:opacity-90 text-white px-6 py-3 rounded-full shadow-lg">
-            选择文件
-          </button>
-          {selectedFile && (
-            <div className="flex items-center gap-3">
-              <p style={{color:"var(--text-color)"}}>已选：{selectedFile.name}</p >
-              <button style={{backgroundColor:"var(--primary-color)"}} className="hover:opacity-90 text-white px-4 py-2 rounded-full shadow">
-                诊断
-              </button>
-            </div>
-          )}
-        </div>
-        {previewUrl && < img src={previewUrl} alt="预览" className="mt-4 max-w-full rounded-2xl shadow-lg"/>}
-      </div>
-      <div style={{backgroundColor:"var(--card-bg)"}} className="backdrop-blur-lg rounded-2xl p-6 shadow-xl mt-4">
-        <h2 style={{color:"var(--text-color)"}} className="font-semibold mb-3">诊断结果</h2>
-        <p style={{color:"var(--text-color)"}}>等待上传错题文件后生成知识点分析和错因建议</p >
-      </div>
-    </main>
-  </div>
-   )
+  return (
+    <div
+      className="flex min-h-screen items-center justify-center px-4"
+      style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)" }}
+    >
+      <p className="text-center text-sm">
+        该功能已停用：简易版重构后请使用首页聊天入口。
+      </p>
+    </div>
+  );
 }
+
+/* =====================================================================
+ * 【历史遗留代码 - 已注释停用，保留原文便于恢复】
+ * 原实现（简易重构前 app/diagnose/page.tsx）：
+ * 'use client'
+ * 客户端组件，上传图片/PDF 后调用 /api/chat 的 harness 诊断流程，
+ * 包含：文件上传框、主题说明、结果渲染（追问卡片 / 诊断正文 / 思考过程）。
+ * 简易重构后整体停用，首页改为简易聊天界面。
+ * 如需恢复，请还原此文件为旧版并配合 /api/chat 旧 harness 链路使用。
+ * ===================================================================== */
