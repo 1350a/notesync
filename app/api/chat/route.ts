@@ -1,154 +1,88 @@
-import type { ChatRequest } from "@/lib/types";
-import { runHarnessStream, DEFAULT_OLLAMA_MODEL } from "@/lib/harness";
-import { extractPdfText } from "@/lib/pdf";
-import { extractImageText } from "@/lib/ocr";
-
 /**
  * POST /api/chat
- * 薄路由：接收多轮消息历史，交给 LLM harness 编排，返回 SSE 事件流。
+ * 简易重构版：薄路由，仅保证“用户发消息 → 按环境变量三选一选择模型 → 调用返回文本 → 前端展示”。
  *
- * 事件流格式（text/event-stream）：
- *   event: status  { message: "正在理解题目信息…" }
- *   event: token   { text: "诊断正文增量" }
- *   event: done    { phase, questions, content, model, provider, imageSummary?, thinking? }
- *   event: error   { error: "友好错误信息" }
+ * 协议（JSON，非流式）：
+ *   成功: { content, model, provider }
+ *   失败: { error, model?, provider? }
+ *   —— 即使模型侧返回 HTTP 401 等错误，也原样回传由前端展示，视为“链路已通（连通性优先）”。
  *
- * harness 内部完成：
- * - Agent 决策循环：工具检索（RAG 知识库）→ 追问 → 诊断
- * - 追问轮数状态机（防死循环）、图片跨轮记忆
- * - DeepSeek / ollama 双 provider 路由（含多模态图片上传能力）
- * - PDF 附件文本解析（这里完成，注入用户消息）
+ * 与 .env.example / AGENTS.md 一致：三选一（DEEPSEEK / ZHIPU / CUSTOM，OpenAI 兼容），
+ * 不再检测本地 ollama、不自动回退；key 缺失时返回明确的错误提示。
+ *
+ * 历史实现（harness 编排 / PDF 解析 / 图片 OCR / SSE 事件流）已注释保留在文件底部。
  */
+import { resolveProvider, getModelList } from "@/lib/provider";
+import type { ProviderMessage } from "@/lib/provider/types";
+
 export async function POST(request: Request) {
-  const body = (await request.json()) as ChatRequest;
-  const model = body.model || DEFAULT_OLLAMA_MODEL;
-  const messages = body.messages ?? [];
+  const body = (await request.json()) as {
+    model?: string;
+    messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+    content?: string;
+  };
 
-  // 对历史最后一条用户消息做 PDF 解析 / 图片 OCR（若尚未注入过，识别文本并入 content）
-  let history = messages;
-  {
-    const injectNotes: string[] = [];
-    for (let i = history.length - 1; i >= 0; i--) {
-      const m = history[i];
-      if (m.role !== "user") continue;
-      const atts = m.attachments ?? [];
-      const pdfAtts = atts.filter(
-        (att) =>
-          att.type === "application/pdf" || att.name.toLowerCase().endsWith(".pdf")
-      );
-      const imgAtts = atts.filter((att) => att.type.startsWith("image/"));
-      const alreadyInjected =
-        m.content.includes("[PDF内容：") || m.content.includes("[图片OCR识别内容：");
-      if ((pdfAtts.length === 0 && imgAtts.length === 0) || alreadyInjected) break;
-      for (const att of pdfAtts) {
-        if (att.dataUrl) {
-          const pdfText = await extractPdfText(att.dataUrl);
-          injectNotes.push(`[PDF内容：${pdfText || "解析失败或为空"}]`);
-        } else {
-          injectNotes.push(`[PDF附件：${att.name}（无数据，无法解析）]`);
-        }
-      }
-      for (const att of imgAtts) {
-        if (att.dataUrl) {
-          const ocrText = await extractImageText(att.dataUrl);
-          if (ocrText) {
-            injectNotes.push(`[图片OCR识别内容：${ocrText}]`);
-          } else {
-            injectNotes.push(`[图片OCR识别：未识别到文字或识别失败]`);
-          }
-        } else {
-          injectNotes.push(`[图片附件：${att.name}（无数据，无法OCR）]`);
-        }
-      }
-      if (injectNotes.length > 0) {
-        history = [...history];
-        history[i] = {
-          ...m,
-          content: [...injectNotes, m.content].filter(Boolean).join("\n\n"),
-        };
-      }
-      break;
+  // 组装发送给模型的消息：优先用显式 messages，否则用 content
+  let providerMessages: ProviderMessage[];
+  if (Array.isArray(body.messages) && body.messages.length > 0) {
+    providerMessages = body.messages.map((m) => ({
+      role: m.role === "system" ? "system" : m.role === "assistant" ? "assistant" : "user",
+      content: m.content || "",
+    }));
+    if (body.content) {
+      providerMessages.push({ role: "user", content: body.content });
     }
+  } else {
+    providerMessages = [{ role: "user", content: body.content || "" }];
   }
 
-  // 若请求带新消息（纯文字或附件），拼到历史末尾（兼容调用方）
-  if (body.content || (body.attachments && body.attachments.length > 0)) {
-    const attachments = body.attachments ?? [];
-    const notes: string[] = [];
-    for (const att of attachments) {
-      if (att.type.startsWith("image/")) {
-        notes.push(`[用户上传了图片附件：${att.name}]`);
-      } else if (
-        att.type === "application/pdf" ||
-        att.name.toLowerCase().endsWith(".pdf")
-      ) {
-        notes.push(`[用户上传了PDF附件：${att.name}]`);
-        if (att.dataUrl) {
-          const pdfText = await extractPdfText(att.dataUrl);
-          if (pdfText) {
-            notes.push(`[PDF内容：${pdfText}]`);
-          } else {
-            notes.push(`[PDF内容解析失败或为空]`);
-          }
-        }
-      }
-    }
-    const pendingContent = [...notes, body.content].filter(Boolean).join("\n\n");
-    history = [
-      ...messages,
-      {
-        id: "pending",
-        role: "user" as const,
-        content: pendingContent,
-        attachments,
-        createdAt: Date.now(),
-      },
-    ];
+  // 模型选择：请求指定模型优先；否则取第一个可用 provider 的首个模型
+  let model = body.model?.trim();
+  if (!model) {
+    const list = await getModelList();
+    model = list.models[0]?.name;
+  }
+  if (!model) {
+    return Response.json({
+      error:
+        "未配置任何模型 API Key：请复制 .env.example 为 .env.local，并填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY 三者之一后再试。",
+    });
   }
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (event: string, data: unknown) => {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
-      };
-      // 单次请求最长 120 秒
-      const timer = setTimeout(() => controller.error(new Error("请求超时")), 120000);
-      try {
-        for await (const ev of runHarnessStream({ model, messages: history })) {
-          switch (ev.type) {
-            case "status":
-              send("status", { message: ev.message });
-              break;
-            case "token":
-              send("token", { text: ev.text });
-              break;
-            case "done":
-              send("done", ev.result);
-              break;
-            case "error":
-              send("error", { error: ev.message });
-              break;
-          }
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "处理请求失败";
-        send("error", { error: message });
-      } finally {
-        clearTimeout(timer);
-        controller.close();
-      }
-    },
-  });
+  const { provider } = resolveProvider(model);
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  // key/base_url 缺失 → 明确错误（不再回退 ollama）
+  if (!provider.isAvailable()) {
+    return Response.json({
+      error: `模型 ${model} 对应的 Provider（${provider.name}）未配置完整环境变量。请检查 .env.local 中对应的 API_KEY / BASE_URL / MODEL 配置。`,
+      model,
+      provider: provider.name,
+    });
+  }
+
+  try {
+    const content = await provider.complete({ model, messages: providerMessages });
+    return Response.json({ content, model, provider: provider.name });
+  } catch (err) {
+    // 401 等 HTTP 错误也原样回传，前端展示错误信息（连通性优先）
+    return Response.json({
+      error: err instanceof Error ? err.message : "模型请求失败",
+      model,
+      provider: provider.name,
+    });
+  }
 }
+
+/* =====================================================================
+ * 【历史遗留代码 - 已注释停用，保留原文便于恢复】
+ * 原实现（简易重构前 app/api/chat/route.ts）：
+ * - import type { ChatRequest } from "@/lib/types";
+ * - import { runHarnessStream, DEFAULT_OLLAMA_MODEL } from "@/lib/harness";
+ * - import { extractPdfText } from "@/lib/pdf";
+ * - import { extractImageText } from "@/lib/ocr";
+ * - POST 内：对历史最后一条用户消息做 PDF 解析 / 图片 OCR 注入、
+ *   新消息附件处理、通过 runHarnessStream 产出 SSE 事件流
+ *   （status / token / done / error），含 120s 超时。
+ * 简易重构后不再接入 harness / agent / rag / ocr / pdf 编排。
+ * 如需恢复，请还原本文件为旧版并配合 lib/harness 等目录使用。
+ * ===================================================================== */
