@@ -82,7 +82,10 @@ function toProviderMessages(
   return messages.map((m, idx) => {
     const isLast = idx === messages.length - 1;
     const images =
-      providerName === "deepseek" && isLast
+      (providerName === "deepseek" ||
+        providerName === "zhipu" ||
+        providerName === "custom") &&
+      isLast
         ? (m.attachments ?? []).filter(
             (att) =>
               att.type.startsWith("image/") &&
