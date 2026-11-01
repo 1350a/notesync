@@ -2,11 +2,12 @@
  * LLM Provider 层 - 共享类型定义
  *
  * harness（智能多轮对话层）通过统一的 LLMProvider 接口访问
- * DeepSeek 云端与本地 ollama，屏蔽两者在鉴权、端点、多模态上的差异。
+ * DeepSeek / 智谱 AI / 自定义模型（OpenAI 兼容云端）与本地 ollama，
+ * 屏蔽各 Provider 在鉴权、端点、多模态上的差异。
  */
 
 /** Provider 名称 */
-export type ProviderName = "deepseek" | "ollama";
+export type ProviderName = "deepseek" | "zhipu" | "custom" | "ollama";
 
 /** 消息中的文本片段 */
 export interface ProviderTextPart {
