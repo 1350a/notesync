@@ -1,12 +1,11 @@
 /**
  * LLM Provider 层 - 共享类型定义
  *
- * harness（智能多轮对话层）通过统一的 LLMProvider 接口访问
- * DeepSeek / 智谱 AI / 自定义模型（OpenAI 兼容云端）与本地 ollama，
- * 屏蔽各 Provider 在鉴权、端点、多模态上的差异。
+ * 简易重构版：仅三云端 OpenAI 兼容 Provider（DeepSeek / 智谱 / 自定义），
+ * 本地 ollama 与 harness 编排链路已注释停用。
  */
 
-/** Provider 名称 */
+/** Provider 名称（ollama 保留仅为类型兼容，已停用） */
 export type ProviderName = "deepseek" | "zhipu" | "custom" | "ollama";
 
 /** 消息中的文本片段 */
@@ -40,6 +39,19 @@ export interface CompleteOptions {
   signal?: AbortSignal;
 }
 
+/** 详细补全结果：内容 + 可选思考过程（本地推理模型透传用） */
+export interface CompleteDetailedResult {
+  content: string;
+  /** 模型思考过程（DeepSeek 等返回 reasoning_content / reasoning） */
+  reasoning?: string;
+}
+
+/** 流式增量：内容片段或思考过程片段（二者至少一个） */
+export interface StreamDelta {
+  content?: string;
+  reasoning?: string;
+}
+
 /** 模型信息（用于 /api/models 下拉） */
 export interface ProviderModel {
   name: string;
@@ -61,6 +73,10 @@ export interface LLMProvider {
   complete(options: CompleteOptions): Promise<string>;
   /** 流式补全：逐段产出增量文本（未实现时返回 undefined，调用方降级为非流式） */
   streamComplete?(options: CompleteOptions): AsyncGenerator<string>;
+  /** 详细补全：返回内容 + 可选思考过程；未实现时调用方降级到 complete */
+  completeDetailed?(options: CompleteOptions): Promise<CompleteDetailedResult>;
+  /** 详细流式补全：逐段产出内容/思考增量；未实现时调用方降级到 streamComplete */
+  streamDetailed?(options: CompleteOptions): AsyncGenerator<StreamDelta>;
   /** 拉取可用模型列表；失败返回空数组（不抛错） */
   listModels(): Promise<ProviderModel[]>;
   /** 当前 Provider 是否可用 */
