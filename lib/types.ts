@@ -1,102 +1,111 @@
-/**
- * 错题认知诊断引擎 - 共享类型定义
+/*
+ * =====================================================================
+ * 【已注释停用 - 保留原文便于恢复】
+ * 原文件：lib\types.ts
+ * 说明：简易重构后无活跃引用、不再参与编译链路；此处逐行注释保留原文。
+ * 恢复：git checkout -- lib/types.ts（如已提交），或删除各行前缀 "// "。
+ * =====================================================================
  */
-
-import type { ThinkingStep } from "@/lib/agent/types";
-
-/** 消息角色 */
-export type MessageRole = "user" | "assistant" | "system";
-
-/** 诊断阶段：question=追问阶段（展示待回答的问题），answer=最终回答阶段（诊断正文） */
-export type HarnessPhase = "question" | "answer";
-
-/** 消息附件：支持图片（dataUrl）与 PDF（dataUrl，暂不解析内容） */
-export interface Attachment {
-  /** 文件名，如 "错题.png" */
-  name: string;
-  /** MIME 类型，如 image/png、application/pdf */
-  type: string;
-  /** 附件数据（data URL 或 PDF 文件名占位） */
-  dataUrl?: string;
-}
-
-/** 单条聊天消息 */
-export interface Message {
-  id: string;
-  role: MessageRole;
-  /** 文本内容（纯文字粘贴的错题也存这里） */
-  content: string;
-  /** 附件列表（图片/PDF） */
-  attachments: Attachment[];
-  /** 生成时间 */
-  createdAt: number;
-  /** 使用的模型（assistant 消息记录） */
-  model?: string;
-  /** 诊断阶段（assistant 消息记录，harness 返回） */
-  phase?: HarnessPhase;
-  /** 追问阶段待回答的问题列表（assistant 消息记录） */
-  questions?: string[];
-  /** 图片内容一句话摘要（模型识别后跨轮记忆，assistant 消息记录） */
-  imageSummary?: string;
-  /** Agent 思考过程（工具调用/知识库检索记录，assistant 消息记录） */
-  thinking?: ThinkingStep[];
-}
-
-/** 一个会话（对话分支） */
-export interface Conversation {
-  id: string;
-  /** 会话标题（首条用户消息截断） */
-  title: string;
-  messages: Message[];
-  /** 当前会话使用的 ollama 模型 */
-  model: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-/** ollama 模型信息（/api/tags 返回项） */
-export interface OllamaModel {
-  name: string;
-  model: string;
-  modified_at: string;
-  size: number;
-  digest: string;
-  details?: {
-    parameter_size?: string;
-    quantization_level?: string;
-    family?: string;
-  };
-}
-
-/** /api/models 接口返回 */
-export interface ModelsResponse {
-  models: OllamaModel[];
-  /** ollama 是否可用 */
-  available: boolean;
-  /** 不可用时的提示信息 */
-  message?: string;
-}
-
-/** /api/chat 请求体 */
-export interface ChatRequest {
-  conversationId?: string;
-  model: string;
-  messages: Message[];
-  /** 用户粘贴的纯文字错题（若无附件则作为首条） */
-  content?: string;
-  attachments?: Attachment[];
-}
-
-/** /api/chat 响应体 */
-export interface ChatResponse {
-  /** AI 回复文本（answer 阶段为诊断正文；question 阶段通常为空） */
-  content: string;
-  model?: string;
-  error?: string;
-  /** 诊断阶段：question=追问阶段，answer=最终回答阶段 */
-  phase?: HarnessPhase;
-  /** 追问阶段待回答的问题列表 */
-  questions?: string[];
-  /** 实际使用的 provider：deepseek | ollama */
-  provider?: string;
-}
+// /**
+//  * 错题认知诊断引擎 - 共享类型定义
+//  */
+// 
+// import type { ThinkingStep } from "@/lib/agent/types";
+// 
+// /** 消息角色 */
+// export type MessageRole = "user" | "assistant" | "system";
+// 
+// /** 诊断阶段：question=追问阶段（展示待回答的问题），answer=最终回答阶段（诊断正文） */
+// export type HarnessPhase = "question" | "answer";
+// 
+// /** 消息附件：支持图片（dataUrl）与 PDF（dataUrl，暂不解析内容） */
+// export interface Attachment {
+//   /** 文件名，如 "错题.png" */
+//   name: string;
+//   /** MIME 类型，如 image/png、application/pdf */
+//   type: string;
+//   /** 附件数据（data URL 或 PDF 文件名占位） */
+//   dataUrl?: string;
+// }
+// 
+// /** 单条聊天消息 */
+// export interface Message {
+//   id: string;
+//   role: MessageRole;
+//   /** 文本内容（纯文字粘贴的错题也存这里） */
+//   content: string;
+//   /** 附件列表（图片/PDF） */
+//   attachments: Attachment[];
+//   /** 生成时间 */
+//   createdAt: number;
+//   /** 使用的模型（assistant 消息记录） */
+//   model?: string;
+//   /** 诊断阶段（assistant 消息记录，harness 返回） */
+//   phase?: HarnessPhase;
+//   /** 追问阶段待回答的问题列表（assistant 消息记录） */
+//   questions?: string[];
+//   /** 图片内容一句话摘要（模型识别后跨轮记忆，assistant 消息记录） */
+//   imageSummary?: string;
+//   /** Agent 思考过程（工具调用/知识库检索记录，assistant 消息记录） */
+//   thinking?: ThinkingStep[];
+// }
+// 
+// /** 一个会话（对话分支） */
+// export interface Conversation {
+//   id: string;
+//   /** 会话标题（首条用户消息截断） */
+//   title: string;
+//   messages: Message[];
+//   /** 当前会话使用的 ollama 模型 */
+//   model: string;
+//   createdAt: number;
+//   updatedAt: number;
+// }
+// 
+// /** ollama 模型信息（/api/tags 返回项） */
+// export interface OllamaModel {
+//   name: string;
+//   model: string;
+//   modified_at: string;
+//   size: number;
+//   digest: string;
+//   details?: {
+//     parameter_size?: string;
+//     quantization_level?: string;
+//     family?: string;
+//   };
+// }
+// 
+// /** /api/models 接口返回 */
+// export interface ModelsResponse {
+//   models: OllamaModel[];
+//   /** ollama 是否可用 */
+//   available: boolean;
+//   /** 不可用时的提示信息 */
+//   message?: string;
+// }
+// 
+// /** /api/chat 请求体 */
+// export interface ChatRequest {
+//   conversationId?: string;
+//   model: string;
+//   messages: Message[];
+//   /** 用户粘贴的纯文字错题（若无附件则作为首条） */
+//   content?: string;
+//   attachments?: Attachment[];
+// }
+// 
+// /** /api/chat 响应体 */
+// export interface ChatResponse {
+//   /** AI 回复文本（answer 阶段为诊断正文；question 阶段通常为空） */
+//   content: string;
+//   model?: string;
+//   error?: string;
+//   /** 诊断阶段：question=追问阶段，answer=最终回答阶段 */
+//   phase?: HarnessPhase;
+//   /** 追问阶段待回答的问题列表 */
+//   questions?: string[];
+//   /** 实际使用的 provider：deepseek | ollama */
+//   provider?: string;
+// }
+// 
