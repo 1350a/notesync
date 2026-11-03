@@ -1,19 +1,30 @@
 /**
  * POST /api/chat
- * 简易重构版：薄路由，仅保证“用户发消息 → 按环境变量三选一选择模型 → 调用返回文本 → 前端展示”。
+ * 简易重构版（SSE 流式）：用户发消息 → 按环境变量三选一选择模型 → 流式返回模型回复。
  *
- * 协议（JSON，非流式）：
- *   成功: { content, model, provider }
- *   失败: { error, model?, provider? }
- *   —— 即使模型侧返回 HTTP 401 等错误，也原样回传由前端展示，视为“链路已通（连通性优先）”。
+ * 协议（SSE，text/event-stream）：
+ *   event: reasoning  data: {"delta":"思考过程增量"}
+ *   event: content    data: {"delta":"回复内容增量"}
+ *   event: done        data: {"model":"...","provider":"..."}
+ *   event: error       data: {"error":"...","model":"...","provider":"..."}
+ * —— 即使模型侧返回 HTTP 401 等错误，也以 error 事件原样回传由前端展示（连通性优先）。
  *
+ * 实现：优先复用 lib/provider/openaiCompat.ts 的 streamDetailed（含 reasoning 增量）；
+ * provider 未实现 detailed 时依次降级 streamComplete / completeDetailed / complete。
  * 与 .env.example / AGENTS.md 一致：三选一（DEEPSEEK / ZHIPU / CUSTOM，OpenAI 兼容），
- * 不再检测本地 ollama、不自动回退；key 缺失时返回明确的错误提示。
+ * 不再检测本地 ollama、不自动回退；key 缺失时返回明确的 error 事件。
  *
- * 历史实现（harness 编排 / PDF 解析 / 图片 OCR / SSE 事件流）已注释保留在文件底部。
+ * 历史实现（harness 编排 / PDF 解析 / 图片 OCR / 旧 SSE 事件流）已注释保留在文件底部。
  */
 import { resolveProvider, getModelList } from "@/lib/provider";
 import type { ProviderMessage } from "@/lib/provider/types";
+
+const encoder = new TextEncoder();
+
+/** 封装一条 SSE 事件为字节流 */
+function sse(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
 
 export async function POST(request: Request) {
   const body = (await request.json()) as {
@@ -43,34 +54,80 @@ export async function POST(request: Request) {
     model = list.models[0]?.name;
   }
   if (!model) {
-    return Response.json({
-      error:
-        "未配置任何模型 API Key：请复制 .env.example 为 .env.local，并填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY 三者之一后再试。",
-    });
+    return new Response(
+      sse("error", {
+        error:
+          "未配置任何模型 API Key：请复制 .env.example 为 .env.local，并填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY 三者之一后再试。",
+      }),
+      { headers: { "Content-Type": "text/event-stream; charset=utf-8" } }
+    );
   }
 
   const { provider } = resolveProvider(model);
 
   // key/base_url 缺失 → 明确错误（不再回退 ollama）
   if (!provider.isAvailable()) {
-    return Response.json({
-      error: `模型 ${model} 对应的 Provider（${provider.name}）未配置完整环境变量。请检查 .env.local 中对应的 API_KEY / BASE_URL / MODEL 配置。`,
-      model,
-      provider: provider.name,
-    });
+    return new Response(
+      sse("error", {
+        error: `模型 ${model} 对应的 Provider（${provider.name}）未配置完整环境变量。请检查 .env.local 中对应的 API_KEY / BASE_URL / MODEL 配置。`,
+        model,
+        provider: provider.name,
+      }),
+      { headers: { "Content-Type": "text/event-stream; charset=utf-8" } }
+    );
   }
 
-  try {
-    const content = await provider.complete({ model, messages: providerMessages });
-    return Response.json({ content, model, provider: provider.name });
-  } catch (err) {
-    // 401 等 HTTP 错误也原样回传，前端展示错误信息（连通性优先）
-    return Response.json({
-      error: err instanceof Error ? err.message : "模型请求失败",
-      model,
-      provider: provider.name,
-    });
-  }
+  const options = { model, messages: providerMessages };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        if (provider.streamDetailed) {
+          for await (const delta of provider.streamDetailed(options)) {
+            if (delta.reasoning) {
+              controller.enqueue(encoder.encode(sse("reasoning", { delta: delta.reasoning })));
+            }
+            if (delta.content) {
+              controller.enqueue(encoder.encode(sse("content", { delta: delta.content })));
+            }
+          }
+        } else if (provider.streamComplete) {
+          for await (const part of provider.streamComplete(options)) {
+            if (part) controller.enqueue(encoder.encode(sse("content", { delta: part })));
+          }
+        } else if (provider.completeDetailed) {
+          const r = await provider.completeDetailed(options);
+          if (r.reasoning) controller.enqueue(encoder.encode(sse("reasoning", { delta: r.reasoning })));
+          if (r.content) controller.enqueue(encoder.encode(sse("content", { delta: r.content })));
+        } else {
+          const content = await provider.complete(options);
+          if (content) controller.enqueue(encoder.encode(sse("content", { delta: content })));
+        }
+        controller.enqueue(encoder.encode(sse("done", { model, provider: provider.name })));
+      } catch (err) {
+        // 401 等 HTTP 错误也以 error 事件原样回传，前端展示错误信息（连通性优先）
+        controller.enqueue(
+          encoder.encode(
+            sse("error", {
+              error: err instanceof Error ? err.message : "模型请求失败",
+              model,
+              provider: provider.name,
+            })
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 /* =====================================================================
