@@ -7,12 +7,20 @@
  * - 请求/响应结构与 OpenAI 一致（含 SSE 流式、response_format json_object）
  *
  * 子类只需提供 name、apiKey、baseUrl、默认模型列表与展示名。
+ *
+ * 思考过程（reasoning）支持：
+ * - DeepSeek R1 系 / 部分推理模型会在响应中返回 reasoning_content
+ *   （非流式 message.reasoning_content，流式 delta.reasoning_content）；
+ * - completeDetailed / streamDetailed 透出该字段供前端展示；
+ * - complete / streamComplete 保持原签名（仅取 content），内部同样解析 reasoning。
  */
 import type {
+  CompleteDetailedResult,
   CompleteOptions,
   LLMProvider,
   ProviderMessage,
   ProviderModel,
+  StreamDelta,
 } from "./types";
 
 /** 单次请求超时（ms） */
@@ -124,20 +132,41 @@ export class OpenAICompatProvider implements LLMProvider {
     return `${this.displayName} 返回错误（HTTP ${status}）：${errText || "请检查 API Key 是否正确、余额是否充足。"}`;
   }
 
+  /** 解析响应 message/delta 中的内容与思考过程（兼容 reasoning_content / reasoning） */
+  private parseReasoning(
+    m: { content?: string; reasoning_content?: string; reasoning?: string } | undefined
+  ): { content: string; reasoning?: string } {
+    const content = m?.content?.trim() || "";
+    const reasoning = (m?.reasoning_content ?? m?.reasoning)?.trim() || "";
+    return { content, reasoning: reasoning || undefined };
+  }
+
   async complete(options: CompleteOptions): Promise<string> {
+    const r = await this.completeRaw(options);
+    return r.content;
+  }
+
+  /** 详细补全：透出 reasoning 思考过程（供 /api/chat 透传） */
+  async completeDetailed(options: CompleteOptions): Promise<CompleteDetailedResult> {
+    return this.completeRaw(options);
+  }
+
+  private async completeRaw(options: CompleteOptions): Promise<CompleteDetailedResult> {
     const res = await this.post(options, false);
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       throw new Error(this.errorMessage(res.status, errText));
     }
     const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: {
+        message?: { content?: string; reasoning_content?: string; reasoning?: string };
+      }[];
       error?: { message?: string };
     };
     if (data.error?.message) {
       throw new Error(`${this.displayName} 返回错误：${data.error.message}`);
     }
-    return data.choices?.[0]?.message?.content?.trim() || "";
+    return this.parseReasoning(data.choices?.[0]?.message);
   }
 
   /**
@@ -145,6 +174,17 @@ export class OpenAICompatProvider implements LLMProvider {
    * DeepSeek / 智谱 / 自定义 OpenAI 兼容端点均支持 stream: true。
    */
   async *streamComplete(options: CompleteOptions): AsyncGenerator<string> {
+    for await (const delta of this.streamRaw(options)) {
+      if (delta.content) yield delta.content;
+    }
+  }
+
+  /** 详细流式补全：逐段透出 content / reasoning 增量（供 /api/chat SSE 透传） */
+  async *streamDetailed(options: CompleteOptions): AsyncGenerator<StreamDelta> {
+    yield* this.streamRaw(options);
+  }
+
+  private async *streamRaw(options: CompleteOptions): AsyncGenerator<StreamDelta> {
     const res = await this.post(options, true);
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
@@ -168,10 +208,19 @@ export class OpenAICompatProvider implements LLMProvider {
         if (payload === "[DONE]") return;
         try {
           const chunk = JSON.parse(payload) as {
-            choices?: { delta?: { content?: string } }[];
+            choices?: {
+              delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+            }[];
           };
-          const delta = chunk.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta.length > 0) yield delta;
+          const delta = chunk.choices?.[0]?.delta;
+          if (!delta) continue;
+          if (typeof delta.content === "string" && delta.content.length > 0) {
+            yield { content: delta.content };
+          }
+          const reasoning = delta.reasoning_content ?? delta.reasoning;
+          if (typeof reasoning === "string" && reasoning.length > 0) {
+            yield { reasoning };
+          }
         } catch {
           // 忽略无法解析的数据行
         }
