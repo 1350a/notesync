@@ -17,12 +17,11 @@ import { customProvider, customAvailable, isCustomModel } from "./custom";
 import type { LLMProvider, ProviderModel } from "./types";
 
 /**
- * 默认模型常量（历史遗留命名）。
- * 简易重构后不再回退 ollama，此值仅作为“未显式指定模型时的默认云端模型”兜底；
- * 保留导出是为了兼容 lib/harness 等历史引用的编译。
- * @deprecated 新链路请通过 /api/models 获取可用模型，不要依赖本常量
+ * 默认模型常量（历史遗留命名，已确认无活跃引用，不再导出）。
+ * 简易重构后不再回退 ollama，此值仅作为 resolveProvider 内部
+ * “未显式指定模型时的默认云端模型”兜底。
  */
-export const DEFAULT_OLLAMA_MODEL = "deepseek-v4-flash";
+const DEFAULT_OLLAMA_MODEL = "deepseek-v4-flash";
 
 /** 解析模型名对应的云端 provider（DeepSeek / 智谱 / 自定义） */
 function resolveCloud(model: string): { provider: LLMProvider; model: string } | null {
