@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
 
 interface ChatMsg {
   role: "user" | "assistant";
   content: string;
+  reasoning?: string;
 }
 
 interface ModelsItem {
@@ -12,9 +15,65 @@ interface ModelsItem {
   model: string;
 }
 
+/** 解析 SSE 事件块（event:/data: 行，空行分隔） */
+function parseSseEvent(chunk: string): { event: string; data: Record<string, unknown> } | null {
+  const lines = chunk.split("\n");
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  if (dataLines.length === 0) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) as Record<string, unknown> };
+  } catch {
+    return null;
+  }
+}
+
+/** 更新消息列表中最后一条 assistant 消息（流式追加用） */
+function appendAssistant(list: ChatMsg[], updater: (m: ChatMsg) => ChatMsg): ChatMsg[] {
+  const next = [...list];
+  const i = next.length - 1;
+  if (i >= 0 && next[i].role === "assistant") next[i] = updater(next[i]);
+  return next;
+}
+
+/** 思考过程折叠区（默认收起，点击展开） */
+function ThinkingBlock({ reasoning }: { reasoning: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="mb-2 rounded-xl px-3 py-2"
+      style={{ border: "1px solid var(--border)", backgroundColor: "var(--panel-soft)" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs font-medium outline-none"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {open ? "▾" : "▸"} 思考过程
+      </button>
+      {open && (
+        <pre
+          className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          {reasoning}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+
+
 /**
- * 简易聊天首页（简易重构版）
- * 输入框 + 消息列表 + 发送，直接调用 /api/chat（JSON），展示模型回复。
+ * 简易聊天首页（简易重构版 + Markdown/SSE 流式）
+ * 输入框 + 消息列表 + 发送；调用 /api/chat（SSE 流式）逐段消费并追加显示；
+ * 模型回复以 react-markdown（+remark-math）渲染；assistant 气泡带可折叠“思考过程”区（默认收起）。
  * 历史“错题认知诊断引擎”落地页代码已注释保留在文件底部。
  */
 export default function Home() {
@@ -59,34 +118,66 @@ export default function Home() {
     const text = input.trim();
     if (!text || loading) return;
     setInput("");
-    const next = [...messages, { role: "user" as const, content: text }];
-    setMessages(next);
+    const userMsg: ChatMsg = { role: "user", content: text };
+    const history = [...messages, userMsg];
+    setMessages(history);
     setLoading(true);
+    // 先插入空的 assistant 消息，后续 SSE 增量逐段追加
+    setMessages((prev) => [...prev, { role: "assistant", content: "", reasoning: "" }]);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: selectedModel,
-          messages: next.map((m) => ({ role: m.role, content: m.content })),
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
-      const data = (await res.json()) as { content?: string; error?: string };
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.error ? `[错误] ${data.error}` : data.content ?? "（空回复）",
-        },
-      ]);
+      if (!res.body) throw new Error("响应缺少流（body）");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+        for (const evt of events) {
+          const parsed = parseSseEvent(evt);
+          if (!parsed) continue;
+          if (parsed.event === "content" && typeof parsed.data.delta === "string") {
+            const delta = parsed.data.delta;
+            setMessages((prev) =>
+              appendAssistant(prev, (m) => ({ ...m, content: m.content + delta }))
+            );
+          } else if (parsed.event === "reasoning" && typeof parsed.data.delta === "string") {
+            const delta = parsed.data.delta;
+            setMessages((prev) =>
+              appendAssistant(prev, (m) => ({ ...m, reasoning: (m.reasoning ?? "") + delta }))
+            );
+          } else if (parsed.event === "done") {
+            finished = true;
+            break;
+          } else if (parsed.event === "error") {
+            const msg = typeof parsed.data.error === "string" ? parsed.data.error : "模型请求失败";
+            setMessages((prev) =>
+              appendAssistant(prev, (m) => ({ ...m, content: m.content + `[错误] ${msg}` }))
+            );
+            finished = true;
+            break;
+          }
+        }
+      }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `[错误] 网络异常：${err instanceof Error ? err.message : "请求失败"}`,
-        },
-      ]);
+      setMessages((prev) =>
+        appendAssistant(prev, (m) => ({
+          ...m,
+          content:
+            m.content + `[错误] 网络异常：${err instanceof Error ? err.message : "请求失败"}`,
+        }))
+      );
     } finally {
       setLoading(false);
     }
@@ -145,7 +236,7 @@ export default function Home() {
               className={
                 m.role === "user"
                   ? "self-end rounded-2xl rounded-br-md px-4 py-3 text-sm"
-                  : "self-start rounded-2xl rounded-bl-md px-4 py-3 text-sm"
+                  : "self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm"
               }
               style={
                 m.role === "user"
@@ -161,13 +252,22 @@ export default function Home() {
                       border: "1px solid var(--border)",
                       backgroundColor: "var(--ai-bubble)",
                       color: "var(--text)",
-                      whiteSpace: "pre-wrap",
                       wordBreak: "break-word",
-                      maxWidth: "85%",
                     }
               }
             >
-              {m.content}
+              {m.role === "assistant" && m.reasoning ? (
+                <ThinkingBlock reasoning={m.reasoning} />
+              ) : null}
+              {m.role === "assistant" ? (
+                <div className="[&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:whitespace-pre-wrap [&_code]:break-all">
+                  <ReactMarkdown remarkPlugins={[remarkMath]}>
+                    {m.content || "…"}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div>{m.content}</div>
+              )}
             </div>
           ))}
           {loading && (
