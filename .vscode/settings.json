@@ -1,0 +1,25 @@
+{
+  // 项目专属配置：Next.js 框架常用
+  // 关联文件类型，让 Tailwind 在特定文件里也有提示
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  // 针对 TS 的路径别名（如果你在 tsconfig.json 配了 @/ 别名）
+  "js/ts.preferences.importModuleSpecifier": "non-relative",
+  // 规范格式化，强制使用项目里的 Prettier（哪怕你的全局设置改了，这个项目也会强制遵守）
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  // 防止 TS 尝试检查超大模型文件或依赖包，大幅提升响应速度
+  "typescript.tsserver.exclude": ["**/node_modules", "**/.next", "**/dist"],
+  // 严格限制搜索范围，避免搜索时扫到 AI 模型文件导致卡顿
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/*.onnx": true, // 忽略模型文件
+    "**/*.wasm": true // 忽略 WebAssembly 文件
+  }
+}
