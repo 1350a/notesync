@@ -47,9 +47,10 @@ export default function ChatPage() {
         if (data.models?.length) setSelectedModel(data.models[0].name);
       });
   }, []);
-  useEffect(() => {
-    (window as any).setTestMessages = setMessages;
-  }, []);
+  // 测试Markdown渲染的代码
+  // useEffect(() => {
+  //   (window as any).setTestMessages = setMessages;
+  // }, []);
 
   const handleSend = async (text: string) => {
     const userMsg: ChatMsg = { role: 'user', content: text };
