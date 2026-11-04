@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme inline {
   --color-background: var(--bg);
@@ -10,7 +10,7 @@
 /* ================= 主题变量 ================= */
 /* 默认：暗色科技感 */
 :root,
-[data-theme="dark"] {
+[data-theme='dark'] {
   --bg: #09090b;
   --bg-deep: #111113;
   --panel: #18181b;
@@ -36,7 +36,7 @@
 }
 
 /* 浅绿色主题 */
-[data-theme="green"] {
+[data-theme='green'] {
   --bg: #e9f3ea;
   --bg-deep: #dcebdd;
   --panel: #f7fbf7;
@@ -61,7 +61,7 @@
 }
 
 /* 浅蓝色主题 */
-[data-theme="blue"] {
+[data-theme='blue'] {
   --bg: #e8f1fb;
   --bg-deep: #d8e8f8;
   --panel: #f5faff;
@@ -94,7 +94,9 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
 }
 
 /* 主题化滚动条 */
@@ -111,4 +113,86 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-hover);
+}
+
+/* Markdown 内容排版修复 */
+.markdown-body h1 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 1rem 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.markdown-body h2 {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin: 0.8rem 0 0.4rem;
+}
+.markdown-body h3 {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin: 0.6rem 0 0.3rem;
+}
+.markdown-body p {
+  margin-bottom: 0.8rem;
+  line-height: 1.6;
+}
+.markdown-body ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.8rem;
+}
+.markdown-body ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.8rem;
+}
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+.markdown-body blockquote {
+  border-left: 4px solid var(--border);
+  padding-left: 1rem;
+  color: var(--text-muted);
+  margin: 1rem 0;
+  font-style: italic;
+}
+
+/* 解决代码块黑块的问题 */
+.markdown-body pre {
+  background-color: #1e293b;
+  color: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.markdown-body code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
+.markdown-body pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+/* 表格标准样式 */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  text-align: left;
+}
+.markdown-body th {
+  background-color: var(--panel-soft);
+  font-weight: bold;
 }
