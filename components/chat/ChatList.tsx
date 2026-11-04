@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
 export interface ChatMsg {
@@ -9,7 +12,6 @@ export interface ChatMsg {
   reasoning?: string;
 }
 
-// 思考过程折叠组件
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -40,7 +42,6 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
 export default function ChatList({ messages, loading }: { messages: ChatMsg[]; loading: boolean }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 有新消息时自动滚到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
@@ -65,7 +66,7 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
           className={
             m.role === 'user'
               ? 'self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
-              : 'self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm'
+              : 'self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm shadow-sm'
           }
           style={
             m.role === 'user'
@@ -79,16 +80,22 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
                 }
               : {
                   border: '1px solid var(--border)',
-                  backgroundColor: 'var(--ai-bubble)',
+                  backgroundColor: 'var(--bg-deep)',
                   color: 'var(--text)',
                   wordBreak: 'break-word',
                 }
           }
         >
           {m.role === 'assistant' && m.reasoning ? <ThinkingBlock reasoning={m.reasoning} /> : null}
+
           {m.role === 'assistant' ? (
-            <div className="[&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:whitespace-pre-wrap [&_code]:break-all">
-              <ReactMarkdown remarkPlugins={[remarkMath]}>{m.content || '…'}</ReactMarkdown>
+            <div className="markdown-body text-sm">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={[rehypeKatex, rehypeRaw]}
+              >
+                {m.content || '…'}
+              </ReactMarkdown>
             </div>
           ) : (
             <div>{m.content}</div>
@@ -102,7 +109,7 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
             className="flex items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3 text-sm"
             style={{
               border: '1px solid var(--border)',
-              backgroundColor: 'var(--ai-bubble)',
+              backgroundColor: 'var(--bg-deep)',
               color: 'var(--text-secondary)',
             }}
           >
