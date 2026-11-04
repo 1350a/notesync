@@ -104,9 +104,7 @@ export default function UploadArea() {
                 >
                   <div className="flex items-center gap-3 truncate">
                     <span className="text-xl">📄</span>
-                    <span className="text-sm text-slate-700 truncate max-w-[200px]">
-                      {file.name}
-                    </span>
+                    <span className="text-sm text-slate-700 truncate max-w-50">{file.name}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <select

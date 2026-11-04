@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkMath from "remark-math";
+import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
 
 interface ChatMsg {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
 }
@@ -17,16 +17,16 @@ interface ModelsItem {
 
 /** 解析 SSE 事件块（event:/data: 行，空行分隔） */
 function parseSseEvent(chunk: string): { event: string; data: Record<string, unknown> } | null {
-  const lines = chunk.split("\n");
-  let event = "message";
+  const lines = chunk.split('\n');
+  let event = 'message';
   const dataLines: string[] = [];
   for (const line of lines) {
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
   }
   if (dataLines.length === 0) return null;
   try {
-    return { event, data: JSON.parse(dataLines.join("\n")) as Record<string, unknown> };
+    return { event, data: JSON.parse(dataLines.join('\n')) as Record<string, unknown> };
   } catch {
     return null;
   }
@@ -36,7 +36,7 @@ function parseSseEvent(chunk: string): { event: string; data: Record<string, unk
 function appendAssistant(list: ChatMsg[], updater: (m: ChatMsg) => ChatMsg): ChatMsg[] {
   const next = [...list];
   const i = next.length - 1;
-  if (i >= 0 && next[i].role === "assistant") next[i] = updater(next[i]);
+  if (i >= 0 && next[i].role === 'assistant') next[i] = updater(next[i]);
   return next;
 }
 
@@ -46,20 +46,20 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
   return (
     <div
       className="mb-2 rounded-xl px-3 py-2"
-      style={{ border: "1px solid var(--border)", backgroundColor: "var(--panel-soft)" }}
+      style={{ border: '1px solid var(--border)', backgroundColor: 'var(--panel-soft)' }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="text-xs font-medium outline-none"
-        style={{ color: "var(--text-muted)" }}
+        style={{ color: 'var(--text-muted)' }}
       >
-        {open ? "▾" : "▸"} 思考过程
+        {open ? '▾' : '▸'} 思考过程
       </button>
       {open && (
         <pre
-          className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed"
-          style={{ color: "var(--text-secondary)" }}
+          className="mt-2 whitespace-pre-wrap warp-break-words text-xs leading-relaxed"
+          style={{ color: 'var(--text-secondary)' }}
         >
           {reasoning}
         </pre>
@@ -67,8 +67,6 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
     </div>
   );
 }
-
-
 
 /**
  * 简易聊天首页（简易重构版 + Markdown/SSE 流式）
@@ -78,14 +76,14 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
  */
 export default function Home() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const [models, setModels] = useState<ModelsItem[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedModel, setSelectedModel] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/models")
+    fetch('/api/models')
       .then((r) => r.json())
       .then((data: { models?: ModelsItem[]; message?: string }) => {
         setModels(data.models ?? []);
@@ -95,9 +93,8 @@ export default function Home() {
           setMessages((prev) => [
             ...prev,
             {
-              role: "assistant",
-              content:
-                data.message || "未配置任何模型 API Key，请填写 .env.local 后重试。",
+              role: 'assistant',
+              content: data.message || '未配置任何模型 API Key，请填写 .env.local 后重试。',
             },
           ]);
         }
@@ -105,63 +102,63 @@ export default function Home() {
       .catch(() => {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "无法获取模型列表，请检查服务是否已启动。" },
+          { role: 'assistant', content: '无法获取模型列表，请检查服务是否已启动。' },
         ]);
       });
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text || loading) return;
-    setInput("");
-    const userMsg: ChatMsg = { role: "user", content: text };
+    setInput('');
+    const userMsg: ChatMsg = { role: 'user', content: text };
     const history = [...messages, userMsg];
     setMessages(history);
     setLoading(true);
     // 先插入空的 assistant 消息，后续 SSE 增量逐段追加
-    setMessages((prev) => [...prev, { role: "assistant", content: "", reasoning: "" }]);
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
           messages: history.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
-      if (!res.body) throw new Error("响应缺少流（body）");
+      if (!res.body) throw new Error('响应缺少流（body）');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      let buffer = '';
       let finished = false;
       while (!finished) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
         for (const evt of events) {
           const parsed = parseSseEvent(evt);
           if (!parsed) continue;
-          if (parsed.event === "content" && typeof parsed.data.delta === "string") {
+          if (parsed.event === 'content' && typeof parsed.data.delta === 'string') {
             const delta = parsed.data.delta;
             setMessages((prev) =>
               appendAssistant(prev, (m) => ({ ...m, content: m.content + delta }))
             );
-          } else if (parsed.event === "reasoning" && typeof parsed.data.delta === "string") {
+          } else if (parsed.event === 'reasoning' && typeof parsed.data.delta === 'string') {
             const delta = parsed.data.delta;
             setMessages((prev) =>
-              appendAssistant(prev, (m) => ({ ...m, reasoning: (m.reasoning ?? "") + delta }))
+              appendAssistant(prev, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + delta }))
             );
-          } else if (parsed.event === "done") {
+          } else if (parsed.event === 'done') {
             finished = true;
             break;
-          } else if (parsed.event === "error") {
-            const msg = typeof parsed.data.error === "string" ? parsed.data.error : "模型请求失败";
+          } else if (parsed.event === 'error') {
+            const msg = typeof parsed.data.error === 'string' ? parsed.data.error : '模型请求失败';
             setMessages((prev) =>
               appendAssistant(prev, (m) => ({ ...m, content: m.content + `[错误] ${msg}` }))
             );
@@ -175,7 +172,7 @@ export default function Home() {
         appendAssistant(prev, (m) => ({
           ...m,
           content:
-            m.content + `[错误] 网络异常：${err instanceof Error ? err.message : "请求失败"}`,
+            m.content + `[错误] 网络异常：${err instanceof Error ? err.message : '请求失败'}`,
         }))
       );
     } finally {
@@ -184,16 +181,19 @@ export default function Home() {
   };
 
   return (
-    <main className="flex h-screen flex-col" style={{ backgroundColor: "var(--bg)", color: "var(--text)" }}>
+    <main
+      className="flex h-screen flex-col"
+      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+    >
       <header
         className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: "1px solid var(--border)", backgroundColor: "var(--bg-deep)" }}
+        style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-deep)' }}
       >
         <div className="flex items-center gap-2">
           <span className="text-lg">🧠</span>
           <div>
             <h1 className="text-sm font-semibold">错题认知诊断引擎 · 简易版</h1>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               直接与模型对话（DEEPSEEK / ZHIPU / CUSTOM）
             </p>
           </div>
@@ -203,9 +203,9 @@ export default function Home() {
           onChange={(e) => setSelectedModel(e.target.value)}
           className="rounded-xl px-3 py-1.5 text-xs outline-none"
           style={{
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--panel-soft)",
-            color: "var(--text)",
+            border: '1px solid var(--border)',
+            backgroundColor: 'var(--panel-soft)',
+            color: 'var(--text)',
           }}
         >
           {models.length === 0 && <option value="">未配置模型</option>}
@@ -222,10 +222,10 @@ export default function Home() {
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
               <span className="text-4xl">💬</span>
-              <h2 className="text-lg font-medium" style={{ color: "var(--text-secondary)" }}>
+              <h2 className="text-lg font-medium" style={{ color: 'var(--text-secondary)' }}>
                 开始对话
               </h2>
-              <p className="max-w-md text-sm" style={{ color: "var(--text-muted)" }}>
+              <p className="max-w-md text-sm" style={{ color: 'var(--text-muted)' }}>
                 输入问题并发送，模型回复会显示在这里。
               </p>
             </div>
@@ -234,36 +234,34 @@ export default function Home() {
             <div
               key={i}
               className={
-                m.role === "user"
-                  ? "self-end rounded-2xl rounded-br-md px-4 py-3 text-sm"
-                  : "self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm"
+                m.role === 'user'
+                  ? 'self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
+                  : 'self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm'
               }
               style={
-                m.role === "user"
+                m.role === 'user'
                   ? {
-                      border: "1px solid var(--border)",
-                      backgroundColor: "var(--accent)",
-                      color: "var(--accent-text)",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      maxWidth: "85%",
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'var(--accent)',
+                      color: 'var(--accent-text)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      maxWidth: '85%',
                     }
                   : {
-                      border: "1px solid var(--border)",
-                      backgroundColor: "var(--ai-bubble)",
-                      color: "var(--text)",
-                      wordBreak: "break-word",
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'var(--ai-bubble)',
+                      color: 'var(--text)',
+                      wordBreak: 'break-word',
                     }
               }
             >
-              {m.role === "assistant" && m.reasoning ? (
+              {m.role === 'assistant' && m.reasoning ? (
                 <ThinkingBlock reasoning={m.reasoning} />
               ) : null}
-              {m.role === "assistant" ? (
+              {m.role === 'assistant' ? (
                 <div className="[&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:whitespace-pre-wrap [&_code]:break-all">
-                  <ReactMarkdown remarkPlugins={[remarkMath]}>
-                    {m.content || "…"}
-                  </ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkMath]}>{m.content || '…'}</ReactMarkdown>
                 </div>
               ) : (
                 <div>{m.content}</div>
@@ -274,15 +272,19 @@ export default function Home() {
             <div className="flex justify-start">
               <div
                 className="flex items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3 text-sm"
-                style={{ border: "1px solid var(--border)", backgroundColor: "var(--ai-bubble)", color: "var(--text-secondary)" }}
+                style={{
+                  border: '1px solid var(--border)',
+                  backgroundColor: 'var(--ai-bubble)',
+                  color: 'var(--text-secondary)',
+                }}
               >
                 <span
                   className="inline-block h-2 w-2 animate-pulse rounded-full"
-                  style={{ backgroundColor: "var(--accent)" }}
+                  style={{ backgroundColor: 'var(--accent)' }}
                 />
                 <span
                   className="inline-block h-2 w-2 animate-pulse rounded-full"
-                  style={{ backgroundColor: "var(--accent)" }}
+                  style={{ backgroundColor: 'var(--accent)' }}
                 />
                 <span className="ml-1">模型思考中…</span>
               </div>
@@ -294,14 +296,14 @@ export default function Home() {
 
       <footer
         className="px-4 py-3"
-        style={{ borderTop: "1px solid var(--border)", backgroundColor: "var(--bg-deep)" }}
+        style={{ borderTop: '1px solid var(--border)', backgroundColor: 'var(--bg-deep)' }}
       >
         <div className="mx-auto flex max-w-3xl gap-3">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
               }
@@ -309,9 +311,9 @@ export default function Home() {
             placeholder="输入你的问题，回车发送…"
             className="flex-1 rounded-2xl px-4 py-3 text-sm outline-none placeholder:text-sm"
             style={{
-              border: "1px solid var(--border)",
-              backgroundColor: "var(--panel-soft)",
-              color: "var(--text)",
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--panel-soft)',
+              color: 'var(--text)',
             }}
           />
           <button
@@ -319,8 +321,8 @@ export default function Home() {
             disabled={loading || !input.trim()}
             className="rounded-2xl px-6 py-3 text-sm font-medium transition disabled:opacity-50"
             style={{
-              backgroundColor: "var(--accent)",
-              color: "var(--accent-text)",
+              backgroundColor: 'var(--accent)',
+              color: 'var(--accent-text)',
             }}
           >
             发送
