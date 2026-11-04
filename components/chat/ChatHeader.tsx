@@ -2,17 +2,15 @@
 
 import { useChatStore } from '@/store/useChatStore';
 
-export default function ChatHeader({
-  models,
-  selectedModel,
-  onSelectModel,
-}: {
+// 定义 Props 类型，替代 any
+interface ChatHeaderProps {
   models: { name: string; model: string }[];
   selectedModel: string;
+  onSelectModel: (model: string) => void;
+}
 
-  onSelectModel: (m: string) => void;
-}) {
-  const { theme, toggleTheme, setSettingsOpen } = useChatStore();
+export default function ChatHeader({ models, selectedModel, onSelectModel }: ChatHeaderProps) {
+  const { theme, toggleTheme, setSettingsOpen, toggleSidebar } = useChatStore();
 
   return (
     <header
@@ -20,6 +18,13 @@ export default function ChatHeader({
       style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-deep)' }}
     >
       <div className="flex items-center gap-3">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 rounded-lg hover:bg-black/5 transition-colors text-xl leading-none"
+          title="展开/收起侧边栏"
+        >
+          ☰
+        </button>
         <span className="text-xl">🧠</span>
         <div>
           <h1 className="text-sm font-semibold">错题认知诊断引擎</h1>
@@ -41,7 +46,8 @@ export default function ChatHeader({
           }}
         >
           {models.length === 0 && <option value="">未配置模型</option>}
-          {models.map((m) => (
+          {/* 这里加了具体的类型 { name: string; model: string } */}
+          {models.map((m: { name: string; model: string }) => (
             <option key={m.name} value={m.name}>
               {m.name}
             </option>
