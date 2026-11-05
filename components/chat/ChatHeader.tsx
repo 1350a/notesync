@@ -59,7 +59,7 @@ export default function ChatHeader({ models, selectedModel, onSelectModel }: Cha
           className="p-2 text-lg rounded-full hover:bg-black/5 transition-colors"
           title="切换主题"
         >
-          {theme === 'light' ? '🌙' : '☀️'}
+          {theme === 'dark' ? '🌙' : theme === 'green' ? '🌿' : '🌊'}
         </button>
 
         <button
