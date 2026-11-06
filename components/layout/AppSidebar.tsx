@@ -6,10 +6,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function AppSidebar() {
-  const { isSidebarOpen, toggleSidebarPosition } = useChatStore();
+  const { isSidebarOpen } = useChatStore(); // 这里只留 isSidebarOpen
   const pathname = usePathname();
 
-  // 如果折叠了，就不渲染内容（宽度交给外层控制）
   if (!isSidebarOpen) return null;
 
   const navItems = [
@@ -18,8 +17,7 @@ export default function AppSidebar() {
   ];
 
   return (
-    <aside className="w-64 h-full flex flex-col bg-black/10 border-r border-border shrink-0">
-      {/* 导航区 */}
+    <aside className="w-64 h-full flex flex-col bg-muted/30 border-r border-border shrink-0">
       <div className="p-4 flex-1 space-y-6">
         <div>
           <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
@@ -43,7 +41,6 @@ export default function AppSidebar() {
           </nav>
         </div>
 
-        {/* 历史记录区 (占位) */}
         <div className="pt-4 border-t border-border/50">
           <h3 className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
             最近记录
@@ -51,13 +48,7 @@ export default function AppSidebar() {
           <div className="text-sm text-muted-foreground italic px-3">（对话历史将在后续接入）</div>
         </div>
       </div>
-
-      {/* 底部操作区 */}
-      <div className="p-4 border-t border-border">
-        <Button variant="outline" className="w-full text-xs" onClick={toggleSidebarPosition}>
-          🔄 切换侧栏到右侧
-        </Button>
-      </div>
+      {/* 删除了底部的操作区按钮 */}
     </aside>
   );
 }
