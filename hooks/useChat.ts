@@ -1,5 +1,5 @@
 import { getEffectiveSettings } from '@/lib/config';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
@@ -27,17 +27,27 @@ function parseSseEvent(chunk: string) {
 export function useChat(selectedModel: string) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string, images: string[]) => {
       if ((!text.trim() && images.length === 0) || loading) return;
+
+      abortControllerRef.current = new AbortController();
 
       const userMsg: ChatMsg = { role: 'user', content: text, images };
       const history = [...messages, userMsg];
       setMessages(history);
       setLoading(true);
 
-      // 先插入空的 assistant 消息，供流式追加
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
 
       const currentConfig = getEffectiveSettings();
@@ -48,7 +58,7 @@ export function useChat(selectedModel: string) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
-            messages: history, // 发送包含 images 的完整历史
+            messages: history,
             config: {
               provider: currentConfig.provider,
               apiKey: currentConfig.apiKey,
@@ -56,6 +66,7 @@ export function useChat(selectedModel: string) {
               ocrMode: currentConfig.ocrMode,
             },
           }),
+          signal: abortControllerRef.current.signal,
         });
 
         if (!res.body) throw new Error('响应缺少流');
@@ -74,7 +85,6 @@ export function useChat(selectedModel: string) {
           for (const evt of events) {
             const parsed = parseSseEvent(evt);
             if (!parsed) continue;
-
             const appendAssistant = (updater: (m: ChatMsg) => ChatMsg) => {
               setMessages((prev) => {
                 const next = [...prev];
@@ -83,7 +93,6 @@ export function useChat(selectedModel: string) {
                 return next;
               });
             };
-
             if (parsed.event === 'content') {
               appendAssistant((m) => ({ ...m, content: m.content + parsed.data.delta }));
             } else if (parsed.event === 'reasoning') {
@@ -104,19 +113,29 @@ export function useChat(selectedModel: string) {
             }
           }
         }
-      } catch (err) {
-        setMessages((prev) => {
-          const next = [...prev];
-          const i = next.length - 1;
-          if (i >= 0) next[i].content += `[网络异常]`;
-          return next;
-        });
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          setMessages((prev) => {
+            const next = [...prev];
+            const i = next.length - 1;
+            if (i >= 0) next[i].content += `\n\n*[已停止生成]*`;
+            return next;
+          });
+        } else {
+          setMessages((prev) => {
+            const next = [...prev];
+            const i = next.length - 1;
+            if (i >= 0) next[i].content += `[网络异常]`;
+            return next;
+          });
+        }
       } finally {
         setLoading(false);
+        abortControllerRef.current = null;
       }
     },
     [messages, loading, selectedModel]
   );
 
-  return { messages, loading, sendMessage };
+  return { messages, loading, sendMessage, stopGeneration };
 }

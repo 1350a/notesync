@@ -15,7 +15,7 @@ export default function ChatPage() {
   const [models, setModels] = useState<ModelsItem[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
 
-  // 你的核心 Hook 保持不变
+  // 这里的解构对齐 useChat 的返回值
   const { messages, loading, sendMessage, stopGeneration } = useChat(selectedModel);
 
   useEffect(() => {
@@ -27,19 +27,15 @@ export default function ChatPage() {
       });
   }, []);
 
-  // 删除了原本包裹在外层的 div、Sidebar、Header、SettingsModal
-  // 直接把聊天核心塞进 AppLayout
   return (
     <AppLayout>
       <div className="flex flex-col h-full">
-        {/* 虽然顶栏在 AppLayout 里，但模型选择下拉框还需要放在某个地方。 */}
-        {/* 我们可以暂时放在聊天区域的顶部，或者后续把模型选择做进 AppHeader 里 */}
-
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <ChatList messages={messages} loading={loading} />
         </div>
 
         <div className="px-4 py-4 border-t border-border bg-background">
+          {/* 对齐 ChatInput 的参数：onSend 接收文字和图片，onStop 接收中止 */}
           <ChatInput onSend={sendMessage} onStop={stopGeneration} loading={loading} />
         </div>
       </div>
