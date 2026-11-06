@@ -12,7 +12,7 @@ export default function Home() {
         {/* 顶部欢迎语 */}
         <section className="text-center space-y-4 py-10">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-            让每一道错题都能物尽其用
+            让每一道错题都物尽其用
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             基于多模态大模型的错题认知诊断引擎。支持单题深度对话解析，以及批量试卷智能诊断。
