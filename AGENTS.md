@@ -9,11 +9,72 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## 项目规范
+## 1. Framework Facts
 
-- 模型三选一（用户必须自行配置，代码不检测本地 ollama、不自动回退）：DeepSeek（`deepseek-v4-flash`，`https://api.deepseek.com`）、智谱（`glm-5.3`，`https://open.bigmodel.cn/api/paas/v4`）、自定义（仅支持 OpenAI API 规范的任意端点，如需本地模型可将端点指向 Ollama 的 `/v1`）；key/base_url/model 全走环境变量（`.env.local`，已被 .gitignore 排除）
-- harness 协议：`/api/chat` 返回结构化响应——`phase=question` 时带 `questions` 追问列表（模型判断信息不足时主动向用户提问），`phase=answer` 时带 `content` 诊断内容；前端按 phase 渲染追问卡片并引导用户回答
-- provider 分层：模型调用在 `lib/provider/`（统一 LLMProvider 接口 + `openaiCompat` 公共基类 + deepseek/zhipu/custom 三个实现），harness 编排在 `lib/harness/`；路由层只做薄转发
-- 图片：仅本轮新消息以 `image_url` 多模态上传，历史消息图片保留文本标注；单图 dataUrl >12MB 降级为文本标注；DeepSeek 请求体上限 48MiB
-- git：每写/改一个文件单独 `git add` + `git commit`（需单命令执行，一行多命令时 commit 会静默失效）；功能开发开新分支；commit message 说明文件用途
-- 构建：改代码后先 `npm run build` 通过再提交
+- This project runs on Next.js 16 (+ Turbopack) and React 19. Do not apply
+  knowledge of earlier Next.js versions.
+- Before writing any route handler, server component, or client component,
+  read the matching guide under `node_modules/next/dist/docs/`.
+
+## 2. Directory Boundaries
+
+| Path | Holds | Must not hold |
+|---|---|---|
+| `app/` | Routes, layouts, page composition | Business logic |
+| `app/api/*/route.ts` | Input validation + delegation | Logic longer than ~100 lines |
+| `components/ui/` | Business-agnostic primitives | Domain knowledge |
+| `components/<domain>/` | Components shared across routes | Page-specific markup |
+| `lib/` | All non-JSX logic (providers, domain services, prompts) | React components |
+| `store/` | Cross-component client UI state | Server-derived data |
+| `hooks/` | Hooks reused by more than one component | Single-use helpers |
+
+- A component used by exactly one route lives in `app/<route>/_components/`.
+- Components never call external APIs directly; all calls go through `lib/`.
+
+## 3. Type Discipline
+
+- `strict` stays enabled. Do not relax it to work around an error.
+- Do not use `any`. Use `unknown` and narrow it.
+- Do not use `@ts-ignore`. If genuinely unavoidable, use `@ts-expect-error`
+  with a reason on the same line.
+
+## 4. Design Rationale
+
+- Leave a short "why" comment at the point of any non-obvious decision —
+  a fallback path, a chosen limit, a workaround.
+- Do not comment what the code already says.
+
+## 5. Quality Gate
+
+- A change counts as complete only when both `npm run lint` and
+  `npm run build` exit with code 0.
+- Never report work as finished without having run both.
+- If either fails, fix it first; never run only one and call it done.
+
+## 6. Git Discipline
+
+- One commit per file. Do not bundle unrelated files in a single commit.
+- Run `git add` and `git commit` as separate commands. Chaining them on one
+  line can make the commit silently fail.
+- Commit message format: `<type>: <中文描述>`, where `<type>` is one of
+  `feat` | `fix` | `refactor` | `style` | `docs` | `test` | `chore` | `revert`.
+  Example: `fix: 修复了模型下拉框写死导致无法切换模型的问题`.
+- The description states what changed and why.
+
+## 7. Secrets
+
+- API keys come from environment variables only.
+- Never hardcode a key, and never place one in client-side code or storage.
+- Keep `.env.example` in sync with the variables the code actually reads.
+
+## 8. Wiring Honesty
+
+- Do not ship UI that presents a capability which is not implemented.
+- An unwired control must be hidden or marked as unavailable.
+
+## 9. Protocol Pointer
+
+- Business protocols — diagnosis flow, API contracts, event schemas,
+  data models — belong in `doc/`, not here.
+- Changing a protocol requires updating the corresponding doc first,
+  then the code.
