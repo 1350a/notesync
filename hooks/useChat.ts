@@ -113,8 +113,9 @@ export function useChat(selectedModel: string) {
             }
           }
         }
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
+      } catch (err: unknown) {
+        const isAbortError = err instanceof Error && err.name === 'AbortError';
+        if (isAbortError) {
           setMessages((prev) => {
             const next = [...prev];
             const i = next.length - 1;

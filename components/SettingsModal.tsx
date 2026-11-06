@@ -1,7 +1,7 @@
 'use client';
 
-import { AppSettings } from '@/lib/config';
-import { useEffect, useState } from 'react';
+import { AppSettings, getEffectiveSettings } from '@/lib/config';
+import { useState } from 'react';
 
 export default function SettingsModal({
   isOpen,
@@ -10,25 +10,8 @@ export default function SettingsModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const [settings, setSettings] = useState<AppSettings>({
-    provider: 'deepseek',
-    apiKey: '',
-    baseUrl: 'https://api.deepseek.com',
-    modelName: 'deepseek-v4-flash',
-    ocrMode: 'local',
-  });
-
-  // 每次打开弹窗时，从本地读取已保存的配置
-  useEffect(() => {
-    if (isOpen) {
-      const saved = localStorage.getItem('notesync_config');
-      if (saved) {
-        try {
-          setSettings(JSON.parse(saved));
-        } catch (e) {}
-      }
-    }
-  }, [isOpen]);
+  // 直接用初始化函数获取配置，完美避开 useEffect 的同步问题
+  const [settings, setSettings] = useState<AppSettings>(() => getEffectiveSettings());
 
   const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const p = e.target.value as AppSettings['provider'];
@@ -52,7 +35,6 @@ export default function SettingsModal({
     onClose(); // 保存后关闭
   };
 
-  // 如果 isOpen 是 false，直接不渲染（彻底隐藏）
   if (!isOpen) return null;
 
   return (
@@ -114,6 +96,20 @@ export default function SettingsModal({
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-600 mb-1 mt-2">图片解析方式</label>
+              <select
+                value={settings.ocrMode || 'local'}
+                onChange={(e) =>
+                  setSettings({ ...settings, ocrMode: e.target.value as 'local' | 'cloud' })
+                }
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="local">本地 OCR (纯文本模型推荐)</option>
+                <option value="cloud">云端多模态 (图片直接发给模型)</option>
+              </select>
             </div>
           </div>
         </div>

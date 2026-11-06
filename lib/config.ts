@@ -29,7 +29,7 @@ export function getEffectiveSettings(): AppSettings {
       const parsed = JSON.parse(saved);
       // 合并默认值，防止旧版本缺少字段
       return { ...DEFAULT_SETTINGS, ...parsed };
-    } catch (e) {
+    } catch {
       return DEFAULT_SETTINGS;
     }
   }
