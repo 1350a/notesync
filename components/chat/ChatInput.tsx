@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function ChatInput({
   onSend,
@@ -15,8 +15,29 @@ export default function ChatInput({
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 将文件转 Base64
+  // 自动调整高度的核心逻辑
+  useEffect(() => {
+    if (textareaRef.current) {
+      // 1. 先把高度重置为空（让浏览器重新计算内容的真实高度）
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+
+      // 2. 设定最大高度（例如 250px，超过才出现滚动条）
+      const maxHeight = 226;
+
+      if (scrollHeight <= maxHeight) {
+        // 如果没有超过最大值，高度等于内容高度
+        textareaRef.current.style.height = `${scrollHeight}px`;
+      } else {
+        // 如果超过了，就固定为最大值，内部产生滚动条
+        textareaRef.current.style.height = `${maxHeight}px`;
+        textareaRef.current.style.overflowY = 'auto';
+      }
+    }
+  }, [input]);
+
   const readFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -58,9 +79,9 @@ export default function ChatInput({
 
   return (
     <div className="mx-auto flex flex-col gap-2 max-w-3xl w-full">
-      {/* 图片预览 */}
+      {/* 图片预览区 */}
       {images.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-1">
+        <div className="flex flex-wrap gap-2 px-2">
           {images.map((img, idx) => (
             <div key={idx} className="relative group">
               <img
@@ -79,34 +100,27 @@ export default function ChatInput({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <Button
-          variant="outline"
-          size="icon"
-          className="shrink-0 rounded-xl h-[46px] w-[46px]"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={loading}
-          title="上传图片"
-        >
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-          />
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-        </Button>
+      {/*
+        大外框容器：这是一个带有边框和背景的整体
+        它的内部包含了顶部下拉框、中间的文本区、底部的按钮区
+      */}
+      <div className="flex flex-col rounded-2xl border border-border bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/30 transition-colors">
+        {/* 顶栏：模型与模式选择 */}
+        <div className="flex items-center gap-2 px-1 pb-2">
+          {/* 注意：后续这里可以用 shadcn 的 Select 组件替换，现在先用原生的占位 */}
+          <select className="text-xs bg-muted/50 hover:bg-muted rounded-md px-2 py-1 outline-none border-none cursor-pointer text-muted-foreground font-medium transition-colors">
+            <option>DeepSeek-V4</option>
+            <option>GPT-4o</option>
+          </select>
+          <select className="text-xs bg-muted/50 hover:bg-muted rounded-md px-2 py-1 outline-none border-none cursor-pointer text-muted-foreground font-medium transition-colors">
+            <option>解题过程模式</option>
+            <option>对话模式</option>
+          </select>
+        </div>
 
+        {/* 中间：透明无边框的输入区 */}
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onPaste={handlePaste}
@@ -116,28 +130,64 @@ export default function ChatInput({
               handleSend();
             }
           }}
-          rows={1}
           placeholder="输入你的问题，支持粘贴图片，回车发送…"
-          className="flex-1 min-h-[46px] max-h-40 resize-none rounded-xl border px-4 py-3 text-sm outline-none transition-colors bg-background focus:border-ring focus:ring-1 focus:ring-ring/30"
+          // 关键点：背景透明、无边框、无 resize，去掉所有可能干扰的样式
+          className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground leading-relaxed min-h-[44px]"
+          style={{
+            // 清除可能被感染的全局代码块样式
+            fontFamily: 'inherit',
+            counterReset: 'none',
+          }}
         />
 
-        {loading ? (
-          <Button
-            onClick={onStop}
-            variant="destructive"
-            className="shrink-0 rounded-xl h-[46px] px-6"
-          >
-            停止
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() && images.length === 0}
-            className="shrink-0 rounded-xl h-[46px] px-6"
-          >
-            发送
-          </Button>
-        )}
+        {/* 底栏：左侧上传，右侧发送 */}
+        <div className="flex items-center justify-between px-1 pt-1">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+              title="上传图片"
+            >
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+              />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+            </Button>
+          </div>
+
+          {loading ? (
+            <Button
+              onClick={onStop}
+              variant="destructive"
+              className="rounded-full h-8 px-4 text-xs"
+            >
+              停止
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() && images.length === 0}
+              className="rounded-full h-8 px-4 text-xs bg-foreground text-background hover:bg-foreground/90"
+            >
+              发送
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
