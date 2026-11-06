@@ -1,114 +1,170 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--text);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
-/* ================= 主题变量 ================= */
-/* 默认：暗色科技感 */
-:root,
-[data-theme="dark"] {
-  --bg: #09090b;
-  --bg-deep: #111113;
-  --panel: #18181b;
-  --panel-soft: rgba(255, 255, 255, 0.05);
-  --border: rgba(255, 255, 255, 0.1);
-  --text: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent: #6366f1;
-  --accent-strong: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.2);
-  --accent-text: #ffffff;
-  --hover: rgba(255, 255, 255, 0.1);
-  --ai-bubble: #27272a;
-  --scrollbar: rgba(255, 255, 255, 0.12);
-  --scrollbar-hover: rgba(255, 255, 255, 0.2);
-
-  /* 兼容旧变量（diagnose 页） */
-  --bg-color: var(--bg);
-  --text-color: var(--text);
-  --card-bg: var(--panel);
-  --primary-color: var(--accent);
+:root {
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.21 0.006 285.885);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.705 0.015 286.067);
 }
 
-/* 浅绿色主题 */
-[data-theme="green"] {
-  --bg: #e9f3ea;
-  --bg-deep: #dcebdd;
-  --panel: #f7fbf7;
-  --panel-soft: rgba(22, 163, 74, 0.06);
-  --border: rgba(20, 83, 45, 0.14);
-  --text: #1c2e1f;
-  --text-secondary: #4d6452;
-  --text-muted: #6b8270;
-  --accent: #16a34a;
-  --accent-strong: #15803d;
-  --accent-soft: rgba(22, 163, 74, 0.16);
-  --accent-text: #ffffff;
-  --hover: rgba(22, 163, 74, 0.08);
-  --ai-bubble: #ffffff;
-  --scrollbar: rgba(20, 83, 45, 0.25);
-  --scrollbar-hover: rgba(20, 83, 45, 0.4);
+.dark {
+  /* 背景色改成你要求的 #454d55 (在 oklch 中大约是 0.38 0.01 240) */
+  --background: oklch(0.38 0.01 240);
+  --foreground: oklch(0.985 0 0);
 
-  --bg-color: var(--bg);
-  --text-color: var(--text);
-  --card-bg: var(--panel);
-  --primary-color: var(--accent);
-}
+  /* 卡片和弹窗稍微比背景深一点，形成悬浮感 */
+  --card: oklch(0.34 0.01 240);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.34 0.01 240);
+  --popover-foreground: oklch(0.985 0 0);
 
-/* 浅蓝色主题 */
-[data-theme="blue"] {
-  --bg: #e8f1fb;
-  --bg-deep: #d8e8f8;
-  --panel: #f5faff;
-  --panel-soft: rgba(37, 99, 235, 0.06);
-  --border: rgba(30, 64, 175, 0.14);
-  --text: #17263d;
-  --text-secondary: #40536e;
-  --text-muted: #64748b;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-soft: rgba(37, 99, 235, 0.16);
-  --accent-text: #ffffff;
-  --hover: rgba(37, 99, 235, 0.08);
-  --ai-bubble: #ffffff;
-  --scrollbar: rgba(30, 64, 175, 0.25);
-  --scrollbar-hover: rgba(30, 64, 175, 0.4);
+  /* 主色和其他辅助色微调 */
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
 
-  --bg-color: var(--bg);
-  --text-color: var(--text);
-  --card-bg: var(--panel);
-  --primary-color: var(--accent);
+  /* 侧边栏用的 muted 颜色也微调一下，让它适配这个灰色 */
+  --muted: oklch(0.42 0.01 240);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+
+  --accent: oklch(0.42 0.01 240);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+
+  --border: oklch(0.48 0.01 240);
+  --input: oklch(0.48 0.01 240);
+  --ring: oklch(0.552 0.016 285.938);
 }
 
-html,
-body {
-  height: 100%;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
-  transition: background-color 0.3s ease, color 0.3s ease;
+/* --- 保留的 Markdown 渲染样式 --- */
+.markdown-body h1 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 1rem 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.markdown-body h2 {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin: 0.8rem 0 0.4rem;
+}
+.markdown-body h3 {
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin: 0.6rem 0 0.3rem;
+}
+.markdown-body p {
+  margin-bottom: 0.8rem;
+  line-height: 1.6;
+}
+.markdown-body ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.8rem;
+}
+.markdown-body ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.8rem;
+}
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+.markdown-body blockquote {
+  border-left: 4px solid var(--border);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+  margin: 1rem 0;
+  font-style: italic;
 }
 
-/* 主题化滚动条 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.markdown-body pre {
+  background-color: #1e293b;
+  color: #f8fafc;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1rem 0;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.markdown-body code {
+  background-color: var(--muted);
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.875rem;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar);
-  border-radius: 8px;
+.markdown-body pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-hover);
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  text-align: left;
+}
+.markdown-body th {
+  background-color: var(--muted);
+  font-weight: bold;
 }

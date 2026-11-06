@@ -13,8 +13,12 @@
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   },
-  // 防止 TS 尝试检查超大模型文件或依赖包，大幅提升响应速度
-  "typescript.tsserver.exclude": ["**/node_modules", "**/.next", "**/dist"],
+  // 排除生成目录和依赖目录的文件监视，减少 VS Code 文件变化监听开销
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.next/**": true,
+    "**/dist/**": true
+  },
   // 严格限制搜索范围，避免搜索时扫到 AI 模型文件导致卡顿
   "search.exclude": {
     "**/node_modules": true,
