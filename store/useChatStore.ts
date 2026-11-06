@@ -1,40 +1,35 @@
-import { ThemeKey, applyTheme, initTheme } from '@/lib/theme';
 import { create } from 'zustand';
 
 interface ChatState {
-  theme: ThemeKey;
+  isDarkMode: boolean;
   isSettingsOpen: boolean;
   isSidebarOpen: boolean;
+  sidebarPosition: 'left' | 'right';
   toggleTheme: () => void;
   setSettingsOpen: (open: boolean) => void;
   toggleSidebar: () => void;
-  initTheme: () => void;
+  toggleSidebarPosition: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
-  // 默认给个 dark，初始化时会被覆盖
-  theme: 'dark',
+  isDarkMode: false,
   isSettingsOpen: false,
   isSidebarOpen: true,
+  sidebarPosition: 'left', // 默认为左
 
-  // 点击时，在三种主题间循环切换
   toggleTheme: () => {
-    const current = get().theme;
-    let next: ThemeKey = 'dark';
-    if (current === 'dark') next = 'green';
-    else if (current === 'green') next = 'blue';
-    else next = 'dark';
-
-    applyTheme(next); // 调用遗留代码里的完美应用函数
-    set({ theme: next });
+    const nextDark = !get().isDarkMode;
+    if (typeof document !== 'undefined') {
+      if (nextDark) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    }
+    set({ isDarkMode: nextDark });
   },
 
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-
-  // 初始化时，读取本地存储的主题
-  initTheme: () => {
-    const savedTheme = initTheme();
-    set({ theme: savedTheme });
-  },
+  toggleSidebarPosition: () =>
+    set((state) => ({
+      sidebarPosition: state.sidebarPosition === 'left' ? 'right' : 'left',
+    })),
 }));
