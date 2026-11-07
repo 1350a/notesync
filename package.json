@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "smoke:tools": "node scripts/tool-smoke.ts"
+    "smoke:tools": "node scripts/tool-smoke.ts",
+    "smoke:adapters": "node scripts/tool-adapter-smoke.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
