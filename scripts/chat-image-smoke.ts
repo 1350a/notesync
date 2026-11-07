@@ -18,7 +18,9 @@ import {
   buildProviderMessages,
   buildUserContent,
   MAX_DATA_URL,
+  MAX_FILE_MESSAGES,
   MAX_IMAGE_MESSAGES,
+  MAX_TEXT_FILE_CHARS,
 } from '../lib/chat/messages.ts';
 import type { ProviderImagePart, ProviderTextPart } from '../lib/provider/types.ts';
 
@@ -124,6 +126,71 @@ console.log('\n[7] buildProviderMessages：无 messages 时回落 content');
   assertEqual(messages, [{ role: 'user', content: '兜底文本' }], '单条 user 消息');
   const empty = buildProviderMessages({});
   assertEqual(empty.messages, [{ role: 'user', content: '' }], '全空时给出空内容而非崩溃');
+}
+
+console.log('\n[8] 文本文件：拼进正文 / 校验丢弃 / 多轮上限');
+{
+  const merged = buildProviderMessages({
+    messages: [
+      {
+        role: 'user',
+        content: '看下这个文件',
+        files: [{ name: 'note.md', text: '# 标题\n正文' }],
+      },
+    ],
+  });
+  assertEqual(
+    merged.messages[0].content,
+    '看下这个文件\n\n[文件 note.md]\n# 标题\n正文',
+    '正文与文件内容按 [文件 名字] 锚点拼接'
+  );
+  assertEqual(merged.droppedFileMessages, 0, '单条消息不触发文件丢弃');
+
+  const dirty = buildProviderMessages({
+    messages: [
+      {
+        role: 'user',
+        content: '',
+        files: [
+          { name: '', text: '缺文件名' },
+          { name: 'empty.txt', text: '   ' },
+          { name: 'huge.txt', text: 'x'.repeat(MAX_TEXT_FILE_CHARS + 1) },
+          { name: 'ok.txt', text: 'ok' },
+        ],
+      },
+    ],
+  });
+  assertEqual(dirty.messages[0].content, '[文件 ok.txt]\nok', '脏文件逐条丢弃，仅保留合法项');
+
+  const many = buildProviderMessages({
+    messages: Array.from({ length: MAX_FILE_MESSAGES + 1 }, (_, i) => ({
+      role: 'user' as const,
+      content: `第 ${i + 1} 句`,
+      files: [{ name: `f${i + 1}.txt`, text: 'body' }],
+    })),
+  });
+  assertEqual(many.droppedFileMessages, 1, '超出上限的较早文件消息被丢弃');
+  assert(
+    !(many.messages[0].content as string).includes('[文件 f1.txt]'),
+    '最早一条不再携带文件正文'
+  );
+  assert(
+    (many.messages[0].content as string).includes('文件内容已省略'),
+    '最早一条给出省略提示'
+  );
+
+  const imageAndFile = buildProviderMessages({
+    messages: [
+      { role: 'user', content: '图文', images: [IMG_A], files: [{ name: 'a.txt', text: 'A' }] },
+    ],
+  });
+  const parts = imageAndFile.messages[0].content;
+  assert(Array.isArray(parts), '图片 + 文件混合时仍走高阶内容数组');
+  assert(
+    Array.isArray(parts) &&
+      parts.some((p) => p.type === 'text' && p.text.includes('[文件 a.txt]')),
+    '文件内容进入 text 片段，图片各自成 image_url 片段'
+  );
 }
 
 console.log(`\n结果：${passed} 通过 / ${failed} 失败`);
