@@ -5,7 +5,8 @@ import ChatList from '@/components/chat/ChatList';
 import AppLayout from '@/components/layout/AppLayout';
 import { useChat } from '@/hooks/useChat';
 import { useModels } from '@/hooks/useModels';
-import { useMemo, useState } from 'react';
+import { useChatStore } from '@/store/useChatStore';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function ChatPage() {
   const { models, providers, loading: modelsLoading, message, error, reload } = useModels();
@@ -19,7 +20,17 @@ export default function ChatPage() {
     return models[0].name;
   }, [models, pickedModel]);
 
-  const { messages, loading, sendMessage, stopGeneration } = useChat(selectedModel);
+  const { messages, loading, sendMessage, stopGeneration, clearMessages } =
+    useChat(selectedModel);
+
+  // 顶栏「新建对话」：信号递增即清空当前会话（首帧不触发）
+  const newChatSignal = useChatStore((s) => s.newChatSignal);
+  const seenSignal = useRef(newChatSignal);
+  useEffect(() => {
+    if (newChatSignal === seenSignal.current) return;
+    seenSignal.current = newChatSignal;
+    clearMessages();
+  }, [newChatSignal, clearMessages]);
 
   const notice = error ?? message;
 

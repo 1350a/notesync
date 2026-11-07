@@ -26,6 +26,12 @@
  * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
  * 使用适配器屏蔽 native 与 text 模式的差异；任何异常均以 error 事件回传由前端展示。
  */
+import {
+  buildProviderMessages,
+  explainProviderError,
+  MAX_IMAGE_MESSAGES,
+  type ChatRequestBody,
+} from '@/lib/chat/messages';
 import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
 import type { DiagnoseAttachment, ReviseCategory } from '@/lib/diagnose/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
@@ -148,14 +154,62 @@ function summarizeForMock(
   return lines.join("\n");
 }
 
+/** MOCK 模式下的聊天消息摘要：只回显每条消息的内容形态，不回显 base64 本体 */
+function summarizeChatMessages(messages: ProviderMessage[]): string {
+  const rows = messages.map((m, index) => {
+    if (typeof m.content === 'string') {
+      const preview = m.content.replace(/\s+/g, ' ').slice(0, 48);
+      return `| ${index + 1} | ${m.role} | text | ${m.content.length} | ${preview} |`;
+    }
+    const images = m.content.filter((part) => part.type === 'image_url').length;
+    const texts = m.content.length - images;
+    const preview = m.content
+      .filter((part) => part.type === 'text')
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 32);
+    return `| ${index + 1} | ${m.role} | 多模态（图片 ${images} / 文本 ${texts}） | - | ${preview} |`;
+  });
+  return [
+    '> MOCK 模式：未调用任何模型，以下为 messages 实际组装结构。',
+    '',
+    '| # | 角色 | 内容形态 | 字符数 | 预览 |',
+    '| --- | --- | --- | --- | --- |',
+    ...rows,
+  ].join('\n');
+}
+
 /** MOCK 响应流：不解析模型，直接回显组装摘要 */
-function mockStream(attachments: DiagnoseAttachment[]): Response {
+function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): Response {
   const assembled = assembleDiagnoseMessage(attachments, {
     imageMode: process.env.MOCK_IMAGE_MODE === "text-only" ? "text-only" : "multimodal",
   });
+  const { messages: chatMessages } = buildProviderMessages(body);
+  const hasChatContent = chatMessages.some((m) =>
+    typeof m.content === 'string' ? m.content.trim().length > 0 : m.content.length > 0
+  );
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // 纯聊天请求（无诊断附件）：回显 messages 组装结构，便于零 token 校验图片是否真的进了请求
+      if (attachments.length === 0) {
+        if (!hasChatContent) {
+          controller.enqueue(
+            encoder.encode(sse('error', { code: 'no_content', error: '请求里没有可发送的内容。' }))
+          );
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(sse('content', { delta: summarizeChatMessages(chatMessages) })));
+        controller.enqueue(
+          encoder.encode(
+            sse('done', { model: 'mock', provider: 'mock', usedRounds: 0, finishReason: 'mock' })
+          )
+        );
+        controller.close();
+        return;
+      }
       if (!assembled.message) {
         controller.enqueue(
           encoder.encode(
@@ -187,32 +241,22 @@ function mockStream(attachments: DiagnoseAttachment[]): Response {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    model?: string;
-    messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
-    content?: string;
-    /** 诊断模式附件（图片 dataUrl / PDF 或纯文本文字），结构见 lib/diagnose/types.ts */
-    attachments?: unknown;
-  };
+  // messages 元素可带 images（聊天界面上传的图片 dataUrl），由 buildProviderMessages 组装成多模态内容
+  const body = (await request.json()) as ChatRequestBody;
 
   // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
   if (process.env.MOCK_MODEL === '1') {
-    return mockStream(parseAttachments(body.attachments));
+    return mockStream(parseAttachments(body.attachments), body);
   }
 
   // 组装发送给模型的消息：优先用显式 messages，否则用 content
-  let providerMessages: ProviderMessage[];
-  if (Array.isArray(body.messages) && body.messages.length > 0) {
-    providerMessages = body.messages.map((m) => ({
-      role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content || '',
-    }));
-    if (body.content) {
-      providerMessages.push({ role: 'user', content: body.content });
-    }
-  } else {
-    providerMessages = [{ role: 'user', content: body.content || '' }];
+  const { messages: builtMessages, droppedImageMessages } = buildProviderMessages(body);
+  if (droppedImageMessages > 0) {
+    console.warn(
+      `[chat] ${droppedImageMessages} 条较早消息的图片未随请求发送（超出 ${MAX_IMAGE_MESSAGES} 条上限，仅发送文字）`
+    );
   }
+  let providerMessages = builtMessages;
 
   const list = await getModelList();
 
@@ -338,7 +382,14 @@ export async function POST(request: Request) {
             );
           } else if (ev.type === 'error') {
             controller.enqueue(
-              encoder.encode(sse('error', { error: ev.message, model, provider: provider.name }))
+              encoder.encode(
+                sse('error', {
+                  code: 'provider_error',
+                  error: explainProviderError(ev.message),
+                  model,
+                  provider: provider.name,
+                })
+              )
             );
           }
         }
@@ -347,7 +398,9 @@ export async function POST(request: Request) {
           encoder.encode(
             sse("error", {
               code: "provider_error",
-              error: err instanceof Error ? err.message : "模型请求失败",
+              error: explainProviderError(
+                err instanceof Error ? err.message : "模型请求失败"
+              ),
               model,
               provider: provider.name,
             })

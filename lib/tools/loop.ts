@@ -6,7 +6,8 @@
  * 2. 调用 Provider 获取流，并通过 adapter.processStream 解析。
  * 3. 如果包含工具调用，执行工具并回填历史，开始下一轮。
  * 4. 如果包含 ask_user 工具，触发中断并退出。
- * 5. 达到最大轮数仍未结束，追加提示强制收敛。
+ * 5. 达到最大轮数仍未结束，直接以 finishReason='max_rounds' 结束本轮
+ *    （协议承诺的"追加提示 + 一次不带 tools 的收敛请求"尚未实现，见 doc/tool-protocol.md §8.3）。
  */
 import type { LLMProvider, ProviderMessage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
@@ -43,12 +44,12 @@ class AsyncQueue<T> {
       } else if (this.done) {
         break;
       } else {
-        yield await new Promise<T>((resolve) => {
-          this.resolvers.push(({ value, done }) => {
-            if (done) resolve(undefined as unknown as T);
-            else resolve(value);
-          });
+        // 等待新事件时保留 done 标记，结束信号只用于跳出循环，不得作为事件值下发
+        const next = await new Promise<IteratorResult<T>>((resolve) => {
+          this.resolvers.push(resolve);
         });
+        if (next.done) break;
+        yield next.value;
       }
     }
   }

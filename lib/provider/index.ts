@@ -56,6 +56,7 @@ function toProviderModel(
     details: { family: provider.name },
     provider: provider.name,
     source,
+    acceptsImages: provider.acceptsImages !== false,
   };
 }
 
@@ -107,11 +108,26 @@ export async function getModelList(force = false): Promise<ModelListResult> {
     reason: probe.reason,
   }));
 
+  // 按 Provider 健康度排序：ok 优先、degraded 次之、unauthorized 最后。
+  // 前端默认选中首个模型，排序后默认即落在真正可用的模型上，
+  // 避免用户一进页面就用上 401 的 Provider。
+  const probeRank = new Map<string, number>();
+  for (const { provider, probe } of probes) {
+    probeRank.set(
+      provider.name,
+      probe.status === "ok" ? 0 : probe.status === "degraded" ? 1 : 2
+    );
+  }
+
   const models = probes
     .flatMap(({ provider, probe }) =>
       probe.models.map((name) => toProviderModel(provider, name, probe.source))
     )
-    .filter((m) => m.name.length > 0);
+    .filter((m) => m.name.length > 0)
+    .sort(
+      (a, b) =>
+        (probeRank.get(a.provider ?? "") ?? 9) - (probeRank.get(b.provider ?? "") ?? 9)
+    );
 
   // 整体状态取三家最优：只要有一家 ok 即整体可用；全部不可用才体现为最差状态
   const status = providers.reduce<ModelProbeStatus>(

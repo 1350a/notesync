@@ -1,4 +1,3 @@
-import { getEffectiveSettings } from '@/lib/config';
 import { useCallback, useRef, useState } from 'react';
 
 export interface ChatMsg {
@@ -37,6 +36,16 @@ export function useChat(selectedModel: string) {
     setLoading(false);
   }, []);
 
+  /** 新建对话：中断进行中的生成并清空消息 */
+  const clearMessages = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setMessages([]);
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string, images: string[]) => {
       if ((!text.trim() && images.length === 0) || loading) return;
@@ -50,21 +59,18 @@ export function useChat(selectedModel: string) {
 
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
 
-      const currentConfig = getEffectiveSettings();
-
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
-            messages: history,
-            config: {
-              provider: currentConfig.provider,
-              apiKey: currentConfig.apiKey,
-              baseUrl: currentConfig.baseUrl,
-              ocrMode: currentConfig.ocrMode,
-            },
+            // 图片随所属消息上行，由服务端转成多模态 content；配置（含密钥）不再随请求发送
+            messages: history.map((m) => ({
+              role: m.role,
+              content: m.content,
+              images: m.images,
+            })),
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -138,5 +144,5 @@ export function useChat(selectedModel: string) {
     [messages, loading, selectedModel]
   );
 
-  return { messages, loading, sendMessage, stopGeneration };
+  return { messages, loading, sendMessage, stopGeneration, clearMessages };
 }

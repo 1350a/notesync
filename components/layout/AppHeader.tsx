@@ -3,9 +3,24 @@
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/store/useChatStore';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function AppHeader() {
-  const { toggleTheme, isDarkMode, setSettingsOpen, isSidebarOpen, toggleSidebar } = useChatStore();
+  const {
+    toggleTheme,
+    isDarkMode,
+    setSettingsOpen,
+    isSidebarOpen,
+    toggleSidebar,
+    startNewChat,
+  } = useChatStore();
+  const router = useRouter();
+
+  // 新建对话：清空当前会话并回到对话页
+  const handleNewChat = () => {
+    startNewChat();
+    router.push('/chat');
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
@@ -45,8 +60,9 @@ export default function AppHeader() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-muted-foreground"
-                  title="搜索"
+                  disabled
+                  className="h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed"
+                  title="搜索尚未接入：当前没有可检索的历史会话数据"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -60,8 +76,9 @@ export default function AppHeader() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={handleNewChat}
                   className="h-8 w-8 text-muted-foreground"
-                  title="新建对话"
+                  title="新建对话（清空当前会话）"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path

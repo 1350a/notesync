@@ -133,6 +133,8 @@ export interface ProviderModel {
   provider?: ProviderName;
   /** remote=在线枚举得到的真实模型名，fallback=内置白名单兜底 */
   source?: ModelSource;
+  /** 该 Provider 是否接受 image_url 多模态内容（前端据此提示图片是否会被降级为文字占位） */
+  acceptsImages?: boolean;
 }
 
 /** 模型名来源：在线枚举 / 内置白名单 / 不可用 */

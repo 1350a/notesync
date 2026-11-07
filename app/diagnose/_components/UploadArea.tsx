@@ -1,7 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
+import ModelSelect from '@/components/ModelSelect';
+import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, ReviseCategory } from '@/lib/diagnose/types';
@@ -71,6 +73,27 @@ export default function UploadArea() {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 模型清单与聊天页同源（GET /api/models），不再由服务端隐式取首个模型
+  const {
+    models,
+    providers,
+    loading: modelsLoading,
+    message: modelsMessage,
+    error: modelsError,
+  } = useModels();
+  const [pickedModel, setPickedModel] = useState('');
+
+  // 派生选中值：用户选过的仍在列表里就沿用，否则回落到首个可用模型（不写 localStorage）
+  const selectedModel = useMemo(() => {
+    if (models.length === 0) return '';
+    if (pickedModel && models.some((m) => m.name === pickedModel)) return pickedModel;
+    return models[0].name;
+  }, [models, pickedModel]);
+
+  const currentModel = models.find((m) => m.name === selectedModel);
+  /** 当前模型不接受图片时，图片会被服务端降级为文字占位，提前告知用户 */
+  const imageDowngraded = currentModel?.acceptsImages === false;
+
   /** 加入文件：先判定类型，再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
     const drafts = incoming.map((file) => {
@@ -135,7 +158,7 @@ export default function UploadArea() {
 
   /** 提交：把提取结果按四类标签发给 /api/chat，服务端负责组装成模型消息 */
   const handleSubmit = async () => {
-    if (readyRows.length === 0 || isSending) return;
+    if (readyRows.length === 0 || isSending || !selectedModel) return;
     setIsSending(true);
     setResult('');
     setError('');
@@ -145,6 +168,7 @@ export default function UploadArea() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          model: selectedModel,
           attachments: readyRows.map((row) => ({
             name: row.name,
             category: row.category,
@@ -174,6 +198,32 @@ export default function UploadArea() {
 
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
+      {/* 诊断模型：真实清单来自 GET /api/models，选中值随请求上行 */}
+      <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200">
+        <span className="text-sm font-medium text-slate-700">诊断模型</span>
+        <ModelSelect
+          models={models}
+          providers={providers}
+          selectedModel={selectedModel}
+          onModelChange={setPickedModel}
+          loading={modelsLoading}
+          disabled={isSending}
+          emptyHint={modelsError ?? modelsMessage}
+          className="max-w-[280px] border border-slate-200"
+        />
+        {models.length === 0 ? (
+          <span className="min-w-0 flex-1 truncate text-xs text-red-500" title={modelsError ?? modelsMessage}>
+            {modelsError ?? modelsMessage ?? '暂无可选模型'}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500">
+            {imageDowngraded
+              ? '该模型标注为仅文本，图片会转为文字占位后再发送'
+              : '图片将按多模态直接发送；若该模型实际不吃图片，会返回明确的错误提示'}
+          </span>
+        )}
+      </div>
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -267,13 +317,19 @@ export default function UploadArea() {
 
           <button
             onClick={handleSubmit}
-            disabled={readyRows.length === 0 || isSending}
+            disabled={readyRows.length === 0 || isSending || !selectedModel}
             className="w-full py-4 mt-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {isSending ? '正在诊断…' : `开始诊断（${readyRows.length} 个文件）`}
           </button>
           {readyRows.length === 0 && (
             <p className="text-xs text-slate-500">至少需要 1 个已成功提取内容的文件才能开始诊断</p>
+          )}
+          {readyRows.length > 0 && !selectedModel && (
+            <p className="text-xs text-red-500">
+              没有可用模型，无法开始诊断：请在 .env.local 配置任一 Provider（DEEPSEEK_API_KEY /
+              ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL），或确认本地模型服务（如 Ollama）已启动后重启服务。
+            </p>
           )}
         </div>
       )}

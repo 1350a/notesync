@@ -10,6 +10,8 @@ export interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
+  /** 用户随消息上传的图片 dataUrl */
+  images?: string[];
 }
 
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
@@ -98,7 +100,23 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
               </ReactMarkdown>
             </div>
           ) : (
-            <div>{m.content}</div>
+            <>
+              {m.images && m.images.length > 0 ? (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {m.images.map((src, idx) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={`img-${idx}`}
+                      src={src}
+                      alt={`上传图片 ${idx + 1}`}
+                      className="h-24 w-24 rounded-lg object-cover"
+                      style={{ border: '1px solid var(--border)' }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {m.content ? <div>{m.content}</div> : null}
+            </>
           )}
         </div>
       ))}
