@@ -8,8 +8,8 @@
  * provider 层不应依赖 tools 层的 JSON Schema 类型，保持解耦；
  * JSONSchemaObject 有索引签名，可直接赋给 Record<string, unknown>。
  */
-import type { NativeToolDef } from '@/lib/provider/types';
-import type { ToolDefinition } from './types';
+import type { NativeToolDef } from '@/lib/provider/types.ts';
+import type { ToolDefinition } from './types.ts';
 
 /** text 模式围栏标识（与解析器约定，勿随意改） */
 export const TEXT_TOOL_FENCE_OPEN = '```tool';

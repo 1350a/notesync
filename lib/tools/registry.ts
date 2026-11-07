@@ -6,7 +6,7 @@
  * - 重复注册直接抛错，避免静默覆盖导致行为漂移；
  * - getEnabledTools 按 enabled 字段过滤（P1 恒 true，工具级开关预留）。
  */
-import type { ToolDefinition } from './types';
+import type { ToolDefinition } from './types.ts';
 
 const registry = new Map<string, ToolDefinition>();
 

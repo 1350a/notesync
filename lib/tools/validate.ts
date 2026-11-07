@@ -10,7 +10,7 @@
  *           minLength / maxLength / items。
  * 未覆盖字段（oneOf/anyOf/$ref 等）静默跳过——JSON Schema 是"未声明即允许"。
  */
-import type { JSONSchemaObject } from './types';
+import type { JSONSchemaObject } from './types.ts';
 
 export type ValidationResult =
   { valid: true; value: Record<string, unknown> } | { valid: false; errors: string[] };
