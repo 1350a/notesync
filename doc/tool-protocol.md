@@ -182,12 +182,12 @@ type ToolInvocation =
 在现有 `reasoning` / `content` / `done` / `error` 基础上新增：
 
 ```
-event: tool_call     data: {"index":0,"id":"call_x","name":"ask_user","arguments":{"question":"..."}}
-event: tool_result   data: {"index":0,"id":"call_x","name":"calculator","ok":true,"summary":"= 42","ms":12}
+event: tool_call data: {"index":0,"id":"call_x","name":"ask_user","arguments":{"question":"..."}}
+event: tool_result data: {"index":0,"id":"call_x","name":"calculator","ok":true,"summary":"= 42","ms":12}
 event: awaiting_user data: {"question":"你是哪一步不会？","toolCallId":"call_x"}
 ```
 
-- `done` 事件追加 `toolCallsUsed: number`。
+- `done` 事件追加 `usedRounds: number` 与 `finishReason: string`。
 - 新增事件对旧前端是**未知事件，会被忽略**，向后兼容。
 - `awaiting_user` 发出后必须紧跟 `done`，本轮 SSE 结束。
 
