@@ -192,4 +192,9 @@ export interface LLMProvider {
   ownsModel(model: string): boolean;
   /** 当前 Provider 是否可用 */
   isAvailable(): boolean;
+  /**
+   * 是否接受多模态 image_url 内容。
+   * 不实现的 Provider 视为未知（上层按不支持处理，图片降级为文字占位）。
+   */
+  readonly acceptsImages?: boolean;
 }
