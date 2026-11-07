@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 第三方构建产物：pdfjs worker 由 node_modules 原样拷入 public，
+    // 压缩后单行上百万字符，lint 它没有任何意义且会淹没真实问题
+    "public/pdfjs/**",
   ]),
 ]);
 
