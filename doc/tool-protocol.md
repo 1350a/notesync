@@ -37,6 +37,23 @@ interface ToolDefinition {
 
 `JSONSchemaObject` 支持最小字段：`type` / `properties` / `required` / `enum` / `minimum` / `maximum` / `minLength` / `maxLength` / `items` / `description`。其余字段保留 `[key: string]: unknown` 索引签名，未来扩展无需破坏类型。
 
+### 3.1 工具实现（handler）
+
+工具定义中的 `handler` 为可选字段（纯声明工具如未来外部 MCP 反射的工具可省略）。签名：
+
+```ts
+type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolHandlerReturn>;
+
+type ToolHandlerReturn =
+  { kind: 'result'; data: unknown; summary?: string } | { kind: 'awaiting_user'; question: string };
+```
+
+- `kind: "result"` — 普通执行成功。`data` 由 `invoke` 序列化后回填模型；`summary` 可选（不填则自动截断 JSON 字符串到 200 字符，仅供 SSE 展示）。
+- `kind: "awaiting_user"` — 中断本轮，等待用户回答（`ask_user` 专用）。
+- **不自行捕获业务异常**：抛错由 `invoke` 统一转为 `ok: false` 的错误包装，回填模型而非中断 loop。
+- **参数校验由 `invoke` 统一完成**：handler 收到的 `args` 已通过 `validateArguments`，但类型是 `Record<string, unknown>`，handler 内部仍需窄化（`typeof args.x === "string"`）。
+- **超时与中止**：`ctx.timeoutMs`（默认 15000）与 `ctx.signal` 由 `invoke` 通过 `Promise.race` 处理；handler 无需关心。
+
 ## 4. native 模式
 
 ### 4.1 请求
