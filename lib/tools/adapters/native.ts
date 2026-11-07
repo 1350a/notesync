@@ -128,29 +128,40 @@ export class NativeAdapter implements ToolAdapter {
   }
 
   preprocessMessages(messages: ProviderMessage[]): ProviderMessage[] {
-    return messages.map((m) => {
-      if (m.role !== 'assistant' || !m.tool_calls || m.tool_calls.length === 0) {
-        return m;
+    // 收集所有 ask_user 调用的 ID，用于后续将不合规的 tool 消息剔除
+    const askUserCallIds = new Set<string>();
+    for (const m of messages) {
+      if (m.role === 'assistant' && m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          if (tc.function.name === 'ask_user') {
+            askUserCallIds.add(tc.id);
+          }
+        }
+      }
+    }
+
+    return messages.flatMap((m) => {
+      // 防御性清洗：如果历史里残留了 ask_user 对应的 tool 消息，直接丢弃。
+      // 避免引发 "tool message without preceding tool_calls" 的协议报错。
+      if (m.role === 'tool' && m.tool_call_id && askUserCallIds.has(m.tool_call_id)) {
+        return [];
       }
 
-      // 查找 ask_user 调用
-      const askCall = m.tool_calls.find((tc) => tc.function.name === 'ask_user');
-      if (!askCall) return m;
-
-      try {
-        const args = JSON.parse(askCall.function.arguments) as { question?: string };
-        const q = typeof args.question === 'string' ? args.question : '请补充信息';
-        return {
-          role: 'assistant',
-          content: `（询问用户）${q}`,
-        };
-      } catch {
-        // 如果解析失败，回退为普通的提示文本
-        return {
-          role: 'assistant',
-          content: '（向用户提问了问题）',
-        };
+      // 将包含 ask_user 的 assistant 消息转为普通自然语言文本
+      if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+        const askCall = m.tool_calls.find((tc) => tc.function.name === 'ask_user');
+        if (askCall) {
+          try {
+            const args = JSON.parse(askCall.function.arguments) as { question?: string };
+            const q = typeof args.question === 'string' ? args.question : '请补充信息';
+            return [{ role: 'assistant', content: `（询问用户）${q}` }];
+          } catch {
+            return [{ role: 'assistant', content: '（向用户提问了问题）' }];
+          }
+        }
       }
+
+      return [m];
     });
   }
 }
