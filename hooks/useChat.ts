@@ -1,10 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
+import type { ChatTextFile } from '@/lib/chat/messages';
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
   images?: string[]; // Base64 图片数组
+  files?: ChatTextFile[]; // 随消息上传的纯文本文件
 }
 
 function parseSseEvent(chunk: string) {
@@ -47,12 +49,12 @@ export function useChat(selectedModel: string) {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string, images: string[]) => {
-      if ((!text.trim() && images.length === 0) || loading) return;
+    async (text: string, images: string[], files: ChatTextFile[] = []) => {
+      if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
       abortControllerRef.current = new AbortController();
 
-      const userMsg: ChatMsg = { role: 'user', content: text, images };
+      const userMsg: ChatMsg = { role: 'user', content: text, images, files };
       const history = [...messages, userMsg];
       setMessages(history);
       setLoading(true);
@@ -65,11 +67,12 @@ export function useChat(selectedModel: string) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
-            // 图片随所属消息上行，由服务端转成多模态 content；配置（含密钥）不再随请求发送
+            // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）
             messages: history.map((m) => ({
               role: m.role,
               content: m.content,
               images: m.images,
+              files: m.files,
             })),
           }),
           signal: abortControllerRef.current.signal,
