@@ -56,28 +56,40 @@ async function testNativeParse() {
 async function testNativeHistory() {
   console.log('\n[2] Native 历史回填与清洗');
   const adapter = new NativeAdapter();
-  const msgs: ProviderMessage[] = [];
 
-  adapter.appendResults(
-    msgs,
-    [{ id: 'call_1', name: 'ask_user', arguments: { question: 'Q1' } }],
-    [{ kind: 'awaiting_user', question: 'Q1' }]
-  );
-
-  assert(msgs.length === 2, '追加了 2 条消息');
+  // 1. 模拟正常的保存历史（只存了 assistant 消息）
+  const msgsNormal: ProviderMessage[] = [
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'ask_user', arguments: '{"question":"Q1"}' },
+        },
+      ],
+    },
+  ];
+  const cleanedNormal = adapter.preprocessMessages(msgsNormal);
+  assert(cleanedNormal.length === 1, '正常历史清洗后长度 1');
   assert(
-    msgs[0].role === 'assistant' && msgs[0].tool_calls?.[0].function.name === 'ask_user',
-    'tool_calls 存在'
+    cleanedNormal[0].role === 'assistant' && cleanedNormal[0].content === '（询问用户）Q1',
+    '正常历史转为纯文本'
   );
-  assert(msgs[1].role === 'tool' && msgs[1].tool_call_id === 'call_1', 'tool 结果存在');
+  assert(!cleanedNormal[0].tool_calls, 'tool_calls 被剥离');
 
-  const cleaned = adapter.preprocessMessages(msgs);
-  assert(cleaned.length === 1, '清洗后剩下 1 条消息'); // 只有包含 ask_user 的 assistant 被替换，不留 tool
+  // 2. 模拟防御性清洗（如果历史里不小心混入了 tool 消息）
+  const msgsWithTool: ProviderMessage[] = [
+    ...msgsNormal,
+    { role: 'tool', tool_call_id: 'call_1', name: 'ask_user', content: '{"awaiting_user":"Q1"}' },
+  ];
+  const cleanedWithTool = adapter.preprocessMessages(msgsWithTool);
+  assert(cleanedWithTool.length === 1, '带 tool 历史清洗后长度 1（成功过滤）');
   assert(
-    cleaned[0].role === 'assistant' && cleaned[0].content === '（询问用户）Q1',
-    '转换为纯文本'
+    cleanedWithTool[0].role === 'assistant' && cleanedWithTool[0].content === '（询问用户）Q1',
+    '带 tool 历史转为纯文本'
   );
-  assert(!cleaned[0].tool_calls, 'tool_calls 被剥离');
 }
 
 async function testTextStreamNormal() {
