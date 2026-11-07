@@ -9,6 +9,8 @@
  * - JSONSchemaObject 用最小子集 + 索引签名，未来扩展字段不破坏类型；
  * - ToolInvocation 用联合类型区分"普通结果"与"等待用户输入"，
  *   后者是 ask_user 的中断语义（见 doc/tool-protocol.md §6）；
+ * - ToolHandlerReturn 是 handler 的返回形态（无 ok 字段），
+ *   invoke 统一包装为 ToolInvocation（加 ok/summary/error）；
  * - ExtractedToolCalls.calls 是数组，P1 先做单工具，多工具预留。
  */
 
@@ -28,6 +30,25 @@ export interface JSONSchemaObject {
   [key: string]: unknown;
 }
 
+/**
+ * handler 的返回形态（不含 ok 字段）。
+ * - result：普通执行成功，data 由 invoke 序列化后回填模型；
+ * - awaiting_user：中断本轮，等用户回答（ask_user 专用）。
+ */
+export type ToolHandlerReturn =
+  { kind: 'result'; data: unknown; summary?: string } | { kind: 'awaiting_user'; question: string };
+
+/**
+ * 工具实现签名。
+ * - args 已由 invoke 通过 validateArguments 校验，但类型上是 Record<string, unknown>，
+ *   handler 内部仍需窄化（如 typeof args.question === "string"）；
+ * - handler 不应自行捕获业务异常：抛错由 invoke 统一转为 ok=false 的错误包装。
+ */
+export type ToolHandler = (
+  args: Record<string, unknown>,
+  ctx: ToolContext
+) => Promise<ToolHandlerReturn>;
+
 /** 工具定义（MCP 风格） */
 export interface ToolDefinition {
   /** 唯一标识，蛇形命名（如 ask_user） */
@@ -42,6 +63,12 @@ export interface ToolDefinition {
    * 避免呈现未实现能力（AGENTS.md §8）。
    */
   enabled?: boolean;
+  /**
+   * 工具实现。P2 起工具应提供 handler 才能被 invoke 执行；
+   * 纯声明工具（如未来接外部 MCP server 时，本端只有元数据没有实现）
+   * 可省略 handler，此时 invoke 返回"工具未实现"错误。
+   */
+  handler?: ToolHandler;
 }
 
 /** 工具执行上下文（由 loop 注入，工具函数只读） */
@@ -53,7 +80,7 @@ export interface ToolContext {
 }
 
 /**
- * 工具执行结果。
+ * 工具执行结果（invoke 的返回值）。
  * - result/ok=true：普通成功，data 回填给模型，summary 给 SSE 展示；
  * - result/ok=false：执行失败（抛错/超时/校验失败），error 回填给模型；
  * - awaiting_user：中断本轮，等用户回答（仅 ask_user 使用）。
