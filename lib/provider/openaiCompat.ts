@@ -21,14 +21,14 @@ import type {
   ProviderMessage,
   ProviderModel,
   StreamDelta,
-} from "./types";
+} from './types.ts';
 
 /** 单次请求超时（ms） */
 const REQUEST_TIMEOUT = 120_000;
 
 export interface OpenAICompatConfig {
   /** Provider 名称（deepseek | zhipu | custom） */
-  name: "deepseek" | "zhipu" | "custom";
+  name: 'deepseek' | 'zhipu' | 'custom';
   /** API Key（为空视为不可用） */
   apiKey: string;
   /** OpenAI 兼容 Base URL（不含 /chat/completions） */
@@ -44,7 +44,7 @@ export interface OpenAICompatConfig {
 }
 
 export class OpenAICompatProvider implements LLMProvider {
-  readonly name: "deepseek" | "zhipu" | "custom";
+  readonly name: 'deepseek' | 'zhipu' | 'custom';
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly defaultModels: string[];
@@ -76,7 +76,7 @@ export class OpenAICompatProvider implements LLMProvider {
         model: name,
         modified_at: new Date().toISOString(),
         size: 0,
-        digest: "",
+        digest: '',
         details: { family: this.name },
       }))
     );
@@ -93,16 +93,18 @@ export class OpenAICompatProvider implements LLMProvider {
       messages: options.messages as ProviderMessage[],
       stream,
     };
-    if (options.json) body.response_format = { type: "json_object" };
+    if (options.json) body.response_format = { type: 'json_object' };
+    if (options.tools) {
+      body.tools = options.tools;
+      if (options.toolChoice) body.tool_choice = options.toolChoice;
+    }
     if (!this.allowImages) {
       body.messages = (options.messages as ProviderMessage[]).map((m) => ({
         role: m.role,
         content:
-          typeof m.content === "string"
+          typeof m.content === 'string'
             ? m.content
-            : m.content
-                .map((part) => (part.type === "text" ? part.text : "[图片附件]"))
-                .join("\n"),
+            : m.content.map((part) => (part.type === 'text' ? part.text : '[图片附件]')).join('\n'),
       }));
     }
     return JSON.stringify(body);
@@ -111,17 +113,17 @@ export class OpenAICompatProvider implements LLMProvider {
   private async post(options: CompleteOptions, stream: boolean): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-    options.signal?.addEventListener("abort", () => controller.abort());
+    options.signal?.addEventListener('abort', () => controller.abort());
     try {
       return await fetch(`${this.baseUrl}/chat/completions`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: this.buildBody(options, stream),
         signal: controller.signal,
-        cache: "no-store",
+        cache: 'no-store',
       });
     } finally {
       clearTimeout(timer);
@@ -129,15 +131,15 @@ export class OpenAICompatProvider implements LLMProvider {
   }
 
   private errorMessage(status: number, errText: string): string {
-    return `${this.displayName} 返回错误（HTTP ${status}）：${errText || "请检查 API Key 是否正确、余额是否充足。"}`;
+    return `${this.displayName} 返回错误（HTTP ${status}）：${errText || '请检查 API Key 是否正确、余额是否充足。'}`;
   }
 
   /** 解析响应 message/delta 中的内容与思考过程（兼容 reasoning_content / reasoning） */
   private parseReasoning(
     m: { content?: string; reasoning_content?: string; reasoning?: string } | undefined
   ): { content: string; reasoning?: string } {
-    const content = m?.content?.trim() || "";
-    const reasoning = (m?.reasoning_content ?? m?.reasoning)?.trim() || "";
+    const content = m?.content?.trim() || '';
+    const reasoning = (m?.reasoning_content ?? m?.reasoning)?.trim() || '';
     return { content, reasoning: reasoning || undefined };
   }
 
@@ -154,19 +156,35 @@ export class OpenAICompatProvider implements LLMProvider {
   private async completeRaw(options: CompleteOptions): Promise<CompleteDetailedResult> {
     const res = await this.post(options, false);
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
+      const errText = await res.text().catch(() => '');
       throw new Error(this.errorMessage(res.status, errText));
     }
     const data = (await res.json()) as {
       choices?: {
-        message?: { content?: string; reasoning_content?: string; reasoning?: string };
+        message?: {
+          content?: string;
+          reasoning_content?: string;
+          reasoning?: string;
+          tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            function: { name: string; arguments: string };
+          }>;
+        };
+        finish_reason?: string;
       }[];
       error?: { message?: string };
     };
     if (data.error?.message) {
       throw new Error(`${this.displayName} 返回错误：${data.error.message}`);
     }
-    return this.parseReasoning(data.choices?.[0]?.message);
+    const choice = data.choices?.[0];
+    const parsed = this.parseReasoning(choice?.message);
+    return {
+      ...parsed,
+      toolCalls: choice?.message?.tool_calls,
+      finishReason: choice?.finish_reason,
+    };
   }
 
   /**
@@ -179,7 +197,7 @@ export class OpenAICompatProvider implements LLMProvider {
     }
   }
 
-  /** 详细流式补全：逐段透出 content / reasoning 增量（供 /api/chat SSE 透传） */
+  /** 详细流式补全：逐段透出 content / reasoning / toolCall 增量（供 /api/chat SSE 透传） */
   async *streamDetailed(options: CompleteOptions): AsyncGenerator<StreamDelta> {
     yield* this.streamRaw(options);
   }
@@ -187,39 +205,60 @@ export class OpenAICompatProvider implements LLMProvider {
   private async *streamRaw(options: CompleteOptions): AsyncGenerator<StreamDelta> {
     const res = await this.post(options, true);
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
+      const errText = await res.text().catch(() => '');
       throw new Error(this.errorMessage(res.status, errText));
     }
     const reader = res.body?.getReader();
     if (!reader) throw new Error(`${this.displayName} 流式响应缺少 body`);
 
     const decoder = new TextDecoder();
-    let buffer = "";
+    let buffer = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
+        if (!trimmed.startsWith('data:')) continue;
         const payload = trimmed.slice(5).trim();
-        if (payload === "[DONE]") return;
+        if (payload === '[DONE]') return;
         try {
           const chunk = JSON.parse(payload) as {
             choices?: {
-              delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+              delta?: {
+                content?: string;
+                reasoning_content?: string;
+                reasoning?: string;
+                tool_calls?: Array<{
+                  index: number;
+                  id?: string;
+                  function?: { name?: string; arguments?: string };
+                }>;
+              };
             }[];
           };
           const delta = chunk.choices?.[0]?.delta;
           if (!delta) continue;
-          if (typeof delta.content === "string" && delta.content.length > 0) {
+          if (typeof delta.content === 'string' && delta.content.length > 0) {
             yield { content: delta.content };
           }
           const reasoning = delta.reasoning_content ?? delta.reasoning;
-          if (typeof reasoning === "string" && reasoning.length > 0) {
+          if (typeof reasoning === 'string' && reasoning.length > 0) {
             yield { reasoning };
+          }
+          if (Array.isArray(delta.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              yield {
+                toolCall: {
+                  index: tc.index,
+                  id: tc.id,
+                  name: tc.function?.name,
+                  argumentsDelta: tc.function?.arguments,
+                },
+              };
+            }
           }
         } catch {
           // 忽略无法解析的数据行
