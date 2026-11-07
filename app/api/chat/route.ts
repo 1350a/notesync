@@ -9,10 +9,16 @@
  *   event: tool_result   data: {"id":"...","ok":true,"summary":"...","ms":12}
  *   event: awaiting_user data: {"question":"...","toolCallId":"..."}
  *   event: done          data: {"model":"...","provider":"...","usedRounds":1,"finishReason":"stop"}
- *   event: error         data: {"error":"..."}
+ *   event: error         data: {"code":"...","error":"..."}
  *
- * 实现：委托给 lib/tools/loop.ts 的 runToolLoop 进行编排，
- * 使用适配器屏蔽 native 与 text 模式的差异。
+ * error.code 取值（前端据此区分提示口径）：
+ *   no_model        未配置任何可用模型
+ *   invalid_model   请求的模型名不属于任何已配置 Provider（不再静默回落）
+ *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
+ *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等）
+ *
+ * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
+ * 使用适配器屏蔽 native 与 text 模式的差异；任何异常均以 error 事件回传由前端展示。
  */
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
@@ -30,6 +36,23 @@ registerBuiltinTools();
 /** 封装一条 SSE 事件为字节流 */
 function sse(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+} as const;
+
+/** 直接返回单条 error 事件的流（用于请求前校验失败） */
+function errorStream(data: {
+  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model";
+  error: string;
+  model?: string;
+  provider?: string;
+  available?: string[];
+}): Response {
+  return new Response(sse("error", data), { headers: SSE_HEADERS });
 }
 
 export async function POST(request: Request) {
@@ -53,33 +76,42 @@ export async function POST(request: Request) {
     providerMessages = [{ role: 'user', content: body.content || '' }];
   }
 
-  // 模型选择：请求指定模型优先；否则取第一个可用 provider 的首个模型
-  let model = body.model?.trim();
+  const list = await getModelList();
+
+  // 模型选择：请求指定模型优先；否则取可用列表首个模型
+  const requested = body.model?.trim();
+  const model: string | undefined = requested || list.models[0]?.name;
   if (!model) {
-    const list = await getModelList();
-    model = list.models[0]?.name;
-  }
-  if (!model) {
-    return new Response(
-      sse('error', {
-        error:
-          '未配置任何模型 API Key：请复制 .env.example 为 .env.local，并填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY 三者之一后再试。',
-      }),
-      { headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }
-    );
+    return errorStream({
+      code: "no_model",
+      error:
+        list.message ??
+        "未配置任何可用模型：请复制 .env.example 为 .env.local，填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL 三者之一后重启服务。",
+    });
   }
 
-  const { provider } = resolveProvider(model);
+  // 按模型名归属路由；无法归属直接报 invalid_model，不再静默回落到某家 provider
+  const target = resolveProvider(model);
+  if (!target) {
+    return errorStream({
+      code: "invalid_model",
+      error: `模型「${model}」不属于任何已配置的 Provider。可先调用 GET /api/models 获取可用模型列表。${
+        list.message ? `（${list.message}）` : ""
+      }`,
+      model,
+      available: list.models.map((m) => m.name),
+    });
+  }
+  const { provider } = target;
 
+  // 归属 Provider 配置不全 → 明确错误
   if (!provider.isAvailable()) {
-    return new Response(
-      sse('error', {
-        error: `模型 ${model} 对应的 Provider（${provider.name}）未配置完整环境变量。请检查 .env.local 中对应的 API_KEY / BASE_URL / MODEL 配置。`,
-        model,
-        provider: provider.name,
-      }),
-      { headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }
-    );
+    return errorStream({
+      code: "unconfigured",
+      error: `模型「${model}」对应的 Provider（${provider.displayName}）配置不完整：请检查 .env.local 中的 API_KEY / BASE_URL。`,
+      model,
+      provider: provider.name,
+    });
   }
 
   // 工具配置判断
@@ -153,8 +185,9 @@ export async function POST(request: Request) {
       } catch (err) {
         controller.enqueue(
           encoder.encode(
-            sse('error', {
-              error: err instanceof Error ? err.message : '模型请求失败',
+            sse("error", {
+              code: "provider_error",
+              error: err instanceof Error ? err.message : "模型请求失败",
               model,
               provider: provider.name,
             })
@@ -166,11 +199,5 @@ export async function POST(request: Request) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return new Response(stream, { headers: SSE_HEADERS });
 }

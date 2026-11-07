@@ -13,7 +13,6 @@
  */
 import type {
   CompleteOptions,
-  LLMProvider,
   ProviderMessage,
   ProviderModel,
 } from "./types";
@@ -35,7 +34,8 @@ function contentToText(content: ProviderMessage["content"]): string {
     .join("\n");
 }
 
-export class OllamaProvider implements LLMProvider {
+// 注意：已停用，不再声明 implements LLMProvider（LLMProvider 已要求 probe / ownsModel / displayName）
+export class OllamaProvider {
   readonly name = "ollama" as const;
 
   isAvailable(): boolean {

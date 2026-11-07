@@ -1,17 +1,37 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useState } from 'react';
+import type { ProviderModel, ProviderStatus } from '@/lib/provider/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+export interface ChatInputProps {
+  onSend: (text: string, images: string[]) => void;
+  onStop: () => void;
+  loading: boolean;
+  /** 真实可用模型列表（来自 GET /api/models，非硬编码） */
+  models: ProviderModel[];
+  /** 当前选中模型名（受控） */
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  /** 各 Provider 明细状态（模型下拉分组标注用） */
+  providers?: ProviderStatus[];
+  /** 模型列表加载中 */
+  modelsLoading?: boolean;
+  /** 无可用模型时的后端提示 */
+  modelsMessage?: string;
+}
 
 export default function ChatInput({
   onSend,
   onStop,
   loading,
-}: {
-  onSend: (text: string, images: string[]) => void;
-  onStop: () => void;
-  loading: boolean;
-}) {
+  models,
+  selectedModel,
+  onModelChange,
+  providers,
+  modelsLoading = false,
+  modelsMessage,
+}: ChatInputProps) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +90,22 @@ export default function ChatInput({
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /** 按 Provider 分组，便于多 Provider 时用 optgroup 区分来源 */
+  const modelGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: ProviderModel[] }[] = [];
+    for (const m of models) {
+      const key = m.provider ?? 'unknown';
+      const group = groups.find((g) => g.key === key);
+      if (group) {
+        group.items.push(m);
+      } else {
+        const label = providers?.find((p) => p.name === m.provider)?.displayName ?? key;
+        groups.push({ key, label, items: [m] });
+      }
+    }
+    return groups;
+  }, [models, providers]);
+
   const handleSend = () => {
     if ((!input.trim() && images.length === 0) || loading) return;
     onSend(input.trim(), images);
@@ -108,11 +144,39 @@ export default function ChatInput({
       <div className="flex flex-col rounded-2xl border border-border bg-background p-2 shadow-sm focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/30 transition-colors">
         {/* 顶栏：模型与模式选择 */}
         <div className="flex items-center gap-2 px-1 pb-2">
-          {/* 注意：后续这里可以用 shadcn 的 Select 组件替换，现在先用原生的占位 */}
-          <select className="text-xs bg-muted/50 hover:bg-muted rounded-md px-2 py-1 outline-none border-none cursor-pointer text-muted-foreground font-medium transition-colors">
-            <option>DeepSeek-V4</option>
-            <option>GPT-4o</option>
+          {/* 模型下拉：真实数据来自 GET /api/models，受控 */}
+          <select
+            value={selectedModel}
+            onChange={(e) => onModelChange(e.target.value)}
+            disabled={loading || models.length === 0}
+            title={models.length === 0 ? (modelsMessage ?? '暂无可用模型') : '选择模型'}
+            className="max-w-[220px] text-xs bg-muted/50 hover:bg-muted rounded-md px-2 py-1 outline-none border-none cursor-pointer text-muted-foreground font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {models.length === 0 && (
+              <option value="">{modelsLoading ? '加载模型中…' : '（无可用模型）'}</option>
+            )}
+            {modelGroups.length === 1
+              ? modelGroups[0].items.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name}
+                  </option>
+                ))
+              : modelGroups.map((g) => (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.items.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
           </select>
+          {models.length === 0 && modelsMessage && (
+            <span className="min-w-0 truncate text-[10px] text-red-500" title={modelsMessage}>
+              {modelsMessage}
+            </span>
+          )}
+          {/* 模式下拉：业务逻辑未接入，本轮保持原样，不参与发送参数 */}
           <select className="text-xs bg-muted/50 hover:bg-muted rounded-md px-2 py-1 outline-none border-none cursor-pointer text-muted-foreground font-medium transition-colors">
             <option>解题过程模式</option>
             <option>对话模式</option>
@@ -182,7 +246,7 @@ export default function ChatInput({
           ) : (
             <Button
               onClick={handleSend}
-              disabled={!input.trim() && images.length === 0}
+              disabled={(!input.trim() && images.length === 0) || !selectedModel}
               className="rounded-full h-8 px-4 text-xs bg-foreground text-background hover:bg-foreground/90"
             >
               发送

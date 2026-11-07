@@ -1,21 +1,30 @@
 /**
  * GET /api/models
- * 简易重构版：返回三选一（DEEPSEEK / ZHIPU / CUSTOM）可用 Provider 的模型列表。
- * - 配置了 key 的 provider 模型在前
- * - 无任何 key：返回 available=false 与明确的配置缺失提示
- * 与 .env.example 一致，不再检测本地 ollama。
+ *
+ * 返回三家 Provider（DeepSeek / 智谱 / 自定义 OpenAI 兼容）的真实模型列表与健康状态：
+ *   { models, available, status, providers, message }
+ * - models：可请求的模型名（首项为该 Provider 默认选中项，已做 name:tag 归一）
+ * - status：ok / degraded / unauthorized / unconfigured 聚合结果
+ * - providers：每家 Provider 的明细状态与降级原因（前端分组与排障用）
+ * 结果带 30s 服务端缓存；GET /api/models?refresh=1 强制重新探测。
  *
  * 历史实现（聚合 ollama 模型列表）已注释保留在文件底部。
  */
 import { getModelList } from "@/lib/provider";
 
-export async function GET() {
-  const result = await getModelList();
-  return Response.json({
-    models: result.models,
-    available: result.available,
-    message: result.message,
-  });
+export async function GET(request: Request) {
+  const force = new URL(request.url).searchParams.get("refresh") === "1";
+  const result = await getModelList(force);
+  return Response.json(
+    {
+      models: result.models,
+      available: result.available,
+      status: result.status,
+      providers: result.providers,
+      message: result.message,
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 /* =====================================================================
