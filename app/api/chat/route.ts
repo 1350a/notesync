@@ -29,6 +29,7 @@
 import {
   buildProviderMessages,
   explainProviderError,
+  MAX_FILE_MESSAGES,
   MAX_IMAGE_MESSAGES,
   type ChatRequestBody,
 } from '@/lib/chat/messages';
@@ -241,7 +242,8 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
 }
 
 export async function POST(request: Request) {
-  // messages 元素可带 images（聊天界面上传的图片 dataUrl），由 buildProviderMessages 组装成多模态内容
+  // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）
+  // 与 files（聊天界面上传的纯文本文件，按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
   const body = (await request.json()) as ChatRequestBody;
 
   // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
@@ -250,10 +252,16 @@ export async function POST(request: Request) {
   }
 
   // 组装发送给模型的消息：优先用显式 messages，否则用 content
-  const { messages: builtMessages, droppedImageMessages } = buildProviderMessages(body);
+  const { messages: builtMessages, droppedImageMessages, droppedFileMessages } =
+    buildProviderMessages(body);
   if (droppedImageMessages > 0) {
     console.warn(
       `[chat] ${droppedImageMessages} 条较早消息的图片未随请求发送（超出 ${MAX_IMAGE_MESSAGES} 条上限，仅发送文字）`
+    );
+  }
+  if (droppedFileMessages > 0) {
+    console.warn(
+      `[chat] ${droppedFileMessages} 条较早消息的文本文件未随请求发送（超出 ${MAX_FILE_MESSAGES} 条上限）`
     );
   }
   let providerMessages = builtMessages;
