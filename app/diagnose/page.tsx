@@ -1,5 +1,6 @@
 import AppLayout from '@/components/layout/AppLayout';
-import UploadArea from '@/components/UploadArea';
+
+import UploadArea from './_components/UploadArea';
 
 export default function DiagnosePage() {
   return (
