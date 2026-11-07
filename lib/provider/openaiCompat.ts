@@ -123,6 +123,8 @@ function parseModelIds(payload: unknown): string[] {
 export class OpenAICompatProvider implements LLMProvider {
   readonly name: "deepseek" | "zhipu" | "custom";
   readonly displayName: string;
+  /** 由 allowImages 决定：上层据此选择图片直传或降级为文字占位 */
+  readonly acceptsImages: boolean;
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly defaultModels: string[];
@@ -139,6 +141,7 @@ export class OpenAICompatProvider implements LLMProvider {
     this.envModel = config.envModel;
     this.displayName = config.displayName;
     this.allowImages = config.allowImages ?? true;
+    this.acceptsImages = this.allowImages;
     this.probeEnabled = config.probeEnabled ?? false;
     this.probeTimeoutMs = config.probeTimeoutMs ?? PROBE_TIMEOUT_CLOUD;
   }
