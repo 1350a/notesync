@@ -15,11 +15,19 @@
  *   no_model        未配置任何可用模型
  *   invalid_model   请求的模型名不属于任何已配置 Provider（不再静默回落）
  *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
+ *   no_content      上传的附件全部提取失败，没有可发送的内容
  *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等）
+ *
+ * 诊断模式附件：请求体可带 attachments（结构见 lib/diagnose/types.ts），
+ * 服务端用 assembleDiagnoseMessage 组装成单条 user 消息追加在 messages 末尾；
+ * 模型不接受图片时自动降级为文字占位，不做静默丢弃。
+ * MOCK_MODEL=1 时不调用任何上游，只回显组装结构，用于零 token 验证发送数据。
  *
  * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
  * 使用适配器屏蔽 native 与 text 模式的差异；任何异常均以 error 事件回传由前端展示。
  */
+import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
+import type { DiagnoseAttachment, ReviseCategory } from '@/lib/diagnose/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
 import { createAdapter } from '@/lib/tools/adapters';
@@ -46,7 +54,7 @@ const SSE_HEADERS = {
 
 /** 直接返回单条 error 事件的流（用于请求前校验失败） */
 function errorStream(data: {
-  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model";
+  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model" | "no_content";
   error: string;
   model?: string;
   provider?: string;
@@ -55,12 +63,142 @@ function errorStream(data: {
   return new Response(sse("error", data), { headers: SSE_HEADERS });
 }
 
+const CATEGORIES = new Set<ReviseCategory>(["origin", "wrong", "correct", "analysis"]);
+
+/** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
+const MAX_DATA_URL = 12 * 1024 * 1024;
+
+/**
+ * 校验前端上传的 attachments。
+ * 非法项一律丢弃（附 console.warn 便于排查），不因一条脏数据让整批诊断失败。
+ */
+function parseAttachments(raw: unknown): DiagnoseAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DiagnoseAttachment[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const category = record.category;
+    if (!name || typeof category !== "string" || !CATEGORIES.has(category as ReviseCategory)) {
+      console.warn("[diagnose] 丢弃非法附件：缺少文件名或分类不属于四类标签");
+      continue;
+    }
+
+    const rawUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
+    const dataUrl = rawUrl.startsWith("data:image/") ? rawUrl : undefined;
+    if (rawUrl && !dataUrl) {
+      console.warn(`[diagnose] ${name}：dataUrl 不是图片数据，已忽略`);
+    }
+    if (dataUrl && dataUrl.length > MAX_DATA_URL) {
+      console.warn(`[diagnose] ${name}：图片超过 ${MAX_DATA_URL} 字符上限，已忽略`);
+      continue;
+    }
+
+    const text = typeof record.text === "string" ? record.text : undefined;
+    if (!dataUrl && !text?.trim()) {
+      console.warn(`[diagnose] ${name}：既无图片也无文字内容，已忽略`);
+      continue;
+    }
+
+    out.push({
+      name,
+      category: category as ReviseCategory,
+      dataUrl,
+      text,
+      warning: typeof record.warning === "string" ? record.warning : undefined,
+    });
+  }
+
+  return out;
+}
+
+/** 把组装结果渲染成可读摘要（MOCK 专用，不回显 base64 本体） */
+function summarizeForMock(
+  result: ReturnType<typeof assembleDiagnoseMessage>
+): string {
+  const content = result.message?.content;
+  const parts = Array.isArray(content) ? content : [];
+  const rows = parts.map((part, index) => {
+    if (part.type === "text") {
+      const preview = part.text.replace(/\s+/g, " ").slice(0, 48);
+      return `| ${index + 1} | text | ${part.text.length} | ${preview} |`;
+    }
+    const url = part.image_url.url;
+    const head = url.slice(0, 24);
+    return `| ${index + 1} | image_url | ${url.length} | ${head}… |`;
+  });
+
+  const lines = [
+    "> MOCK 模式：未调用任何模型，以下为实际组装出来的发送结构。",
+    "",
+    `- 消息条数：1（role=user）`,
+    `- part 数：${parts.length}（图片 ${result.stats.images} / 文本 ${result.stats.texts}）`,
+    `- 文本字符数：${result.stats.chars}`,
+    "",
+    "| # | 类型 | 长度 | 预览 |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+  ];
+
+  if (result.warnings.length > 0) {
+    lines.push("", "**降级与告警**", ...result.warnings.map((w) => `- ${w}`));
+  }
+  return lines.join("\n");
+}
+
+/** MOCK 响应流：不解析模型，直接回显组装摘要 */
+function mockStream(attachments: DiagnoseAttachment[]): Response {
+  const assembled = assembleDiagnoseMessage(attachments, {
+    imageMode: process.env.MOCK_IMAGE_MODE === "text-only" ? "text-only" : "multimodal",
+  });
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (!assembled.message) {
+        controller.enqueue(
+          encoder.encode(
+            sse("error", {
+              code: "no_content",
+              error: "上传的文件未提取到可用内容，请检查后重新上传。",
+            })
+          )
+        );
+        controller.close();
+        return;
+      }
+      controller.enqueue(encoder.encode(sse("content", { delta: summarizeForMock(assembled) })));
+      controller.enqueue(
+        encoder.encode(
+          sse("done", {
+            model: "mock",
+            provider: "mock",
+            usedRounds: 0,
+            finishReason: "mock",
+          })
+        )
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream, { headers: SSE_HEADERS });
+}
+
 export async function POST(request: Request) {
   const body = (await request.json()) as {
     model?: string;
     messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
     content?: string;
+    /** 诊断模式附件（图片 dataUrl / PDF 或纯文本文字），结构见 lib/diagnose/types.ts */
+    attachments?: unknown;
   };
+
+  // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
+  if (process.env.MOCK_MODEL === '1') {
+    return mockStream(parseAttachments(body.attachments));
+  }
 
   // 组装发送给模型的消息：优先用显式 messages，否则用 content
   let providerMessages: ProviderMessage[];
@@ -114,6 +252,26 @@ export async function POST(request: Request) {
     });
   }
 
+  // 诊断模式附件：组装成一条 user 消息追加在历史末尾；模型不吃图片时自动降级为文字占位
+  const attachments = parseAttachments(body.attachments);
+  if (attachments.length > 0) {
+    const assembled = assembleDiagnoseMessage(attachments, {
+      imageMode: provider.acceptsImages === false ? 'text-only' : 'multimodal',
+    });
+    if (!assembled.message) {
+      return errorStream({
+        code: 'no_content',
+        error: '上传的文件未提取到可用内容，请检查后重新上传。',
+        model,
+        provider: provider.name,
+      });
+    }
+    providerMessages.push(assembled.message);
+    for (const warning of assembled.warnings) {
+      console.warn('[diagnose]', warning);
+    }
+  }
+
   // 工具配置判断
   const toolsEnabled = process.env.TOOLS_ENABLED !== 'false';
   const tools = toolsEnabled ? getEnabledTools() : [];
@@ -143,6 +301,8 @@ export async function POST(request: Request) {
         });
 
         for await (const ev of generator) {
+          // 防御：上游若仍下发空事件（undefined），直接跳过，避免取属性抛错导致整条 SSE 中断
+          if (!ev) continue;
           if (ev.type === 'content') {
             controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
           } else if (ev.type === 'reasoning') {
