@@ -124,7 +124,7 @@ export class TextAdapter implements ToolAdapter {
     // text 模式下，历史中模型的 tool call 就是它的 content。
     // 这里直接把原样发回去，然后模拟 user 发送工具结果。
     for (let i = 0; i < calls.length; i++) {
-      const call = calls[i];
+      // const call = calls[i]; // 移除未使用的变量
       const res = results[i];
       let contentStr = '';
 
