@@ -77,40 +77,35 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
     const req = adapter.buildRequest(model, currentMessages, tools);
     req.signal = signal;
 
-    let callsData: ExtractedToolCalls | null = null;
-    let loopError: Error | null = null;
     const queue = new AsyncQueue<ToolLoopEvent>();
 
-    const processPromise = (async () => {
+    // 将返回值直接从 Promise 中抛出，避免外部变量在闭包中赋值导致 TS 类型收窄为 never
+    const processPromise = (async (): Promise<ExtractedToolCalls> => {
       try {
         if (!provider.streamDetailed) {
           throw new Error('当前 Provider 不支持流式输出，无法使用工具调用');
         }
         const stream = provider.streamDetailed(req);
-        callsData = await adapter.processStream(
+        return await adapter.processStream(
           stream,
           (c) => queue.push({ type: 'content', delta: c }),
           (r) => queue.push({ type: 'reasoning', delta: r })
         );
-      } catch (err) {
-        loopError = err instanceof Error ? err : new Error(String(err));
       } finally {
         queue.complete();
       }
     })();
 
+    // 消费队列中的内容，保持流式输出
     for await (const event of queue.consume()) {
       yield event;
     }
-    await processPromise;
 
-    if (loopError) {
-      yield { type: 'error', message: loopError.message };
-      return;
-    }
-
-    if (!callsData) {
-      yield { type: 'error', message: '工具解析未返回结果' };
+    let callsData: ExtractedToolCalls;
+    try {
+      callsData = await processPromise;
+    } catch (err) {
+      yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
       return;
     }
 
