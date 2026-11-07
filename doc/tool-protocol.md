@@ -162,6 +162,21 @@ type ToolInvocation =
 
 其他工具（非 `ask_user`）的历史照常按 `tool_calls` + `tool` 消息回放。
 
+### 6.3 历史清洗（P3 适配器实现）
+
+为防止带有 `ask_user` 的 `assistant` 消息在后续请求中违反协议，适配器层（`native.ts` / `text.ts`）提供 `preprocessMessages`：
+
+- **native 模式**：扫描 `assistant.tool_calls`。如果包含 `name === "ask_user"`：
+  1. 解析 `function.arguments` 中的 `question`。
+  2. 构造一条纯文本消息：`{ role: "assistant", content: "（询问用户）" + question }`。
+  3. 丢弃 `tool_calls` 字段。
+  4. （由于服务端不落 tool 结果，历史中必然没有对应的 `role:"tool"` 消息，直接替换即可）。
+- **text 模式**：扫描 `assistant.content`。如果匹配到围栏 ` ```tool ` 且内部 JSON 的 `tool === "ask_user"`：
+  1. 提取 `question`。
+  2. 将整条消息替换为：`{ role: "assistant", content: "（询问用户）" + question }`。
+
+**目的**：让模型在下一轮看到的历史是“我向用户提问了，用户回答了”，而不是“我生成了不知所谓的工具标记”。
+
 ## 7. SSE 事件扩展（`/api/chat`，P4 接线）
 
 在现有 `reasoning` / `content` / `done` / `error` 基础上新增：
