@@ -129,6 +129,46 @@ export interface ProviderModel {
     quantization_level?: string;
     family?: string;
   };
+  /** 提供该模型的 Provider（前端分组与标注用） */
+  provider?: ProviderName;
+  /** remote=在线枚举得到的真实模型名，fallback=内置白名单兜底 */
+  source?: ModelSource;
+}
+
+/** 模型名来源：在线枚举 / 内置白名单 / 不可用 */
+export type ModelSource = "remote" | "fallback" | "none";
+
+/**
+ * Provider 模型探测状态（判定顺序：先 unconfigured，再鉴权，再枚举，最后降级）
+ * - ok           配置齐全，在线枚举成功，配置模型名命中（可带 canonical 归一）
+ * - degraded     可用但非理想：403 无权列出 / 端点不支持枚举 / 超时或网络失败 /
+ *                枚举成功但配置名未命中（仍可发请求，由实际调用报错兜底）
+ * - unauthorized key 无效（401），推理同样不可用
+ * - unconfigured key 或 baseUrl 缺失，不发任何网络请求
+ */
+export type ModelProbeStatus = "ok" | "degraded" | "unauthorized" | "unconfigured";
+
+/** 单个 Provider 的模型探测结果 */
+export interface ModelProbe {
+  status: ModelProbeStatus;
+  /** 可直接用于请求的模型名（已归一；首项为默认选中项） */
+  models: string[];
+  /** 环境变量里配置的模型名（未配置时为 undefined） */
+  configuredModel?: string;
+  source: ModelSource;
+  /** 降级/失败原因，供 console 与服务端日志追溯，不透出敏感信息 */
+  reason?: string;
+}
+
+/** 对外（/api/models）透出的 Provider 状态 */
+export interface ProviderStatus {
+  name: ProviderName;
+  displayName: string;
+  status: ModelProbeStatus;
+  source: ModelSource;
+  /** 该 Provider 返回的模型数量 */
+  count: number;
+  reason?: string;
 }
 
 /** 统一的 LLM Provider 接口 */
@@ -142,8 +182,14 @@ export interface LLMProvider {
   completeDetailed?(options: CompleteOptions): Promise<CompleteDetailedResult>;
   /** 详细流式补全：逐段产出内容/思考增量；未实现时调用方降级到 streamComplete */
   streamDetailed?(options: CompleteOptions): AsyncGenerator<StreamDelta>;
+  /** 展示名（错误信息与前端标注用） */
+  readonly displayName: string;
   /** 拉取可用模型列表；失败返回空数组（不抛错） */
   listModels(): Promise<ProviderModel[]>;
+  /** 模型探测：返回可请求的模型名与健康状态（不抛错，异常一律映射为状态） */
+  probe(): Promise<ModelProbe>;
+  /** 判断模型名是否归属本 Provider（供按模型名路由） */
+  ownsModel(model: string): boolean;
   /** 当前 Provider 是否可用 */
   isAvailable(): boolean;
 }
