@@ -5,6 +5,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import type { ChatTextFile } from '@/lib/chat/messages';
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
@@ -12,6 +13,8 @@ export interface ChatMsg {
   reasoning?: string;
   /** 用户随消息上传的图片 dataUrl */
   images?: string[];
+  /** 用户随消息上传的纯文本文件 */
+  files?: ChatTextFile[];
 }
 
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
@@ -101,6 +104,30 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
             </div>
           ) : (
             <>
+              {m.files && m.files.length > 0 ? (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {m.files.map((file, idx) => (
+                    <span
+                      key={`file-${idx}`}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                      style={{
+                        border: '1px solid var(--border)',
+                        backgroundColor: 'var(--bg-deep)',
+                        color: 'var(--text-secondary)',
+                      }}
+                      title={`${file.name}（${file.text.length} 字符）`}
+                    >
+                      <span className="max-w-[160px] truncate">{file.name}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {file.text.length >= 1000
+                          ? `${(file.text.length / 1000).toFixed(1)}k`
+                          : file.text.length}
+                        字符
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {m.images && m.images.length > 0 ? (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {m.images.map((src, idx) => (
