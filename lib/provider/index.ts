@@ -1,89 +1,151 @@
 /**
  * Provider 路由与模型列表聚合
  *
- * - resolveProvider：根据请求模型名与各云端 key 决定实际 provider
- *   （模型归属按模型名区分：deepseek / zhipu / custom / ollama）
- * - getModelList：聚合所有可用 provider 的模型，供 /api/models 使用
+ * - resolveProvider：按模型名归属决定实际 provider；未知模型名返回 null
+ *   （由调用方返回 invalid_model，不再静默回落到某家 provider）
+ * - getModelList：并发探测三家 provider，聚合真实模型名 + 健康状态，供 /api/models 使用
+ *   带 30s 缓存，避免每次打开面板都打满上游 /models
  */
-import {
-  deepseekProvider,
-  deepseekAvailable,
-  isDeepSeekModel,
-} from "./deepseek";
-import { zhipuProvider, zhipuAvailable, isZhipuModel } from "./zhipu";
-import { customProvider, customAvailable, isCustomModel } from "./custom";
+import { deepseekProvider } from "./deepseek";
+import { zhipuProvider } from "./zhipu";
+import { customProvider } from "./custom";
 // 历史遗留：本地 ollama provider 已停用（不再检测本地服务、不再自动回退）
 // import { ollamaProvider } from "./ollama";
-import type { LLMProvider, ProviderModel } from "./types";
+import type {
+  LLMProvider,
+  ModelProbeStatus,
+  ModelSource,
+  ProviderModel,
+  ProviderStatus,
+} from "./types";
+
+/** 探测结果缓存时长（ms）：同一实例内复用，避免 /api/models 与 /api/chat 重复打上游 */
+const PROBE_CACHE_TTL_MS = 30_000;
+
+/** 参与路由与聚合的 provider（顺序即下拉展示顺序） */
+const PROVIDERS: LLMProvider[] = [deepseekProvider, zhipuProvider, customProvider];
+
+/** /api/models 返回结构 */
+export interface ModelListResult {
+  /** 可请求的模型名列表（首项为该 provider 默认选中项） */
+  models: ProviderModel[];
+  /** 是否至少有一个模型可请求 */
+  available: boolean;
+  /** 聚合后的整体状态（取三家最优，全不可用取最差） */
+  status: ModelProbeStatus;
+  /** 各 provider 明细状态（前端分组标注与排障用） */
+  providers: ProviderStatus[];
+  /** 面向用户的提示（配置缺失 / 鉴权失败 / 降级原因） */
+  message?: string;
+}
+
+let probeCache: { at: number; value: ModelListResult } | null = null;
+
+/** 按 provider 构造前端下拉项（与基类一致，但不依赖其实例方法） */
+function toProviderModel(
+  provider: LLMProvider,
+  name: string,
+  source: ModelSource
+): ProviderModel {
+  return {
+    name,
+    model: name,
+    modified_at: new Date().toISOString(),
+    size: 0,
+    digest: "",
+    details: { family: provider.name },
+    provider: provider.name,
+    source,
+  };
+}
+
+/** 状态优先级：ok > degraded > unauthorized > unconfigured（用于聚合出整体状态） */
+const STATUS_RANK: Record<ModelProbeStatus, number> = {
+  ok: 4,
+  degraded: 3,
+  unauthorized: 2,
+  unconfigured: 1,
+};
 
 /**
- * 默认模型常量（历史遗留命名，已确认无活跃引用，不再导出）。
- * 简易重构后不再回退 ollama，此值仅作为 resolveProvider 内部
- * “未显式指定模型时的默认云端模型”兜底。
+ * 解析请求模型应走的 provider 与最终模型名。
+ * - 模型名归属：deepseek / zhipu / custom（支持 name:tag 归一，如 deepseek-local:latest）
+ * - 无法归属 → 返回 null，调用方需返回 invalid_model 而不是猜测某家 provider
  */
-const DEFAULT_OLLAMA_MODEL = "deepseek-v4-flash";
-
-/** 解析模型名对应的云端 provider（DeepSeek / 智谱 / 自定义） */
-function resolveCloud(model: string): { provider: LLMProvider; model: string } | null {
-  if (isDeepSeekModel(model)) {
-    return { provider: deepseekProvider, model };
-  }
-  if (isZhipuModel(model)) {
-    return { provider: zhipuProvider, model };
-  }
-  if (isCustomModel(model)) {
-    return { provider: customProvider, model };
+export function resolveProvider(model: string): {
+  provider: LLMProvider;
+  model: string;
+} | null {
+  const target = model.trim();
+  if (!target) return null;
+  for (const provider of PROVIDERS) {
+    if (provider.ownsModel(target)) return { provider, model: target };
   }
   return null;
 }
 
 /**
- * 解析请求模型应走的 provider 与最终模型名（简易重构版）。
- * 与 .env.example / AGENTS.md 一致：三选一（DeepSeek / 智谱 / 自定义 OpenAI 兼容），
- * 不检测本地 ollama、不自动回退。
- * - 云端模型名 → 对应云端 provider（key 缺失时 isAvailable()===false，
- *   由调用方检查并给出明确错误/401 提示）
- * - 未知模型名 → 以 deepseekProvider 占位（同样由调用方按 isAvailable 处理）
+ * 探测并聚合模型列表。
+ * @param force 为 true 时跳过缓存（前端手动刷新用）
  */
-export function resolveProvider(model: string): {
-  provider: LLMProvider;
-  model: string;
-} {
-  const cloud = resolveCloud(model);
-  if (cloud) return cloud;
-  return { provider: deepseekProvider, model: model || DEFAULT_OLLAMA_MODEL };
+export async function getModelList(force = false): Promise<ModelListResult> {
+  const now = Date.now();
+  if (!force && probeCache && now - probeCache.at < PROBE_CACHE_TTL_MS) {
+    return probeCache.value;
+  }
+
+  const probes = await Promise.all(
+    PROVIDERS.map(async (provider) => ({ provider, probe: await provider.probe() }))
+  );
+
+  const providers: ProviderStatus[] = probes.map(({ provider, probe }) => ({
+    name: provider.name,
+    displayName: provider.displayName,
+    status: probe.status,
+    source: probe.source,
+    count: probe.models.length,
+    reason: probe.reason,
+  }));
+
+  const models = probes
+    .flatMap(({ provider, probe }) =>
+      probe.models.map((name) => toProviderModel(provider, name, probe.source))
+    )
+    .filter((m) => m.name.length > 0);
+
+  // 整体状态取三家最优：只要有一家 ok 即整体可用；全部不可用才体现为最差状态
+  const status = providers.reduce<ModelProbeStatus>(
+    (best, p) => (STATUS_RANK[p.status] > STATUS_RANK[best] ? p.status : best),
+    "unconfigured"
+  );
+
+  // 仅在整体不可用时给出汇总提示；可用时细节由 providers[] 明细承载，
+  // 避免把「某家未配置」这类可选状态当成故障噪音推到前端
+  let message: string | undefined;
+  if (models.length === 0) {
+    const issues = probes.map(
+      ({ provider, probe }) => `${provider.displayName}：${probe.reason ?? probe.status}`
+    );
+    const allUnconfigured = providers.every((p) => p.status === "unconfigured");
+    message = allUnconfigured
+      ? "未配置任何可用模型。请复制 .env.example 为 .env.local，填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL 三者之一后重启服务。"
+      : `当前没有可请求的模型。${issues.join("；")}`;
+  }
+
+  const value: ModelListResult = {
+    models,
+    available: models.length > 0,
+    status,
+    providers,
+    message,
+  };
+  probeCache = { at: now, value };
+  return value;
 }
 
-/**
- * 拉取前端模型下拉列表（简易重构版）：聚合三个云端 provider 的模型。
- * - 配置了 key 的 provider 模型在前
- * - 未配置任何 key：返回 available=false 与明确的配置缺失提示（不再探测 ollama）
- */
-export async function getModelList(): Promise<{
-  models: ProviderModel[];
-  available: boolean;
-  message?: string;
-}> {
-  const candidates: Array<LLMProvider | null> = [
-    deepseekAvailable() ? deepseekProvider : null,
-    zhipuAvailable() ? zhipuProvider : null,
-    customAvailable() ? customProvider : null,
-  ];
-  const cloudProviders = candidates.filter((p): p is LLMProvider => p !== null);
-
-  const models = (
-    await Promise.all(cloudProviders.map((p) => p.listModels()))
-  ).flat();
-
-  if (models.length === 0) {
-    return {
-      models: [],
-      available: false,
-      message:
-        "未配置任何模型 API Key。请复制 .env.example 为 .env.local，并填写 DEEPSEEK_API_KEY / ZHIPU_API_KEY / CUSTOM_API_KEY 三者之一后再试。",
-    };
-  }
-  return { models, available: true };
+/** 清空探测缓存（provider 配置变更或手动刷新时调用） */
+export function clearModelListCache(): void {
+  probeCache = null;
 }
 
 /* =====================================================================
