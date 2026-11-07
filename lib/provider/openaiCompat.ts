@@ -147,12 +147,13 @@ export class OpenAICompatProvider implements LLMProvider {
     return Boolean(this.apiKey && this.baseUrl);
   }
 
-  /** 白名单兜底列表：环境变量配置模型优先（首项即默认选中），其后为内置默认模型 */
-  private fallbackModels(): string[] {
-    const names = [...this.defaultModels];
-    const env = this.envModel?.trim();
-    if (env) names.unshift(env);
-    return dedupe(names);
+  /**
+   * 内置白名单兜底列表（枚举失败时的降级来源）。
+   * 不并入 envModel：配置名可能是占位符或笔误，兜底阶段把它推成默认选中项，
+   * 等于让用户一点必然失败。custom 的白名单本身即配置模型名，不受此影响。
+   */
+  private whitelistModels(): string[] {
+    return dedupe(this.defaultModels);
   }
 
   private toProviderModel(name: string, source: ModelSource): ProviderModel {
@@ -188,7 +189,7 @@ export class OpenAICompatProvider implements LLMProvider {
     if (!this.probeEnabled) {
       return {
         status: "degraded",
-        models: this.fallbackModels(),
+        models: this.whitelistModels(),
         configuredModel,
         source: "fallback",
         reason: `${this.displayName} 未提供 /models 枚举端点，使用内置白名单`,
@@ -206,18 +207,20 @@ export class OpenAICompatProvider implements LLMProvider {
       });
 
       if (res.status === 401) {
+        // 判定口径：Key 填了就算已配置。Key 是否有效由真实调用暴露，
+        // 不在探测阶段把整家 Provider 从下拉里抹掉。
         return {
           status: "unauthorized",
-          models: [],
+          models: this.whitelistModels(),
           configuredModel,
-          source: "none",
-          reason: `${this.displayName} API Key 无效（HTTP 401）`,
+          source: "fallback",
+          reason: `${this.displayName} API Key 无效（HTTP 401），当前为内置白名单，调用会被上游拒绝`,
         };
       }
       if (res.status === 403) {
         return {
           status: "degraded",
-          models: this.fallbackModels(),
+          models: this.whitelistModels(),
           configuredModel,
           source: "fallback",
           reason: `${this.displayName} 的 Key 无 /models 读取权限（HTTP 403），使用内置白名单`,
@@ -226,7 +229,7 @@ export class OpenAICompatProvider implements LLMProvider {
       if (!res.ok) {
         return {
           status: "degraded",
-          models: this.fallbackModels(),
+          models: this.whitelistModels(),
           configuredModel,
           source: "fallback",
           reason: `${this.displayName} 模型枚举失败（HTTP ${res.status}）`,
@@ -237,7 +240,7 @@ export class OpenAICompatProvider implements LLMProvider {
       if (ids.length === 0) {
         return {
           status: "degraded",
-          models: this.fallbackModels(),
+          models: this.whitelistModels(),
           configuredModel,
           source: "fallback",
           reason: `${this.displayName} 模型枚举结果为空`,
@@ -273,7 +276,7 @@ export class OpenAICompatProvider implements LLMProvider {
       const timeout = controller.signal.aborted;
       return {
         status: "degraded",
-        models: this.fallbackModels(),
+        models: this.whitelistModels(),
         configuredModel,
         source: "fallback",
         reason: timeout
