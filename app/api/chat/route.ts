@@ -11,12 +11,13 @@
  *   event: done          data: {"model":"...","provider":"...","usedRounds":1,"finishReason":"stop"}
  *   event: error         data: {"code":"...","error":"..."}
  *
- * error.code 取值（前端据此区分提示口径）：
+ * error.code 取值（前端据此区分提示口径，error 事件必有 code）：
  *   no_model        未配置任何可用模型
  *   invalid_model   请求的模型名不属于任何已配置 Provider（不再静默回落）
  *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
  *   no_content      上传的附件全部提取失败，没有可发送的内容
- *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等）
+ *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等；loop 未标注 code 时也兜底为此值）
+ *   parse_error     工具调用解析兜底失败（loop 内标注，见 doc/tool-protocol.md §5.3）
  *
  * 诊断模式附件：请求体可带 attachments（结构见 lib/diagnose/types.ts），
  * 服务端用 assembleDiagnoseMessage 组装成单条 user 消息追加在 messages 末尾；
@@ -399,7 +400,8 @@ export async function POST(request: Request) {
             controller.enqueue(
               encoder.encode(
                 sse('error', {
-                  code: 'provider_error',
+                  // loop 已标注 code（parse_error/provider_error）则透传；未标注按模型请求失败兜底
+                  code: ev.code ?? 'provider_error',
                   error: explainProviderError(ev.message),
                   model,
                   provider: provider.name,
