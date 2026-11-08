@@ -25,5 +25,6 @@
     "**/.next": true,
     "**/*.onnx": true, // 忽略模型文件
     "**/*.wasm": true // 忽略 WebAssembly 文件
-  }
+  },
+  "cSpell.words": ["deepseek", "ollama"]
 }
