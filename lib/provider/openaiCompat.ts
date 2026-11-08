@@ -59,6 +59,12 @@ export interface OpenAICompatConfig {
   allowImages?: boolean;
   /** 是否支持 GET {baseUrl}/models 枚举（默认 false，仅官方提供该端点的子类开启） */
   probeEnabled?: boolean;
+  /**
+   * 聚焦清单模式（需与 probeEnabled 同时开启）：
+   * 在线枚举仅用于健康判定（ok / unauthorized / degraded），模型名始终取静态目录。
+   * 适用：端点提供 /models 但枚举清单不完整（如智谱免费款不在枚举结果中）。
+   */
+  probeHealthOnly?: boolean;
   /** 枚举超时（ms，默认 PROBE_TIMEOUT_CLOUD） */
   probeTimeoutMs?: number;
 }
@@ -131,6 +137,7 @@ export class OpenAICompatProvider implements LLMProvider {
   private readonly envModel?: string;
   private readonly allowImages: boolean;
   private readonly probeEnabled: boolean;
+  private readonly probeHealthOnly: boolean;
   private readonly probeTimeoutMs: number;
 
   constructor(config: OpenAICompatConfig) {
@@ -143,6 +150,7 @@ export class OpenAICompatProvider implements LLMProvider {
     this.allowImages = config.allowImages ?? true;
     this.acceptsImages = this.allowImages;
     this.probeEnabled = config.probeEnabled ?? false;
+    this.probeHealthOnly = config.probeHealthOnly ?? false;
     this.probeTimeoutMs = config.probeTimeoutMs ?? PROBE_TIMEOUT_CLOUD;
   }
 
@@ -197,6 +205,11 @@ export class OpenAICompatProvider implements LLMProvider {
         source: "fallback",
         reason: `${this.displayName} 未提供 /models 枚举端点，使用内置白名单`,
       };
+    }
+
+    // 聚焦清单模式：模型名以静态目录为准，枚举只回答「端点与 Key 是否健康」
+    if (this.probeHealthOnly) {
+      return this.probeCatalogHealth(configuredModel);
     }
 
     const controller = new AbortController();
@@ -285,6 +298,81 @@ export class OpenAICompatProvider implements LLMProvider {
         reason: timeout
           ? `${this.displayName} 模型枚举超时（>${this.probeTimeoutMs}ms）`
           : `${this.displayName} 模型枚举网络异常`,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * 聚焦清单模式的健康探测：在线枚举只判定鉴权与可达性，模型名一律取静态目录。
+   * 状态映射（401 / 403 / 网络异常等）与常规探测保持一致，避免两套口径。
+   */
+  private async probeCatalogHealth(configuredModel?: string): Promise<ModelProbe> {
+    const models = this.whitelistModels();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.probeTimeoutMs);
+    try {
+      const res = await fetch(`${this.baseUrl}/models`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      if (res.status === 401) {
+        return {
+          status: "unauthorized",
+          models,
+          configuredModel,
+          source: "fallback",
+          reason: `${this.displayName} API Key 无效（HTTP 401），当前为聚焦清单，调用会被上游拒绝`,
+        };
+      }
+      if (res.status === 403) {
+        return {
+          status: "degraded",
+          models,
+          configuredModel,
+          source: "fallback",
+          reason: `${this.displayName} 的 Key 无 /models 读取权限（HTTP 403），使用聚焦清单`,
+        };
+      }
+      if (!res.ok) {
+        return {
+          status: "degraded",
+          models,
+          configuredModel,
+          source: "fallback",
+          reason: `${this.displayName} 健康检查失败（HTTP ${res.status}），使用聚焦清单`,
+        };
+      }
+      const ids = parseModelIds(await res.json().catch(() => null));
+      if (ids.length === 0) {
+        return {
+          status: "degraded",
+          models,
+          configuredModel,
+          source: "fallback",
+          reason: `${this.displayName} 模型枚举结果为空，使用聚焦清单`,
+        };
+      }
+      return {
+        status: "ok",
+        models,
+        configuredModel,
+        source: "fallback",
+        reason: `${this.displayName} 在线校验通过，展示聚焦模型清单`,
+      };
+    } catch {
+      const timeout = controller.signal.aborted;
+      return {
+        status: "degraded",
+        models,
+        configuredModel,
+        source: "fallback",
+        reason: timeout
+          ? `${this.displayName} 健康检查超时（>${this.probeTimeoutMs}ms）`
+          : `${this.displayName} 健康检查网络异常，使用聚焦清单`,
       };
     } finally {
       clearTimeout(timer);
