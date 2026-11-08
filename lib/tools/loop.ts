@@ -6,8 +6,10 @@
  * 2. 调用 Provider 获取流，并通过 adapter.processStream 解析。
  * 3. 如果包含工具调用，执行工具并回填历史，开始下一轮。
  * 4. 如果包含 ask_user 工具，触发中断并退出。
- * 5. 达到最大轮数仍未结束，直接以 finishReason='max_rounds' 结束本轮
- *    （协议承诺的"追加提示 + 一次不带 tools 的收敛请求"尚未实现，见 doc/tool-protocol.md §8.3）。
+ * 5. 解析失败（parseError）时重试 1 次，仍失败把原始输出视为普通回答
+ *    （doc/tool-protocol.md §5.3）。
+ * 6. 达到最大轮数仍未结束：追加 system 提示后做一次不带 tools 的收敛请求，
+ *    finishReason 仍为 'max_rounds'（doc/tool-protocol.md §8.3）。
  */
 import type { LLMProvider, ProviderMessage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
@@ -72,6 +74,10 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
   let usedRounds = 0;
   let finishReason = 'stop';
+  // exhausted：while 因轮数耗尽退出（而非自然 stop）才触发收敛请求；
+  // 单独用标志而不是比较 usedRounds，否则最后一轮自然 stop 也会被误标为 max_rounds
+  let exhausted = false;
+  let parseRetried = false; // 解析失败重试全程最多 1 次
 
   while (usedRounds < maxRounds) {
     usedRounds++;
@@ -106,17 +112,35 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
     try {
       callsData = await processPromise;
     } catch (err) {
-      yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
+      yield {
+        type: 'error',
+        code: 'provider_error',
+        message: err instanceof Error ? err.message : String(err),
+      };
       return;
     }
 
     if (callsData.parseError) {
-      yield { type: 'error', message: callsData.parseError };
+      // §8.3 兜底：重试 1 次（不消耗轮数）；仍失败把原始输出视为普通回答。
+      // raw 为空（如 native 参数 JSON 损坏且无正文）则如实报 parse_error，避免静默空回复。
+      if (!parseRetried) {
+        parseRetried = true;
+        usedRounds--;
+        continue;
+      }
+      if (callsData.raw.trim()) {
+        yield { type: 'content', delta: callsData.raw };
+        finishReason = 'stop';
+        exhausted = false;
+        break;
+      }
+      yield { type: 'error', code: 'parse_error', message: callsData.parseError };
       return;
     }
 
     if (callsData.calls.length === 0) {
       finishReason = 'stop';
+      exhausted = false;
       break;
     }
 
@@ -154,10 +178,42 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
     // 将结果回填到历史
     adapter.appendResults(currentMessages, pendingCalls, results);
+    exhausted = true; // 本轮执行了工具，若循环条件不再满足则是轮数耗尽
   }
 
-  if (usedRounds >= maxRounds) {
+  if (exhausted) {
     finishReason = 'max_rounds';
+
+    // 收敛请求：追加 system 提示 + 不带 tools 的普通请求（doc/tool-protocol.md §8.3）
+    const convergeMessages: ProviderMessage[] = [
+      ...currentMessages,
+      {
+        role: 'system',
+        content: '工具调用轮数已达上限，请不要再调用任何工具，直接回答用户最新的问题。',
+      },
+    ];
+    const req = adapter.buildRequest(model, convergeMessages, []);
+    req.signal = signal;
+
+    try {
+      if (!provider.streamDetailed) {
+        throw new Error('当前 Provider 不支持流式输出，无法使用工具调用');
+      }
+      const stream = provider.streamDetailed(req);
+      // 收敛请求是纯文本补全：直接消费增量，不走适配器（无工具语义，忽略 toolCall 分片）
+      for await (const delta of stream) {
+        if (delta.reasoning) yield { type: 'reasoning', delta: delta.reasoning };
+        if (delta.content) yield { type: 'content', delta: delta.content };
+      }
+    } catch (err) {
+      yield {
+        type: 'error',
+        code: 'provider_error',
+        message: err instanceof Error ? err.message : String(err),
+      };
+      // 收敛请求失败与 §8.2 模型请求失败语义一致：只发 error，不开 done
+      return;
+    }
   }
 
   yield { type: 'done', usedRounds, finishReason };
