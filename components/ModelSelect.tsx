@@ -20,9 +20,12 @@ export interface ModelSelectProps {
   className?: string;
 }
 
-/** 仅文本能力的模型在下拉里标注，避免用户以为能发图 */
+/** 能力标注：纯文本模型避免用户误以为能发图；免费款标注便于开发测试时选零成本模型 */
 function optionLabel(model: ProviderModel): string {
-  return model.acceptsImages === false ? `${model.name}（仅文本）` : model.name;
+  const tags: string[] = [];
+  if (model.acceptsImages === false) tags.push('仅文本');
+  if (model.free) tags.push('免费');
+  return tags.length > 0 ? `${model.name}（${tags.join('，')}）` : model.name;
 }
 
 /**
