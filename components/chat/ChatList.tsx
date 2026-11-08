@@ -5,17 +5,8 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
-import type { ChatTextFile } from '@/lib/chat/messages';
-
-export interface ChatMsg {
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-  /** 用户随消息上传的图片 dataUrl */
-  images?: string[];
-  /** 用户随消息上传的纯文本文件 */
-  files?: ChatTextFile[];
-}
+import type { ChatMsg, ChatTextFile } from '@/lib/chat/messages';
+import ToolTrace from './ToolTrace';
 
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
   const [open, setOpen] = useState(false);
@@ -92,16 +83,34 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
           }
         >
           {m.role === 'assistant' && m.reasoning ? <ThinkingBlock reasoning={m.reasoning} /> : null}
+          {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 ? (
+            <ToolTrace calls={m.toolCalls} />
+          ) : null}
 
           {m.role === 'assistant' ? (
-            <div className="markdown-body text-sm">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex, rehypeRaw]}
+            m.awaitingQuestion ? (
+              // ask_user 追问卡片：问题已写入 content（供历史回放），此处替代正文渲染避免重复
+              <div
+                className="rounded-xl px-3 py-2 text-sm"
+                style={{ border: '1px solid var(--accent)', backgroundColor: 'var(--panel-soft)' }}
               >
-                {m.content || '…'}
-              </ReactMarkdown>
-            </div>
+                <p className="mb-1 text-xs font-medium" style={{ color: 'var(--accent)' }}>
+                  🤔 模型提问
+                </p>
+                <p className="whitespace-pre-wrap break-words" style={{ color: 'var(--text)' }}>
+                  {m.awaitingQuestion}
+                </p>
+              </div>
+            ) : (
+              <div className="markdown-body text-sm">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex, rehypeRaw]}
+                >
+                  {m.content || '…'}
+                </ReactMarkdown>
+              </div>
+            )
           ) : (
             <>
               {m.files && m.files.length > 0 ? (
