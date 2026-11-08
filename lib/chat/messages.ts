@@ -27,6 +27,34 @@ export interface ChatTextFile {
   text: string;
 }
 
+/** 前端展示用的一条工具调用（tool_call / tool_result SSE 事件的落地形态） */
+export interface ToolCallView {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  /** tool_result 到达后回填；缺省表示仍在执行 */
+  result?: { ok: boolean; summary: string; ms: number };
+}
+
+/** 前端聊天消息的统一形态（hooks/useChat 与 ChatList 共用，避免重复定义漂移） */
+export interface ChatMsg {
+  role: 'user' | 'assistant';
+  content: string;
+  reasoning?: string;
+  /** 用户随消息上传的图片 dataUrl */
+  images?: string[];
+  /** 用户随消息上传的纯文本文件 */
+  files?: ChatTextFile[];
+  /** assistant 消息：本轮工具调用轨迹 */
+  toolCalls?: ToolCallView[];
+  /**
+   * assistant 消息：ask_user 中断时的问题文本。
+   * 问题同时写入 content（下一轮历史回放模型才能看到问答上下文），
+   * 本字段供 UI 渲染提问卡片、替代正文避免重复。
+   */
+  awaitingQuestion?: string;
+}
+
 /** 请求体里与消息相关的字段 */
 export interface ChatRequestBody {
   model?: string;
