@@ -1,6 +1,6 @@
 # 诊断模式 · 文件接入契约
 
-> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-07
+> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-08
 > 对应代码：`lib/diagnose/`（types / detect / assemble / extract）、`app/diagnose/_components/UploadArea.tsx`、`app/api/chat/route.ts`（attachments 分支）
 
 本文件定义"用户上传错题文件 → 组装成模型消息 → 发出请求"这一段的数据契约。
@@ -98,7 +98,11 @@ interface DiagnoseAttachment {
 | 文本总预算 | 8000 字符 | 按参与文本投喂的文件数均分 |
 | 单文件下限 | 200 字符 | 均分后不足则抬到该值 |
 | 图片上限 | 4 张 | 超出部分降级为文字占位，并计入 warning |
-| 图片降级模式 | `multimodal` | Provider `acceptsImages === false` 时整体降为 `text-only` |
+| 图片降级模式 | `multimodal` | 所选模型不支持图片输入时整体降为 `text-only`。判定优先走 Provider 的 `modelAcceptsImages(model)`（同 Provider 下模型能力可能不同，如智谱按 `ZHIPU_CATALOG` 目录标注）；Provider 未实现该方法时回落 Provider 级 `acceptsImages` |
+
+聊天历史消息里的图片走同一能力口径：选中模型不支持图片时，历史消息的 `image_url` part
+同样降级为文字占位并留一行说明（`buildProviderMessages` 的 `allowImages` 选项），
+不会原样直传导致上游 400。
 
 截断与降级都要留痕（写入 `warnings`），不得静默丢弃。
 
@@ -126,6 +130,8 @@ interface DiagnoseAttachment {
 
 - `.doc` / `.docx` 解析（本轮明确报不支持）。
 - 扫描件 PDF 的 OCR（旧 `lib/ocr.ts` 已停用，未接入本链路）。
-- Provider 多模态能力的探测：目前依赖 `allowImages` 配置推导 `acceptsImages`，
-  没有按模型名探测真实能力。
+- 多模态能力按模型标注：智谱以 `ZHIPU_CATALOG` 元数据目录为唯一事实来源
+  （vision / free 字段），DeepSeek / Custom 仍为 Provider 级 `acceptsImages`；
+  未做逐模型的在线能力探测。智谱的 `/models` 枚举端点仅用于健康判定
+  （其清单不含免费款，不能作为展示来源）。
 - 前端未做图片缩略图预览（只显示文件名与状态）。
