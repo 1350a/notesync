@@ -133,6 +133,10 @@ export interface ProviderModel {
   provider?: ProviderName;
   /** remote=在线枚举得到的真实模型名，fallback=内置白名单兜底 */
   source?: ModelSource;
+  /** 该 Provider 是否接受 image_url 多模态内容（前端据此提示图片是否会被降级为文字占位） */
+  acceptsImages?: boolean;
+  /** 该模型是否免费款（前端下拉标注用，如智谱 glm-4.7-flash）；缺省视为非免费 */
+  free?: boolean;
 }
 
 /** 模型名来源：在线枚举 / 内置白名单 / 不可用 */
@@ -192,4 +196,17 @@ export interface LLMProvider {
   ownsModel(model: string): boolean;
   /** 当前 Provider 是否可用 */
   isAvailable(): boolean;
+  /**
+   * 是否接受多模态 image_url 内容（Provider 级兜底口径）。
+   * 不实现的 Provider 视为未知（上层按不支持处理，图片降级为文字占位）。
+   */
+  readonly acceptsImages?: boolean;
+  /**
+   * 按模型名判断是否接受 image_url 内容。同 Provider 下模型能力可能不同
+   * （如智谱 glm-5.3 纯文本、glm-5.3-flash 多模态），实现本方法后优先生效；
+   * 未实现时上层回落 Provider 级 acceptsImages。
+   */
+  modelAcceptsImages?(model: string): boolean;
+  /** 按模型名判断是否免费款（前端下拉标注用）；未实现时视为非免费 */
+  isFreeModel?(model: string): boolean;
 }

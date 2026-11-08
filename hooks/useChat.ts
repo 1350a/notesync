@@ -1,11 +1,12 @@
-import { getEffectiveSettings } from '@/lib/config';
 import { useCallback, useRef, useState } from 'react';
+import type { ChatTextFile } from '@/lib/chat/messages';
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
   images?: string[]; // Base64 图片数组
+  files?: ChatTextFile[]; // 随消息上传的纯文本文件
 }
 
 function parseSseEvent(chunk: string) {
@@ -37,20 +38,28 @@ export function useChat(selectedModel: string) {
     setLoading(false);
   }, []);
 
+  /** 新建对话：中断进行中的生成并清空消息 */
+  const clearMessages = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setMessages([]);
+  }, []);
+
   const sendMessage = useCallback(
-    async (text: string, images: string[]) => {
-      if ((!text.trim() && images.length === 0) || loading) return;
+    async (text: string, images: string[], files: ChatTextFile[] = []) => {
+      if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
       abortControllerRef.current = new AbortController();
 
-      const userMsg: ChatMsg = { role: 'user', content: text, images };
+      const userMsg: ChatMsg = { role: 'user', content: text, images, files };
       const history = [...messages, userMsg];
       setMessages(history);
       setLoading(true);
 
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
-
-      const currentConfig = getEffectiveSettings();
 
       try {
         const res = await fetch('/api/chat', {
@@ -58,13 +67,13 @@ export function useChat(selectedModel: string) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: selectedModel,
-            messages: history,
-            config: {
-              provider: currentConfig.provider,
-              apiKey: currentConfig.apiKey,
-              baseUrl: currentConfig.baseUrl,
-              ocrMode: currentConfig.ocrMode,
-            },
+            // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）
+            messages: history.map((m) => ({
+              role: m.role,
+              content: m.content,
+              images: m.images,
+              files: m.files,
+            })),
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -138,5 +147,5 @@ export function useChat(selectedModel: string) {
     [messages, loading, selectedModel]
   );
 
-  return { messages, loading, sendMessage, stopGeneration };
+  return { messages, loading, sendMessage, stopGeneration, clearMessages };
 }

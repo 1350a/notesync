@@ -65,8 +65,10 @@ export default function AppSidebar() {
             </svg>
             <input
               type="text"
-              placeholder="搜索..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm bg-background border border-border rounded-lg outline-none focus:border-ring focus:ring-1 focus:ring-ring/30 transition-all placeholder:text-muted-foreground"
+              disabled
+              placeholder="搜索（待接入：暂无历史会话数据）"
+              title="搜索尚未接入：会话不做本地持久化，暂无检索数据源"
+              className="w-full pl-9 pr-3 py-1.5 text-sm bg-muted/40 border border-border rounded-lg outline-none cursor-not-allowed placeholder:text-muted-foreground/70"
             />
           </div>
 

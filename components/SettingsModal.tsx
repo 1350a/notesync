@@ -1,7 +1,15 @@
 'use client';
 
-import { AppSettings, getEffectiveSettings } from '@/lib/config';
-import { useState } from 'react';
+import { useModels } from '@/hooks/useModels';
+import type { ModelProbeStatus } from '@/lib/provider/types';
+
+/** Provider 状态的用户可读文案（不暴露 baseUrl / key 等敏感信息） */
+const STATUS_TEXT: Record<ModelProbeStatus, { label: string; tone: string }> = {
+  ok: { label: '正常', tone: 'bg-green-100 text-green-700' },
+  degraded: { label: '降级可用', tone: 'bg-amber-100 text-amber-700' },
+  unauthorized: { label: '鉴权失败', tone: 'bg-red-100 text-red-700' },
+  unconfigured: { label: '未配置', tone: 'bg-slate-100 text-slate-500' },
+};
 
 export default function SettingsModal({
   isOpen,
@@ -10,30 +18,8 @@ export default function SettingsModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  // 直接用初始化函数获取配置，完美避开 useEffect 的同步问题
-  const [settings, setSettings] = useState<AppSettings>(() => getEffectiveSettings());
-
-  const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const p = e.target.value as AppSettings['provider'];
-    let baseUrl = '';
-    let modelName = '';
-
-    if (p === 'deepseek') {
-      baseUrl = 'https://api.deepseek.com';
-      modelName = 'deepseek-v4-flash';
-    } else if (p === 'zhipu') {
-      baseUrl = 'https://open.bigmodel.cn/api/paas/v4';
-      modelName = 'glm-5.3';
-    }
-
-    setSettings((prev) => ({ ...prev, provider: p, baseUrl, modelName }));
-  };
-
-  const handleSave = () => {
-    localStorage.setItem('notesync_config', JSON.stringify(settings));
-    alert('配置已保存！');
-    onClose(); // 保存后关闭
-  };
+  // 配置一律由服务端 .env.local 决定，面板只展示 /api/models 探测到的真实状态
+  const { models, providers, status, loading, message, error, reload } = useModels();
 
   if (!isOpen) return null;
 
@@ -41,7 +27,7 @@ export default function SettingsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-lg p-6 bg-white rounded-2xl shadow-xl text-slate-800">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold">系统设置</h2>
+          <h2 className="text-xl font-bold">模型服务状态</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-2">
             ✕
           </button>
@@ -49,83 +35,78 @@ export default function SettingsModal({
 
         <div className="space-y-5">
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-slate-600 border-b pb-2">模型服务配置</h3>
+            <h3 className="text-sm font-semibold text-slate-600 border-b pb-2">
+              服务端 Provider 探测结果
+            </h3>
 
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">服务商</label>
-              <select
-                value={settings.provider}
-                onChange={handleProviderChange}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="deepseek">DeepSeek (官方)</option>
-                <option value="zhipu">智谱 AI (BigModel)</option>
-                <option value="custom">自定义 (OpenAI 兼容)</option>
-              </select>
-            </div>
+            {providers.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {loading ? '正在探测…' : (error ?? message ?? '未探测到任何 Provider')}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {providers.map((p) => {
+                  const tone = STATUS_TEXT[p.status] ?? STATUS_TEXT.unconfigured;
+                  return (
+                    <li
+                      key={p.name}
+                      className="flex items-start gap-3 rounded-lg border border-slate-200 px-3 py-2"
+                    >
+                      <span className="flex-1 truncate text-sm text-slate-700">
+                        {p.displayName}
+                        <span className="ml-2 text-xs text-slate-400">
+                          {p.count > 0 ? `${p.count} 个模型` : '无模型'}
+                          {p.source === 'fallback' ? ' · 白名单兜底' : ''}
+                        </span>
+                      </span>
+                      <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs ${tone.tone}`}>
+                        {tone.label}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
 
-            <div>
-              <label className="block text-sm text-slate-600 mb-1">
-                API Key (留空则使用系统默认)
-              </label>
-              <input
-                type="password"
-                value={settings.apiKey}
-                onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
-                placeholder="sk-..."
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
+            {providers.some((p) => p.reason) && (
+              <ul className="space-y-1 text-xs text-slate-500">
+                {providers
+                  .filter((p) => p.reason)
+                  .map((p) => (
+                    <li key={`${p.name}-reason`}>
+                      {p.displayName}：{p.reason}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">Base URL</label>
-                <input
-                  type="text"
-                  value={settings.baseUrl}
-                  onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-slate-600 mb-1">模型名称</label>
-                <input
-                  type="text"
-                  value={settings.modelName}
-                  onChange={(e) => setSettings({ ...settings, modelName: e.target.value })}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-slate-600 mb-1 mt-2">图片解析方式</label>
-              <select
-                value={settings.ocrMode || 'local'}
-                onChange={(e) =>
-                  setSettings({ ...settings, ocrMode: e.target.value as 'local' | 'cloud' })
-                }
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="local">本地 OCR (纯文本模型推荐)</option>
-                <option value="cloud">云端多模态 (图片直接发给模型)</option>
-              </select>
-            </div>
+          <div className="space-y-2 rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">配置方式</p>
+            <p>
+              API Key / Base URL 由服务端 .env.local 管理（DEEPSEEK_API_KEY、ZHIPU_API_KEY、
+              CUSTOM_API_KEY + CUSTOM_BASE_URL），修改后需重启服务并点击下方“重新检测”。
+            </p>
+            <p>
+              图片发送方式由模型能力自动决定：模型支持多模态时图片直传，不支持时降级为文字占位。
+            </p>
+            <p>当前可选模型 {models.length} 个，整体状态：{STATUS_TEXT[status]?.label ?? status}。</p>
           </div>
         </div>
 
         <div className="mt-8 flex justify-end gap-3">
           <button
-            onClick={onClose}
-            className="px-5 py-2 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200"
+            onClick={() => void reload()}
+            disabled={loading}
+            className="px-5 py-2 text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-60"
           >
-            取消
+            {loading ? '探测中…' : '重新检测'}
           </button>
           <button
-            onClick={handleSave}
+            onClick={onClose}
             className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
-            保存配置
+            关闭
           </button>
         </div>
       </div>

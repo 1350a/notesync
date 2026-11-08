@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "smoke:tools": "node scripts/tool-smoke.ts",
-    "smoke:adapters": "node scripts/tool-adapter-smoke.ts"
+    "smoke:tools": "node --experimental-strip-types scripts/tool-smoke.ts",
+    "smoke:adapters": "node --experimental-strip-types scripts/tool-adapter-smoke.ts",
+    "smoke:files": "node --experimental-strip-types scripts/file-smoke.ts",
+    "smoke:chat": "node --experimental-strip-types scripts/chat-image-smoke.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

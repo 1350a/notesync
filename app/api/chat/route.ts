@@ -15,11 +15,26 @@
  *   no_model        未配置任何可用模型
  *   invalid_model   请求的模型名不属于任何已配置 Provider（不再静默回落）
  *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
+ *   no_content      上传的附件全部提取失败，没有可发送的内容
  *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等）
+ *
+ * 诊断模式附件：请求体可带 attachments（结构见 lib/diagnose/types.ts），
+ * 服务端用 assembleDiagnoseMessage 组装成单条 user 消息追加在 messages 末尾；
+ * 所选模型不支持图片（按模型判定）时，附件与聊天历史里的图片一并自动降级为文字占位，不做静默丢弃。
+ * MOCK_MODEL=1 时不调用任何上游，只回显组装结构，用于零 token 验证发送数据。
  *
  * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
  * 使用适配器屏蔽 native 与 text 模式的差异；任何异常均以 error 事件回传由前端展示。
  */
+import {
+  buildProviderMessages,
+  explainProviderError,
+  MAX_FILE_MESSAGES,
+  MAX_IMAGE_MESSAGES,
+  type ChatRequestBody,
+} from '@/lib/chat/messages';
+import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
+import type { DiagnoseAttachment, ReviseCategory } from '@/lib/diagnose/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
 import { createAdapter } from '@/lib/tools/adapters';
@@ -46,7 +61,7 @@ const SSE_HEADERS = {
 
 /** 直接返回单条 error 事件的流（用于请求前校验失败） */
 function errorStream(data: {
-  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model";
+  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model" | "no_content";
   error: string;
   model?: string;
   provider?: string;
@@ -55,25 +70,185 @@ function errorStream(data: {
   return new Response(sse("error", data), { headers: SSE_HEADERS });
 }
 
-export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    model?: string;
-    messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
-    content?: string;
-  };
+const CATEGORIES = new Set<ReviseCategory>(["origin", "wrong", "correct", "analysis"]);
 
-  // 组装发送给模型的消息：优先用显式 messages，否则用 content
-  let providerMessages: ProviderMessage[];
-  if (Array.isArray(body.messages) && body.messages.length > 0) {
-    providerMessages = body.messages.map((m) => ({
-      role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content || '',
-    }));
-    if (body.content) {
-      providerMessages.push({ role: 'user', content: body.content });
+/** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
+const MAX_DATA_URL = 12 * 1024 * 1024;
+
+/**
+ * 校验前端上传的 attachments。
+ * 非法项一律丢弃（附 console.warn 便于排查），不因一条脏数据让整批诊断失败。
+ */
+function parseAttachments(raw: unknown): DiagnoseAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DiagnoseAttachment[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const category = record.category;
+    if (!name || typeof category !== "string" || !CATEGORIES.has(category as ReviseCategory)) {
+      console.warn("[diagnose] 丢弃非法附件：缺少文件名或分类不属于四类标签");
+      continue;
     }
-  } else {
-    providerMessages = [{ role: 'user', content: body.content || '' }];
+
+    const rawUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
+    const dataUrl = rawUrl.startsWith("data:image/") ? rawUrl : undefined;
+    if (rawUrl && !dataUrl) {
+      console.warn(`[diagnose] ${name}：dataUrl 不是图片数据，已忽略`);
+    }
+    if (dataUrl && dataUrl.length > MAX_DATA_URL) {
+      console.warn(`[diagnose] ${name}：图片超过 ${MAX_DATA_URL} 字符上限，已忽略`);
+      continue;
+    }
+
+    const text = typeof record.text === "string" ? record.text : undefined;
+    if (!dataUrl && !text?.trim()) {
+      console.warn(`[diagnose] ${name}：既无图片也无文字内容，已忽略`);
+      continue;
+    }
+
+    out.push({
+      name,
+      category: category as ReviseCategory,
+      dataUrl,
+      text,
+      warning: typeof record.warning === "string" ? record.warning : undefined,
+    });
+  }
+
+  return out;
+}
+
+/** 把组装结果渲染成可读摘要（MOCK 专用，不回显 base64 本体） */
+function summarizeForMock(
+  result: ReturnType<typeof assembleDiagnoseMessage>
+): string {
+  const content = result.message?.content;
+  const parts = Array.isArray(content) ? content : [];
+  const rows = parts.map((part, index) => {
+    if (part.type === "text") {
+      const preview = part.text.replace(/\s+/g, " ").slice(0, 48);
+      return `| ${index + 1} | text | ${part.text.length} | ${preview} |`;
+    }
+    const url = part.image_url.url;
+    const head = url.slice(0, 24);
+    return `| ${index + 1} | image_url | ${url.length} | ${head}… |`;
+  });
+
+  const lines = [
+    "> MOCK 模式：未调用任何模型，以下为实际组装出来的发送结构。",
+    "",
+    `- 消息条数：1（role=user）`,
+    `- part 数：${parts.length}（图片 ${result.stats.images} / 文本 ${result.stats.texts}）`,
+    `- 文本字符数：${result.stats.chars}`,
+    "",
+    "| # | 类型 | 长度 | 预览 |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+  ];
+
+  if (result.warnings.length > 0) {
+    lines.push("", "**降级与告警**", ...result.warnings.map((w) => `- ${w}`));
+  }
+  return lines.join("\n");
+}
+
+/** MOCK 模式下的聊天消息摘要：只回显每条消息的内容形态，不回显 base64 本体 */
+function summarizeChatMessages(messages: ProviderMessage[]): string {
+  const rows = messages.map((m, index) => {
+    if (typeof m.content === 'string') {
+      const preview = m.content.replace(/\s+/g, ' ').slice(0, 48);
+      return `| ${index + 1} | ${m.role} | text | ${m.content.length} | ${preview} |`;
+    }
+    const images = m.content.filter((part) => part.type === 'image_url').length;
+    const texts = m.content.length - images;
+    const preview = m.content
+      .filter((part) => part.type === 'text')
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 32);
+    return `| ${index + 1} | ${m.role} | 多模态（图片 ${images} / 文本 ${texts}） | - | ${preview} |`;
+  });
+  return [
+    '> MOCK 模式：未调用任何模型，以下为 messages 实际组装结构。',
+    '',
+    '| # | 角色 | 内容形态 | 字符数 | 预览 |',
+    '| --- | --- | --- | --- | --- |',
+    ...rows,
+  ].join('\n');
+}
+
+/** MOCK 响应流：不解析模型，直接回显组装摘要 */
+function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): Response {
+  const assembled = assembleDiagnoseMessage(attachments, {
+    imageMode: process.env.MOCK_IMAGE_MODE === "text-only" ? "text-only" : "multimodal",
+  });
+  const { messages: chatMessages } = buildProviderMessages(body);
+  const hasChatContent = chatMessages.some((m) =>
+    typeof m.content === 'string' ? m.content.trim().length > 0 : m.content.length > 0
+  );
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // 纯聊天请求（无诊断附件）：回显 messages 组装结构，便于零 token 校验图片是否真的进了请求
+      if (attachments.length === 0) {
+        if (!hasChatContent) {
+          controller.enqueue(
+            encoder.encode(sse('error', { code: 'no_content', error: '请求里没有可发送的内容。' }))
+          );
+          controller.close();
+          return;
+        }
+        controller.enqueue(encoder.encode(sse('content', { delta: summarizeChatMessages(chatMessages) })));
+        controller.enqueue(
+          encoder.encode(
+            sse('done', { model: 'mock', provider: 'mock', usedRounds: 0, finishReason: 'mock' })
+          )
+        );
+        controller.close();
+        return;
+      }
+      if (!assembled.message) {
+        controller.enqueue(
+          encoder.encode(
+            sse("error", {
+              code: "no_content",
+              error: "上传的文件未提取到可用内容，请检查后重新上传。",
+            })
+          )
+        );
+        controller.close();
+        return;
+      }
+      controller.enqueue(encoder.encode(sse("content", { delta: summarizeForMock(assembled) })));
+      controller.enqueue(
+        encoder.encode(
+          sse("done", {
+            model: "mock",
+            provider: "mock",
+            usedRounds: 0,
+            finishReason: "mock",
+          })
+        )
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream, { headers: SSE_HEADERS });
+}
+
+export async function POST(request: Request) {
+  // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）
+  // 与 files（聊天界面上传的纯文本文件，按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
+  const body = (await request.json()) as ChatRequestBody;
+
+  // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
+  if (process.env.MOCK_MODEL === '1') {
+    return mockStream(parseAttachments(body.attachments), body);
   }
 
   const list = await getModelList();
@@ -112,6 +287,48 @@ export async function POST(request: Request) {
       model,
       provider: provider.name,
     });
+  }
+
+  // 图片能力按所选模型判定（同 Provider 下模型能力可能不同，如智谱 glm-5.3 纯文本 / glm-5.3-flash 多模态）；
+  // Provider 未实现按模型判定时回落 Provider 级 acceptsImages
+  const allowImages = provider.modelAcceptsImages
+    ? provider.modelAcceptsImages(model)
+    : provider.acceptsImages !== false;
+
+  // 组装发送给模型的消息：优先用显式 messages，否则用 content。
+  // 纯文本模型时历史消息里的图片降级为文字占位，避免直传 image_url 被上游 400
+  const { messages: builtMessages, droppedImageMessages, droppedFileMessages } =
+    buildProviderMessages(body, { allowImages });
+  if (droppedImageMessages > 0) {
+    console.warn(
+      `[chat] ${droppedImageMessages} 条较早消息的图片未随请求发送（超出 ${MAX_IMAGE_MESSAGES} 条上限，仅发送文字）`
+    );
+  }
+  if (droppedFileMessages > 0) {
+    console.warn(
+      `[chat] ${droppedFileMessages} 条较早消息的文本文件未随请求发送（超出 ${MAX_FILE_MESSAGES} 条上限）`
+    );
+  }
+  let providerMessages = builtMessages;
+
+  // 诊断模式附件：组装成一条 user 消息追加在历史末尾；模型不吃图片时自动降级为文字占位
+  const attachments = parseAttachments(body.attachments);
+  if (attachments.length > 0) {
+    const assembled = assembleDiagnoseMessage(attachments, {
+      imageMode: allowImages ? 'multimodal' : 'text-only',
+    });
+    if (!assembled.message) {
+      return errorStream({
+        code: 'no_content',
+        error: '上传的文件未提取到可用内容，请检查后重新上传。',
+        model,
+        provider: provider.name,
+      });
+    }
+    providerMessages.push(assembled.message);
+    for (const warning of assembled.warnings) {
+      console.warn('[diagnose]', warning);
+    }
   }
 
   // 工具配置判断
@@ -180,7 +397,14 @@ export async function POST(request: Request) {
             );
           } else if (ev.type === 'error') {
             controller.enqueue(
-              encoder.encode(sse('error', { error: ev.message, model, provider: provider.name }))
+              encoder.encode(
+                sse('error', {
+                  code: 'provider_error',
+                  error: explainProviderError(ev.message),
+                  model,
+                  provider: provider.name,
+                })
+              )
             );
           }
         }
@@ -189,7 +413,9 @@ export async function POST(request: Request) {
           encoder.encode(
             sse("error", {
               code: "provider_error",
-              error: err instanceof Error ? err.message : "模型请求失败",
+              error: explainProviderError(
+                err instanceof Error ? err.message : "模型请求失败"
+              ),
               model,
               provider: provider.name,
             })

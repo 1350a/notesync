@@ -1,7 +1,9 @@
 # 工具调用（Tool Calling）协议
 
-> 状态：P1（框架骨架）｜最后更新：2026-11-07
-> 对应代码：`lib/tools/`、`lib/provider/types.ts`（仅类型扩展）、`app/api/chat/route.ts`（P4 接线）
+> 状态：P4（服务端接线完成，前端消费待接）｜最后更新：2026-11-07
+> 对应代码：`lib/tools/`（含 `adapters/`）、`lib/provider/types.ts`（仅类型扩展）、`app/api/chat/route.ts`（P4 接线）
+>
+> 2026-11-07 已按已合入实现（P1–P4 全部落地）逐条校准本文件。校准原则：文档向实现对齐；实现尚未兑现的协议承诺**不删除**，统一收敛到 §8「待实现」与 §9，避免文档声称不存在的能力。
 
 本文件是工具调用的**唯一事实来源**。修改协议必须先改本文件，再改代码（见 `AGENTS.md` §9）。
 
@@ -31,7 +33,7 @@ interface ToolDefinition {
   name: string; // 唯一标识，蛇形命名
   description: string; // 给模型看的自然语言描述
   inputSchema: JSONSchemaObject; // JSON Schema 子集
-  enabled?: boolean; // 预留：工具级开关，P1 恒 true
+  enabled?: boolean; // 工具级开关，缺省 true；false 时 getEnabledTools() 过滤掉
 }
 ```
 
@@ -71,6 +73,8 @@ type ToolHandlerReturn =
 }
 ```
 
+同时设置 `CompleteOptions.toolChoice = "auto"`（存在已启用工具时）。这是**显式**声明的，不依赖 provider 默认值。
+
 ### 4.2 响应
 
 非流式：`message.tool_calls[]`，每项含 `id` / `type:"function"` / `function.name` / `function.arguments`（**JSON 字符串**）。
@@ -102,7 +106,8 @@ interface ExtractedToolCall {
 ```
 ````
 
-- 一次只能调用一个工具（P1 先做单工具；多工具解析器预留）。
+- native 模式：模型可在一条响应中返回**多个** `tool_calls`，`loop` 按数组顺序逐个执行。
+- text 模式：一次只能调用一个工具（单围栏解析，多工具解析器预留）。
 - 不需要调用工具时，正常用自然语言回答。
 - 工具结果回填后，模型会收到一条 `[工具结果] {...}` 的 user 消息。
 
@@ -114,7 +119,10 @@ interface ExtractedToolCall {
 2. buffer 模式结束时：尝试解析围栏内 JSON。
    - 成功 → 产出 `tool_call` 事件，本轮不 yield content。
    - 失败 → 把 buffer 整体 yield 为 content（误判兜底）。
-3. 解析失败时**重试一次**：追加 system 消息要求严格按格式输出；再失败则视为普通回答。
+3. 解析失败时**当前实现不重试**（与 P1 原设计不一致，已知缺陷）：
+   - `TextAdapter` 把 buffer 整体当作正文回吐，同时返回 `parseError`；
+   - `loop` 检测到 `parseError` 后立即发 `error` 事件并结束本轮。
+   - 结果是"正文已吐出 + 又发 error"并存，前端会看到重复表达且本轮被中断。修正方案见 §8「待实现」，修正前不要在外层依赖"失败即普通回答"的兜底假设。
 
 ### 5.4 解析器容忍度（宽松）
 
@@ -179,37 +187,73 @@ type ToolInvocation =
 
 ## 7. SSE 事件扩展（`/api/chat`，P4 接线）
 
-在现有 `reasoning` / `content` / `done` / `error` 基础上新增：
+在现有 `reasoning` / `content` / `done` / `error` 基础上新增三个事件。**以下字段与 `app/api/chat/route.ts` 的实际下发完全一致**（P4 校准：早期草案中的 `index` 字段并不存在，`tool_result` 也不携带 `name`，前端不要依赖）。
 
 ```
-event: tool_call data: {"index":0,"id":"call_x","name":"ask_user","arguments":{"question":"..."}}
-event: tool_result data: {"index":0,"id":"call_x","name":"calculator","ok":true,"summary":"= 42","ms":12}
+event: reasoning    data: {"delta":"思考过程增量"}
+event: content      data: {"delta":"回复内容增量"}
+event: tool_call    data: {"id":"call_x","name":"ask_user","arguments":{"question":"..."}}
+event: tool_result  data: {"id":"call_x","ok":true,"summary":"= 42","ms":12}
 event: awaiting_user data: {"question":"你是哪一步不会？","toolCallId":"call_x"}
+event: done         data: {"model":"deepseek-chat","provider":"deepseek","usedRounds":1,"finishReason":"stop"}
+event: error        data: {"code":"provider_error","error":"...","model":"...","provider":"..."}
 ```
 
-- `done` 事件追加 `usedRounds: number` 与 `finishReason: string`。
+| 事件            | 字段                                              | 说明                                                       |
+| --------------- | ------------------------------------------------- | ---------------------------------------------------------- |
+| `tool_call`     | `id` / `name` / `arguments`（已解析对象）         | 顺序与模型返回一致；native 多调用时逐条下发                |
+| `tool_result`   | `id` / `ok` / `summary` / `ms`                    | `summary` 由 handler 提供，缺省为 JSON 前 200 字符         |
+| `awaiting_user` | `question` / `toolCallId`                         | 发出后**必须紧跟 `done`**，本轮 SSE 结束                   |
+| `done`          | `model` / `provider` / `usedRounds` / `finishReason` | `finishReason` ∈ `stop` / `awaiting_user` / `max_rounds` |
+| `error`         | `code`? / `error` / `model`? / `provider`? / `available`? | 见 §8；`code` 存在缺省情况                                  |
+
 - 新增事件对旧前端是**未知事件，会被忽略**，向后兼容。
-- `awaiting_user` 发出后必须紧跟 `done`，本轮 SSE 结束。
 
 ## 8. 错误语义
 
+### 8.1 error.code 取值
+
+`code` 由路由层在**请求前校验**与**未捕获异常**两处产生：
+
+| code             | 触发条件                                         | 附加字段        |
+| ---------------- | ------------------------------------------------ | --------------- |
+| `no_model`       | 未配置任何可用模型                               | —               |
+| `invalid_model`  | 请求的模型名不属于任何已配置 Provider（不静默回落） | `available[]`   |
+| `unconfigured`   | 归属 Provider 的 API_KEY / BASE_URL 缺失         | `model` / `provider` |
+| `provider_error` | 上游错误（401、模型不存在、网络异常等，含 catch 兜底） | `model` / `provider` |
+
+**已知缺口**：`loop` 内部产生的 `error` 事件（模型请求抛错、`parseError`）经路由层转发时**只带 `error` / `model` / `provider`，不带 `code`**。前端不得假设 `code` 必然存在，需对 `undefined` 有兜底文案。补齐方案见 §8.3。
+
+### 8.2 执行期错误
+
 - **工具执行失败**（抛错、超时、参数校验失败）：转成 `{ kind: "result"; ok: false; error }`，作为 `role:"tool"` 消息回填，**不中断 loop**。模型可自行决定换工具或直接回答。
-- **模型请求失败**（HTTP 4xx/5xx、网络错误）：`error` 事件，结束本轮。与现有 `/api/chat` 行为一致。
-- **达到 `maxRounds`（默认 3）仍未收敛**：追加一条 system 提示"请直接回答"后做最后一次不带 tools 的请求，强制收敛。
-- **text 模式解析失败重试 1 次仍失败**：视为普通回答，退出 loop。
+- **模型请求失败**（HTTP 4xx/5xx、网络错误）：`error` 事件，结束本轮（不开 `done`）。
 
-## 9. 预留扩展点（P1 只预留，不实现）
+### 8.3 待实现（实现未达到 P1 承诺，勿按此实现前端逻辑）
 
-| 扩展                  | 预留位置                                                                       | 实现代价         |
-| --------------------- | ------------------------------------------------------------------------------ | ---------------- |
-| 多工具并行调用        | `ExtractedToolCalls.calls[]` 已是数组；`loop` 里 `for` 换 `Promise.allSettled` | 小               |
-| 工具级开关            | `ToolDefinition.enabled`                                                       | 小               |
-| 外部 MCP server       | `registry.ts` 的 `registerTool` 入口；`render.ts` 的 `renderForNative`         | 中（换数据源）   |
-| 工具选择策略          | `CompleteOptions.toolChoice`                                                   | 小               |
-| 结构化流式 tool_calls | `StreamDelta.toolCall`                                                         | 已在 P1 类型预留 |
+| 项                         | P1 承诺                                                       | 当前实现                                                       |
+| -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `maxRounds` 强制收敛       | 达到上限后追加 system 提示"请直接回答"，再做一次**不带 tools** 的请求 | 直接结束本轮，`finishReason = "max_rounds"`；无追加提示、无收敛请求 |
+| text 模式解析失败兜底      | 重试 1 次；仍失败则视为普通回答                                | 不重试；buffer 已作为正文吐出，同时发 `error` 并结束（正文与错误并存） |
+| `error.code` 覆盖 loop 内部 | 全部 error 事件带 `code`                                      | loop 内部错误无 `code`                                          |
+
+优先级：`parseError` 兜底 > `maxRounds` 收敛 > `code` 补齐。三项均属 P0–P1 遗留，不影响当前 native 主路径。
+
+## 9. 扩展点与实现状态
+
+| 扩展                  | 现状                                                                        | 状态         |
+| --------------------- | --------------------------------------------------------------------------- | ------------ |
+| 多工具调用（顺序）    | native 已支持一条响应多个 `tool_calls`，`loop` 按序串行执行                  | 已实现       |
+| 多工具并行调用        | `loop` 里 `for` 换 `Promise.allSettled` 即可                                | 未实现（小） |
+| 工具级开关            | `getEnabledTools()` 按 `enabled !== false` 过滤                             | 已实现       |
+| 工具总开关            | 环境变量 `TOOLS_ENABLED=false` 时传空工具集                                 | 已实现       |
+| 工具选择策略          | native 请求显式设置 `toolChoice: "auto"`                                    | 已实现       |
+| 外部 MCP server       | `registry.ts` 的 `registerTool` 入口；`render.ts` 的 `renderForNative`      | 未实现（中） |
+| 结构化流式 tool_calls | `StreamDelta.toolCall` + native 适配器按 `index` 合并                       | 已实现       |
 
 ## 10. 变更记录
 
 | 日期       | 阶段 | 说明                                            |
 | ---------- | ---- | ----------------------------------------------- |
 | 2026-11-07 | P1   | 初版：双模式、`ask_user` 中断语义、SSE 事件定义 |
+| 2026-11-07 | P4   | 按已合入实现校准：删除不存在的 `index` 字段、`tool_result` 去掉 `name`、`done` 补 `model`/`provider`、新增 §8.1 `error.code` 四态与 §8.3 待实现清单；§9 改为「扩展点与实现状态」 |
