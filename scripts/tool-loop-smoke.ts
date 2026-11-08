@@ -20,7 +20,7 @@ import { TextAdapter } from '../lib/tools/adapters/text.ts';
 import { askUserTool } from '../lib/tools/builtin/ask_user.ts';
 import { runToolLoop } from '../lib/tools/loop.ts';
 import { __clearRegistry, registerTool } from '../lib/tools/registry.ts';
-import type { ToolDefinition, ToolLoopEvent } from '../lib/tools/types.ts';
+import type { ToolLoopEvent } from '../lib/tools/types.ts';
 
 let passed = 0;
 let failed = 0;
