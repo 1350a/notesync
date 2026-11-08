@@ -43,12 +43,12 @@ class AsyncQueue<T> {
       } else if (this.done) {
         break;
       } else {
-        yield await new Promise<T>((resolve) => {
-          this.resolvers.push(({ value, done }) => {
-            if (done) resolve(undefined as unknown as T);
-            else resolve(value);
-          });
+        // 等待新事件时保留 done 标记，结束信号只用于跳出循环，不得作为事件值下发
+        const next = await new Promise<IteratorResult<T>>((resolve) => {
+          this.resolvers.push(resolve);
         });
+        if (next.done) break;
+        yield next.value;
       }
     }
   }

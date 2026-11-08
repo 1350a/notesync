@@ -143,6 +143,8 @@ export async function POST(request: Request) {
         });
 
         for await (const ev of generator) {
+          // 防御：上游若仍下发空事件（undefined），直接跳过，避免取属性抛错导致整条 SSE 中断
+          if (!ev) continue;
           if (ev.type === 'content') {
             controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
           } else if (ev.type === 'reasoning') {
