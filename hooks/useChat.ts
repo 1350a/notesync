@@ -1,13 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import type { ChatTextFile } from '@/lib/chat/messages';
-
-export interface ChatMsg {
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-  images?: string[]; // Base64 图片数组
-  files?: ChatTextFile[]; // 随消息上传的纯文本文件
-}
+import type { ChatMsg, ChatTextFile } from '@/lib/chat/messages';
 
 function parseSseEvent(chunk: string) {
   const lines = chunk.split('\n');
@@ -108,6 +100,34 @@ export function useChat(selectedModel: string) {
               appendAssistant((m) => ({
                 ...m,
                 reasoning: (m.reasoning ?? '') + parsed.data.delta,
+              }));
+            } else if (parsed.event === 'tool_call') {
+              appendAssistant((m) => ({
+                ...m,
+                toolCalls: [
+                  ...(m.toolCalls ?? []),
+                  { id: parsed.data.id, name: parsed.data.name, arguments: parsed.data.arguments },
+                ],
+              }));
+            } else if (parsed.event === 'tool_result') {
+              appendAssistant((m) => ({
+                ...m,
+                toolCalls: (m.toolCalls ?? []).map((t) =>
+                  t.id === parsed.data.id
+                    ? {
+                        ...t,
+                        result: { ok: parsed.data.ok, summary: parsed.data.summary, ms: parsed.data.ms },
+                      }
+                    : t
+                ),
+              }));
+            } else if (parsed.event === 'awaiting_user') {
+              // 问题写入 content：下一轮历史回放时模型才能看到问答上下文；
+              // awaitingQuestion 供 UI 渲染提问卡片（替代正文，避免重复展示）
+              appendAssistant((m) => ({
+                ...m,
+                content: parsed.data.question,
+                awaitingQuestion: parsed.data.question,
               }));
             } else if (parsed.event === 'done') {
               finished = true;
