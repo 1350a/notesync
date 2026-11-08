@@ -56,7 +56,11 @@ function toProviderModel(
     details: { family: provider.name },
     provider: provider.name,
     source,
-    acceptsImages: provider.acceptsImages !== false,
+    // 能力判定优先按模型（同 Provider 下模型能力可能不同），未实现时回落 Provider 级
+    acceptsImages: provider.modelAcceptsImages
+      ? provider.modelAcceptsImages(name)
+      : provider.acceptsImages !== false,
+    free: provider.isFreeModel ? provider.isFreeModel(name) || undefined : undefined,
   };
 }
 
