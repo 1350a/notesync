@@ -46,8 +46,9 @@ export interface ChatRequestBody {
  * 非图片相关错误原样返回。
  */
 export function explainProviderError(message: string): string {
+  // content.type：智谱对纯文本模型收图返回「messages.content.type 参数非法，取值范围 ['text']」
   const isImageIssue =
-    /invalid image|image input|image_url|vision|multimodal|unsupported image|does not support image/i.test(
+    /invalid image|image input|image_url|vision|multimodal|unsupported image|does not support image|content\.type/i.test(
       message
     );
   if (!isImageIssue) return message;
@@ -106,13 +107,27 @@ export function mergeTextFiles(text: string, files: ChatTextFile[]): string {
   return [text.trim(), ...blocks].filter(Boolean).join('\n\n');
 }
 
+/** buildProviderMessages 的可选行为开关 */
+export interface BuildMessagesOptions {
+  /**
+   * 是否保留消息中的图片（默认 true）。
+   * 选中纯文本模型时传 false：带图消息降级为文字并留一行占位说明，
+   * 避免原样直传 image_url 被上游 400（与诊断附件的 text-only 降级同一口径）。
+   */
+  allowImages?: boolean;
+}
+
 /**
  * 把请求体的 messages 组装成 Provider 消息序列。
  * 只有最近 MAX_IMAGE_MESSAGES 条带图消息保留图片，更早的仅发文字（多轮 base64 会线性膨胀）；
  * 文本文件同理，只保留最近 MAX_FILE_MESSAGES 条，更早的替换为一行省略提示。
+ * options.allowImages 为 false 时（所选模型不支持图片），保留条目的图片同样降级为文字占位。
  * 返回值同时给出被丢弃图片 / 文件的消息条数，供调用方按需记录日志。
  */
-export function buildProviderMessages(body: ChatRequestBody): {
+export function buildProviderMessages(
+  body: ChatRequestBody,
+  options?: BuildMessagesOptions
+): {
   messages: ProviderMessage[];
   droppedImageMessages: number;
   droppedFileMessages: number;
@@ -141,6 +156,7 @@ export function buildProviderMessages(body: ChatRequestBody): {
 
   let droppedImageMessages = 0;
   let droppedFileMessages = 0;
+  const allowImages = options?.allowImages !== false;
   const messages: ProviderMessage[] = body.messages.map((m, index) => {
     const hasImages = Array.isArray(m.images) && m.images.length > 0;
     const files = m.role === 'user' ? parseTextFiles(m.files) : [];
@@ -152,9 +168,17 @@ export function buildProviderMessages(body: ChatRequestBody): {
       text = [text, '[该条消息附带的文件内容已省略]'].filter(Boolean).join('\n\n');
     }
 
+    let content: ProviderMessage['content'] = text;
+    if (hasImages && keepImages.has(index)) {
+      content = allowImages
+        ? buildUserContent(text, m.images)
+        // 能力降级不静默：留一行占位让模型知道该条消息带过图（与文件省略提示同款式）
+        : [text, '[该条消息附带的图片已省略]'].filter(Boolean).join('\n\n');
+    }
+
     return {
       role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
-      content: hasImages && keepImages.has(index) ? buildUserContent(text, m.images) : text,
+      content,
     };
   });
 
