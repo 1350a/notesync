@@ -1,6 +1,6 @@
 # 工具调用（Tool Calling）协议
 
-> 状态：P4（服务端接线完成，前端消费待接）｜最后更新：2026-11-07
+> 状态：P5（服务端接线完成，前端已消费工具事件）｜最后更新：2026-11-08
 > 对应代码：`lib/tools/`（含 `adapters/`）、`lib/provider/types.ts`（仅类型扩展）、`app/api/chat/route.ts`（P4 接线）
 >
 > 2026-11-07 已按已合入实现（P1–P4 全部落地）逐条校准本文件。校准原则：文档向实现对齐；实现尚未兑现的协议承诺**不删除**，统一收敛到 §8「待实现」与 §9，避免文档声称不存在的能力。
@@ -119,10 +119,12 @@ interface ExtractedToolCall {
 2. buffer 模式结束时：尝试解析围栏内 JSON。
    - 成功 → 产出 `tool_call` 事件，本轮不 yield content。
    - 失败 → 把 buffer 整体 yield 为 content（误判兜底）。
-3. 解析失败时**当前实现不重试**（与 P1 原设计不一致，已知缺陷）：
-   - `TextAdapter` 把 buffer 整体当作正文回吐，同时返回 `parseError`；
-   - `loop` 检测到 `parseError` 后立即发 `error` 事件并结束本轮。
-   - 结果是"正文已吐出 + 又发 error"并存，前端会看到重复表达且本轮被中断。修正方案见 §8「待实现」，修正前不要在外层依赖"失败即普通回答"的兜底假设。
+3. 解析失败时**重试 1 次**（P1 承诺已兑现）：
+   - `TextAdapter` 解析失败时**不回吐 buffer**，只返回 `parseError` 与 `raw`，由 `loop` 统一裁决；
+   - `loop` 首次遇到 `parseError` 时按原消息重发一次请求（重试不消耗轮数，全程最多 1 次）；
+   - 重试仍失败：`raw` 非空 → 把 `raw` 整体作为正文产出（视为普通回答），`finishReason='stop'`；
+     `raw` 为空（如 native 参数 JSON 损坏且无正文）→ 发 `code='parse_error'` 的 `error` 事件并结束本轮。
+   - 早期"正文已吐出 + 又发 error"并存的问题已消除。
 
 ### 5.4 解析器容忍度（宽松）
 
@@ -205,7 +207,7 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | `tool_result`   | `id` / `ok` / `summary` / `ms`                    | `summary` 由 handler 提供，缺省为 JSON 前 200 字符         |
 | `awaiting_user` | `question` / `toolCallId`                         | 发出后**必须紧跟 `done`**，本轮 SSE 结束                   |
 | `done`          | `model` / `provider` / `usedRounds` / `finishReason` | `finishReason` ∈ `stop` / `awaiting_user` / `max_rounds` |
-| `error`         | `code`? / `error` / `model`? / `provider`? / `available`? | 见 §8；`code` 存在缺省情况                                  |
+| `error`         | `code` / `error` / `model`? / `provider`? / `available`? | 见 §8；`code` 现在必有值（loop 内 `parse_error`，其余由路由层兜底 `provider_error`） |
 
 - 新增事件对旧前端是**未知事件，会被忽略**，向后兼容。
 
@@ -222,22 +224,20 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | `unconfigured`   | 归属 Provider 的 API_KEY / BASE_URL 缺失         | `model` / `provider` |
 | `provider_error` | 上游错误（401、模型不存在、网络异常等，含 catch 兜底） | `model` / `provider` |
 
-**已知缺口**：`loop` 内部产生的 `error` 事件（模型请求抛错、`parseError`）经路由层转发时**只带 `error` / `model` / `provider`，不带 `code`**。前端不得假设 `code` 必然存在，需对 `undefined` 有兜底文案。补齐方案见 §8.3。
+**code 覆盖**：loop 内部错误现已全部带 `code`——解析兜底失败为 `parse_error`，模型请求失败为 `provider_error`；路由层对未标注 `code` 的 error 事件一律兜底为 `provider_error`（见 `app/api/chat/route.ts`）。前端仍建议对未知 `code` 值有兜底文案。
 
 ### 8.2 执行期错误
 
 - **工具执行失败**（抛错、超时、参数校验失败）：转成 `{ kind: "result"; ok: false; error }`，作为 `role:"tool"` 消息回填，**不中断 loop**。模型可自行决定换工具或直接回答。
 - **模型请求失败**（HTTP 4xx/5xx、网络错误）：`error` 事件，结束本轮（不开 `done`）。
 
-### 8.3 待实现（实现未达到 P1 承诺，勿按此实现前端逻辑）
+### 8.3 已兑现的 P1 承诺（2026-11-08 落地）
 
-| 项                         | P1 承诺                                                       | 当前实现                                                       |
-| -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
-| `maxRounds` 强制收敛       | 达到上限后追加 system 提示"请直接回答"，再做一次**不带 tools** 的请求 | 直接结束本轮，`finishReason = "max_rounds"`；无追加提示、无收敛请求 |
-| text 模式解析失败兜底      | 重试 1 次；仍失败则视为普通回答                                | 不重试；buffer 已作为正文吐出，同时发 `error` 并结束（正文与错误并存） |
-| `error.code` 覆盖 loop 内部 | 全部 error 事件带 `code`                                      | loop 内部错误无 `code`                                          |
-
-优先级：`parseError` 兜底 > `maxRounds` 收敛 > `code` 补齐。三项均属 P0–P1 遗留，不影响当前 native 主路径。
+| 项                          | 实现                                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| text 模式解析失败兜底       | 重试 1 次（不消耗轮数）；仍失败视为普通回答（`raw` 回吐为正文）；`raw` 为空则发 `parse_error`（详见 §5.3）                   |
+| `maxRounds` 强制收敛        | 达到上限后追加 system 提示"直接回答"，再做一次**不带 tools** 的请求；收敛成功仍报 `finishReason='max_rounds'`，收敛请求失败发 `error`（不开 `done`，与 §8.2 一致） |
+| `error.code` 覆盖 loop 内部 | loop 内标注 `parse_error` / `provider_error`，路由层对未标注值兜底 `provider_error`，error 事件必有 `code`（见 §8.1）        |
 
 ## 9. 扩展点与实现状态
 
@@ -257,3 +257,4 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | ---------- | ---- | ----------------------------------------------- |
 | 2026-11-07 | P1   | 初版：双模式、`ask_user` 中断语义、SSE 事件定义 |
 | 2026-11-07 | P4   | 按已合入实现校准：删除不存在的 `index` 字段、`tool_result` 去掉 `name`、`done` 补 `model`/`provider`、新增 §8.1 `error.code` 四态与 §8.3 待实现清单；§9 改为「扩展点与实现状态」 |
+| 2026-11-08 | P5   | §8.3 三项落地：text 解析失败重试一次后视为普通回答、`maxRounds` 收敛请求（不带 tools）、error 事件全量带 `code`；前端消费 `tool_call`/`tool_result`/`awaiting_user`，状态推进到 P5 |
