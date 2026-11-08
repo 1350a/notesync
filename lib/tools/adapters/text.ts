@@ -102,9 +102,9 @@ export class TextAdapter implements ToolAdapter {
         calls.push(parseResult.call);
         // 若解析成功，buffer 内的内容不作为正文输出
       } else {
+        // 解析失败时不回吐 buffer（避免"正文已吐出 + error"并存），
+        // 交由 loop 裁决：重试一次，仍失败把 raw 视为普通回答（doc/tool-protocol.md §5.3）
         parseError = parseResult.error;
-        // 兜底：如果判定为 Buffer 但解析失败，说明误判了，将内容全部吐给用户
-        onContent(buffer);
       }
     } else if (!decided && buffer.trim()) {
       // 流太短，没来得及判定就结束了，直接透传
