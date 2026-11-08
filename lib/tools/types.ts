@@ -126,4 +126,8 @@ export type ToolLoopEvent =
   | { type: 'tool_result'; id: string; ok: boolean; summary: string; ms: number }
   | { type: 'awaiting_user'; question: string; toolCallId: string }
   | { type: 'done'; usedRounds: number; finishReason: string }
-  | { type: 'error'; message: string };
+  /**
+   * code 标注错误类别：解析兜底失败为 parse_error，模型请求失败为 provider_error。
+   * 未标注时由路由层兜底为 provider_error（doc/tool-protocol.md §8.1）。
+   */
+  | { type: 'error'; message: string; code?: 'parse_error' | 'provider_error' };
