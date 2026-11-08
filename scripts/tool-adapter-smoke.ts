@@ -7,7 +7,7 @@
  * 2. Native 历史回填与 ask_user 清洗。
  * 3. Text 流式正常输出透传。
  * 4. Text 流式围栏拦截与解析。
- * 5. Text 误判兜底透传。
+ * 5. Text 解析失败不透传（兜底职责在 loop，见 tool-loop-smoke.ts）。
  */
 import type { ProviderMessage, StreamDelta } from '../lib/provider/types.ts';
 import { NativeAdapter } from '../lib/tools/adapters/native.ts';
@@ -127,7 +127,7 @@ async function testTextStreamTool() {
 }
 
 async function testTextStreamFallback() {
-  console.log('\n[5] Text 误判兜底透传');
+  console.log('\n[5] Text 解析失败不透传（兜底职责已移交 loop，见 tool-loop-smoke）');
   const adapter = new TextAdapter();
   // 以 { 开头，但不是合法 JSON，或者是普通文本里的代码块
   const deltas: StreamDelta[] = [{ content: '{ 这是一个' }, { content: '普通的开头 }' }];
@@ -137,7 +137,8 @@ async function testTextStreamFallback() {
     (d) => (contentOut += d),
     () => {}
   );
-  assert(contentOut === '{ 这是一个普通的开头 }', '解析失败时完整透传');
+  assert(contentOut === '', '解析失败时不回吐正文（由 loop 重试/兜底）');
+  assert(res.parseError !== undefined, '返回 parseError 供 loop 裁决');
   assert(res.calls.length === 0, '无工具调用');
 }
 
