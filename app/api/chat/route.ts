@@ -20,7 +20,7 @@
  *
  * 诊断模式附件：请求体可带 attachments（结构见 lib/diagnose/types.ts），
  * 服务端用 assembleDiagnoseMessage 组装成单条 user 消息追加在 messages 末尾；
- * 模型不接受图片时自动降级为文字占位，不做静默丢弃。
+ * 所选模型不支持图片（按模型判定）时，附件与聊天历史里的图片一并自动降级为文字占位，不做静默丢弃。
  * MOCK_MODEL=1 时不调用任何上游，只回显组装结构，用于零 token 验证发送数据。
  *
  * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
@@ -251,21 +251,6 @@ export async function POST(request: Request) {
     return mockStream(parseAttachments(body.attachments), body);
   }
 
-  // 组装发送给模型的消息：优先用显式 messages，否则用 content
-  const { messages: builtMessages, droppedImageMessages, droppedFileMessages } =
-    buildProviderMessages(body);
-  if (droppedImageMessages > 0) {
-    console.warn(
-      `[chat] ${droppedImageMessages} 条较早消息的图片未随请求发送（超出 ${MAX_IMAGE_MESSAGES} 条上限，仅发送文字）`
-    );
-  }
-  if (droppedFileMessages > 0) {
-    console.warn(
-      `[chat] ${droppedFileMessages} 条较早消息的文本文件未随请求发送（超出 ${MAX_FILE_MESSAGES} 条上限）`
-    );
-  }
-  let providerMessages = builtMessages;
-
   const list = await getModelList();
 
   // 模型选择：请求指定模型优先；否则取可用列表首个模型
@@ -304,11 +289,33 @@ export async function POST(request: Request) {
     });
   }
 
+  // 图片能力按所选模型判定（同 Provider 下模型能力可能不同，如智谱 glm-5.3 纯文本 / glm-5.3-flash 多模态）；
+  // Provider 未实现按模型判定时回落 Provider 级 acceptsImages
+  const allowImages = provider.modelAcceptsImages
+    ? provider.modelAcceptsImages(model)
+    : provider.acceptsImages !== false;
+
+  // 组装发送给模型的消息：优先用显式 messages，否则用 content。
+  // 纯文本模型时历史消息里的图片降级为文字占位，避免直传 image_url 被上游 400
+  const { messages: builtMessages, droppedImageMessages, droppedFileMessages } =
+    buildProviderMessages(body, { allowImages });
+  if (droppedImageMessages > 0) {
+    console.warn(
+      `[chat] ${droppedImageMessages} 条较早消息的图片未随请求发送（超出 ${MAX_IMAGE_MESSAGES} 条上限，仅发送文字）`
+    );
+  }
+  if (droppedFileMessages > 0) {
+    console.warn(
+      `[chat] ${droppedFileMessages} 条较早消息的文本文件未随请求发送（超出 ${MAX_FILE_MESSAGES} 条上限）`
+    );
+  }
+  let providerMessages = builtMessages;
+
   // 诊断模式附件：组装成一条 user 消息追加在历史末尾；模型不吃图片时自动降级为文字占位
   const attachments = parseAttachments(body.attachments);
   if (attachments.length > 0) {
     const assembled = assembleDiagnoseMessage(attachments, {
-      imageMode: provider.acceptsImages === false ? 'text-only' : 'multimodal',
+      imageMode: allowImages ? 'multimodal' : 'text-only',
     });
     if (!assembled.message) {
       return errorStream({
