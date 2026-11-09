@@ -5,6 +5,7 @@
  * 不因一条脏数据让整个请求失败。
  */
 import type { ProviderMessage } from '../provider/types';
+import type { AskUserQuestion } from '../tools/types';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
 export const MAX_DATA_URL = 12 * 1024 * 1024;
@@ -48,11 +49,11 @@ export interface ChatMsg {
   /** assistant 消息：本轮工具调用轨迹 */
   toolCalls?: ToolCallView[];
   /**
-   * assistant 消息：ask_user 中断时的问题文本。
-   * 问题同时写入 content（下一轮历史回放模型才能看到问答上下文），
-   * 本字段供 UI 渲染提问卡片、替代正文避免重复。
+   * assistant 消息：ask_user 中断待回答的问题列表（含可选预设选项）。
+   * 问题不再写入 content（content 保留模型前导文本）；问答上下文由下一轮
+   * 用户回答消息文本自带（"1. 【label】question：answer"）。仅存内存，无持久化。
    */
-  awaitingQuestion?: string;
+  awaitingQuestions?: AskUserQuestion[];
 }
 
 /** 请求体里与消息相关的字段 */
