@@ -88,20 +88,9 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
           ) : null}
 
           {m.role === 'assistant' ? (
-            m.awaitingQuestion ? (
-              // ask_user 追问卡片：问题已写入 content（供历史回放），此处替代正文渲染避免重复
-              <div
-                className="rounded-xl px-3 py-2 text-sm"
-                style={{ border: '1px solid var(--accent)', backgroundColor: 'var(--panel-soft)' }}
-              >
-                <p className="mb-1 text-xs font-medium" style={{ color: 'var(--accent)' }}>
-                  🤔 模型提问
-                </p>
-                <p className="whitespace-pre-wrap break-words" style={{ color: 'var(--text)' }}>
-                  {m.awaitingQuestion}
-                </p>
-              </div>
-            ) : (
+            // ask_user 待回答的问题由输入区问题面板（AskUserPanel）承载，不再渲染气泡卡片；
+            // 正文只渲染模型前导文本，前导为空时不渲染空泡
+            m.awaitingQuestions && !m.content ? null : (
               <div className="markdown-body text-sm">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
