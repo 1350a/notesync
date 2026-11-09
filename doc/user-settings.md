@@ -26,7 +26,7 @@ interface UserSettings {
     temperature?: number;             //   钳制 0–2
     maxTokens?: number;               //   钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
   };
-  ocr: { preferLocal: boolean };      // 【未接线】是否优先本地 OCR（业务逻辑未实装）
+  ocr: { preferLocal: boolean };      // 【已接线】true=聊天/诊断的图片一律先经浏览器本地 OCR 转文字再发送（隐私/省 token 优先）
 }
 ```
 
@@ -71,7 +71,7 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；图片处理（自动=按模型能力派生 / 优先本地 OCR，写 `ocr.preferLocal`，语义见 doc/browser-local-ocr.md §6）；语言、朗读音色两行禁用 + "未实装"标注 |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
 | 服务协议 | 静态 | 本地存储声明、无遥测、密钥仅环境变量、数据由所配模型服务商处理 |
@@ -81,7 +81,7 @@ interface SettingsStorage {
 ## 6. 待实现（挂账）
 
 - generation / systemPrompt 服务端注入：扩展 `ChatRequestBody` + `/api/chat` 校验读取（参数经 `CompleteOptions` 透传 provider）。
-- OCR `preferLocal` 实装（对应 `lib/ocr.ts` 停用代码的恢复）。
+- OCR `preferLocal` 已接线（2026-11-10，语义见 doc/browser-local-ocr.md §6）；云 OCR 选项仍挂账（设备边界规则：数据跨出设备必须显式同意）。
 - 语言（i18n）、朗读音色（TTS）实装。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
 - 会话持久化 /api/sessions（复用 X-Client-Id）。
