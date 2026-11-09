@@ -4,7 +4,8 @@ import type { ToolCallView } from '@/lib/chat/messages';
 
 /**
  * assistant 气泡内的工具调用轨迹：每次调用一行（名称 · 状态 · 耗时），
- * 可展开查看参数与结果摘要。tool_result 未回填时显示"运行中"。
+ * 可展开查看参数与结果摘要。tool_result 未回填时显示"运行中"，
+ * ask_user 例外——中断语义没有 tool_result 事件，显示"等待回答"。
  */
 export default function ToolTrace({ calls }: { calls: ToolCallView[] }) {
   const [open, setOpen] = useState(false);
@@ -37,8 +38,13 @@ export default function ToolTrace({ calls }: { calls: ToolCallView[] }) {
                 <span style={{ color: call.result.ok ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
                   {call.result.ok ? '✓ 完成' : '✗ 失败'}
                 </span>
-                <span style={{ color: 'var(--text-muted)' }}>{call.result.ms}ms</span>
+                {call.result.ms > 0 && (
+                  <span style={{ color: 'var(--text-muted)' }}>{call.result.ms}ms</span>
+                )}
               </>
+            ) : call.name === 'ask_user' ? (
+              // ask_user 无 tool_result 事件，用稳定的等待文案代替闪烁的"运行中"
+              <span style={{ color: 'var(--muted-foreground)' }}>等待回答</span>
             ) : (
               <span className="animate-pulse" style={{ color: 'var(--accent)' }}>
                 运行中…
