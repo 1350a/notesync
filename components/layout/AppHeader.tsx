@@ -1,20 +1,41 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import type { ThemePreference } from '@/lib/settings/types';
 import { useChatStore } from '@/store/useChatStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+/** 顶栏主题按钮循环顺序：浅色 → 深色 → 跟随系统 */
+const NEXT_THEME: Record<ThemePreference, ThemePreference> = {
+  light: 'dark',
+  dark: 'system',
+  system: 'light',
+};
+
+const THEME_ICON: Record<ThemePreference, string> = {
+  light: '☀️',
+  dark: '🌙',
+  system: '🖥️',
+};
+
+const THEME_LABEL: Record<ThemePreference, string> = {
+  light: '浅色',
+  dark: '深色',
+  system: '跟随系统',
+};
+
 export default function AppHeader() {
-  const {
-    toggleTheme,
-    isDarkMode,
-    setSettingsOpen,
-    isSidebarOpen,
-    toggleSidebar,
-    startNewChat,
-  } = useChatStore();
+  const { setSettingsOpen, isSidebarOpen, toggleSidebar, startNewChat } = useChatStore();
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const updateSettings = useSettingsStore((s) => s.update);
   const router = useRouter();
+
+  // 循环切换主题；实际 dark 类由 AppLayout 统一应用（含跟随系统联动）
+  const cycleTheme = () => {
+    updateSettings({ theme: NEXT_THEME[theme] });
+  };
 
   // 新建对话：清空当前会话并回到对话页
   const handleNewChat = () => {
@@ -99,11 +120,11 @@ export default function AppHeader() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleTheme}
-            title="切换主题"
+            onClick={cycleTheme}
+            title={`主题：${THEME_LABEL[theme]}（点击切换）`}
             className="h-8 w-8"
           >
-            {isDarkMode ? '☀️' : '🌙'}
+            {THEME_ICON[theme]}
           </Button>
           <Button
             variant="ghost"
