@@ -79,8 +79,13 @@ async function testTextRetrySuccess(): Promise<void> {
   const { provider, requests } = fakeProvider([
     // 第 1 轮：残缺围栏（buffer 模式 + JSON 不匹配）→ parseError
     [{ content: '```tool\n{"tool": "ask_user", "argumen' }],
-    // 第 2 轮（重试）：完整 ask_user 调用
-    [{ content: '```tool\n{"tool": "ask_user", "arguments": {"question": "你卡在哪一步？"}}' }],
+    // 第 2 轮（重试）：完整 ask_user 调用（多问题+预设选项）
+    [
+      {
+        content:
+          '```tool\n{"tool": "ask_user", "arguments": {"questions": [{"question": "你卡在哪一步？", "options": ["第一步", "第二步"]}]}}',
+      },
+    ],
   ]);
   const events = await collect(
     runToolLoop({
@@ -98,8 +103,12 @@ async function testTextRetrySuccess(): Promise<void> {
   const awaiting = filterType(events, 'awaiting_user');
   assert(awaiting.length === 1, '产出 awaiting_user 中断');
   assert(
-    awaiting[0]?.type === 'awaiting_user' && awaiting[0].question === '你卡在哪一步？',
-    'question 透传正确'
+    awaiting[0]?.type === 'awaiting_user' && awaiting[0].questions[0]?.question === '你卡在哪一步？',
+    'questions 透传正确'
+  );
+  assert(
+    awaiting[0]?.type === 'awaiting_user' && awaiting[0].questions[0]?.options?.[0] === '第一步',
+    '预设选项透传正确'
   );
   const done = filterType(events, 'done')[0];
   assert(done?.type === 'done' && done.finishReason === 'awaiting_user', 'finishReason=awaiting_user');
