@@ -11,6 +11,7 @@ import type {
   StreamDelta,
 } from '@/lib/provider/types.ts';
 import { renderForNative } from '../render.ts';
+import { formatAskUserArgs } from '../builtin/ask_user.ts';
 import type {
   ExtractedToolCall,
   ExtractedToolCalls,
@@ -111,7 +112,7 @@ export class NativeAdapter implements ToolAdapter {
         // 在 native 协议中，有 tool_calls 就必须有 tool 消息回填。
         // 但 ask_user 语义上是中断，这里给一个占位结果以便通过协议校验，
         // 实际 ask_user 场景下 loop 会直接退出。
-        contentStr = JSON.stringify({ awaiting_user: res.question });
+        contentStr = JSON.stringify({ awaiting_user: res.questions });
       } else if (res.ok) {
         contentStr = JSON.stringify({ ok: true, data: res.data });
       } else {
@@ -152,9 +153,8 @@ export class NativeAdapter implements ToolAdapter {
         const askCall = m.tool_calls.find((tc) => tc.function.name === 'ask_user');
         if (askCall) {
           try {
-            const args = JSON.parse(askCall.function.arguments) as { question?: string };
-            const q = typeof args.question === 'string' ? args.question : '请补充信息';
-            return [{ role: 'assistant', content: `（询问用户）${q}` }];
+            const args = JSON.parse(askCall.function.arguments) as Record<string, unknown>;
+            return [{ role: 'assistant', content: formatAskUserArgs(args) }];
           } catch {
             return [{ role: 'assistant', content: '（向用户提问了问题）' }];
           }
