@@ -31,12 +31,26 @@ export interface JSONSchemaObject {
 }
 
 /**
+ * ask_user 的单个问题（多问题数组元素，doc/tool-protocol.md §6）。
+ * 条数与字段长度限制由 schema 声明，handler 兜底（校验器不校验数组长度）。
+ */
+export interface AskUserQuestion {
+  /** 可选短分类标题（如"身份确认"），前端问题面板展示用 */
+  label?: string;
+  /** 问题文本 */
+  question: string;
+  /** 可选预设选项（2~3 个为宜），用户仍可自由输入 */
+  options?: string[];
+}
+
+/**
  * handler 的返回形态（不含 ok 字段）。
  * - result：普通执行成功，data 由 invoke 序列化后回填模型；
  * - awaiting_user：中断本轮，等用户回答（ask_user 专用）。
  */
 export type ToolHandlerReturn =
-  { kind: 'result'; data: unknown; summary?: string } | { kind: 'awaiting_user'; question: string };
+  { kind: 'result'; data: unknown; summary?: string }
+  | { kind: 'awaiting_user'; questions: AskUserQuestion[] };
 
 /**
  * 工具实现签名。
@@ -88,7 +102,7 @@ export interface ToolContext {
 export type ToolInvocation =
   | { kind: 'result'; ok: true; data: unknown; summary: string }
   | { kind: 'result'; ok: false; error: string; summary: string }
-  | { kind: 'awaiting_user'; question: string };
+  | { kind: 'awaiting_user'; questions: AskUserQuestion[] };
 
 /** 单条工具调用（native 与 text 解析后的统一形态） */
 export interface ExtractedToolCall {
@@ -124,7 +138,7 @@ export type ToolLoopEvent =
       arguments: Record<string, unknown>;
     }
   | { type: 'tool_result'; id: string; ok: boolean; summary: string; ms: number }
-  | { type: 'awaiting_user'; question: string; toolCallId: string }
+  | { type: 'awaiting_user'; questions: AskUserQuestion[]; toolCallId: string }
   | { type: 'done'; usedRounds: number; finishReason: string }
   /**
    * code 标注错误类别：解析兜底失败为 parse_error，模型请求失败为 provider_error。
