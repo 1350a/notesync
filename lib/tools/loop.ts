@@ -162,7 +162,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
       results.push(result);
 
       if (result.kind === 'awaiting_user') {
-        yield { type: 'awaiting_user', question: result.question, toolCallId: call.id };
+        yield { type: 'awaiting_user', questions: result.questions, toolCallId: call.id };
         yield { type: 'done', usedRounds, finishReason: 'awaiting_user' };
         return;
       }
