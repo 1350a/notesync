@@ -6,6 +6,7 @@
  */
 import type { ProviderMessage } from '../provider/types';
 import type { AskUserQuestion } from '../tools/types';
+import { formatOcrBlock } from '../ocr/image-handling';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
 export const MAX_DATA_URL = 12 * 1024 * 1024;
@@ -63,6 +64,8 @@ export interface ChatRequestBody {
     role: 'user' | 'assistant' | 'system';
     content: string;
     images?: string[];
+    /** 本地 OCR 转文字产物：与 images 对应的识别文本；非空时服务端忽略 images 本体（doc/browser-local-ocr.md §6.2） */
+    imageTexts?: unknown;
     files?: unknown;
   }>;
   content?: string;
@@ -88,8 +91,31 @@ export function explainProviderError(message: string): string {
   );
 }
 
+/**
+ * 解析随消息上行的 OCR 文本（imageTexts）。
+ * 只有"字符串数组且每项非空"才视为有效；脏数据一律按未提供处理，回落原图片语义。
+ */
+function parseImageTexts(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const texts = raw.filter(
+    (item): item is string => typeof item === 'string' && item.trim().length > 0
+  );
+  return texts.length === raw.length ? texts : [];
+}
+
 /** 把一条消息的 images 转成 OpenAI 兼容的多模态内容；无有效图片时退回纯文本 */
-export function buildUserContent(text: string, images: unknown): ProviderMessage['content'] {
+export function buildUserContent(
+  text: string,
+  images: unknown,
+  imageTexts?: unknown
+): ProviderMessage['content'] {
+  // OCR 模式：图片本体不进请求，识别文本以固定格式块拼进正文，任何模型可安全消费
+  const ocrTexts = parseImageTexts(imageTexts);
+  if (ocrTexts.length > 0) {
+    return [text.trim(), ...ocrTexts.map((t) => formatOcrBlock(t))]
+      .filter(Boolean)
+      .join('\n\n');
+  }
   const urls = Array.isArray(images)
     ? images.filter(
         (item): item is string =>
@@ -174,7 +200,14 @@ export function buildProviderMessages(
   for (let i = body.messages.length - 1; i >= 0; i -= 1) {
     const msg = body.messages[i];
     if (msg.role !== 'user') continue;
-    if (keepImages.size < MAX_IMAGE_MESSAGES && Array.isArray(msg.images) && msg.images.length > 0) {
+    // OCR 模式消息（带有效 imageTexts）按纯文本消息对待：不占用图片保留配额
+    const isOcrTextMessage = parseImageTexts(msg.imageTexts).length > 0;
+    if (
+      !isOcrTextMessage &&
+      keepImages.size < MAX_IMAGE_MESSAGES &&
+      Array.isArray(msg.images) &&
+      msg.images.length > 0
+    ) {
       keepImages.add(i);
     }
     if (keepFiles.size < MAX_FILE_MESSAGES && parseTextFiles(msg.files).length > 0) {
@@ -187,9 +220,11 @@ export function buildProviderMessages(
   let droppedFileMessages = 0;
   const allowImages = options?.allowImages !== false;
   const messages: ProviderMessage[] = body.messages.map((m, index) => {
+    const ocrTexts = m.role === 'user' ? parseImageTexts(m.imageTexts) : [];
+    const isOcrTextMessage = ocrTexts.length > 0;
     const hasImages = Array.isArray(m.images) && m.images.length > 0;
     const files = m.role === 'user' ? parseTextFiles(m.files) : [];
-    if (hasImages && !keepImages.has(index)) droppedImageMessages += 1;
+    if (hasImages && !isOcrTextMessage && !keepImages.has(index)) droppedImageMessages += 1;
     if (files.length > 0 && !keepFiles.has(index)) droppedFileMessages += 1;
 
     let text = mergeTextFiles(m.content || '', keepFiles.has(index) ? files : []);
@@ -198,7 +233,9 @@ export function buildProviderMessages(
     }
 
     let content: ProviderMessage['content'] = text;
-    if (hasImages && keepImages.has(index)) {
+    if (isOcrTextMessage) {
+      content = buildUserContent(text, undefined, ocrTexts);
+    } else if (hasImages && keepImages.has(index)) {
       content = allowImages
         ? buildUserContent(text, m.images)
         // 能力降级不静默：留一行占位让模型知道该条消息带过图（与文件省略提示同款式）
