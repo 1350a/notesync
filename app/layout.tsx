@@ -1,4 +1,5 @@
 import 'katex/dist/katex.min.css';
+import { ANTI_FLASH_SCRIPT } from '@/lib/settings/anti-flash';
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -18,7 +19,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen bg-background text-foreground">{children}</body>
+      <body className="min-h-screen bg-background text-foreground">
+        {/* 首帧主题预设：水合前同步执行，避免暗色用户白屏闪烁（见 lib/settings/anti-flash.ts） */}
+        {/* xss-scan-disable-next-line：注入内容为编译期静态常量，不含任何用户数据 */}
+        <script dangerouslySetInnerHTML={{ __html: ANTI_FLASH_SCRIPT }} />
+        {children}
+      </body>
     </html>
   );
 }
