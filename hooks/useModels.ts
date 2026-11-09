@@ -1,3 +1,4 @@
+import { CLIENT_ID_HEADER, getClientId } from '@/lib/client-id';
 import type { ModelProbeStatus, ProviderModel, ProviderStatus } from '@/lib/provider/types';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -46,6 +47,7 @@ export function useModels(): UseModelsResult {
   const requestModels = useCallback(async (refresh: boolean): Promise<ModelsResponse> => {
     const res = await fetch(refresh ? '/api/models?refresh=1' : '/api/models', {
       cache: 'no-store',
+      headers: { [CLIENT_ID_HEADER]: getClientId() },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as ModelsResponse;
