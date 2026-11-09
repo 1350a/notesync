@@ -11,7 +11,9 @@
     "smoke:adapters": "node --experimental-strip-types scripts/tool-adapter-smoke.ts",
     "smoke:loop": "node --experimental-strip-types scripts/tool-loop-smoke.ts",
     "smoke:files": "node --experimental-strip-types scripts/file-smoke.ts",
-    "smoke:chat": "node --experimental-strip-types scripts/chat-image-smoke.ts"
+    "smoke:chat": "node --experimental-strip-types scripts/chat-image-smoke.ts",
+    "scan:xss": "node --experimental-strip-types scripts/xss-scan.ts",
+    "smoke:xss": "node --experimental-strip-types scripts/xss-render-smoke.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -33,6 +35,7 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shiki": "^4.6.0",
