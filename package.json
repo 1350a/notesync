@@ -13,7 +13,8 @@
     "smoke:files": "node --experimental-strip-types scripts/file-smoke.ts",
     "smoke:chat": "node --experimental-strip-types scripts/chat-image-smoke.ts",
     "scan:xss": "node --experimental-strip-types scripts/xss-scan.ts",
-    "smoke:xss": "node --experimental-strip-types scripts/xss-render-smoke.ts"
+    "smoke:xss": "node --experimental-strip-types scripts/xss-render-smoke.ts",
+    "smoke:settings": "node --experimental-strip-types scripts/settings-smoke.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
