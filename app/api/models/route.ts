@@ -13,6 +13,8 @@
 import { getModelList } from "@/lib/provider";
 
 export async function GET(request: Request) {
+  // 匿名客户端标识（doc/user-settings.md §4）：仅日志追溯，不参与缓存/路由
+  console.log(`[models] client=${request.headers.get('x-client-id') ?? 'anonymous'}`);
   const force = new URL(request.url).searchParams.get("refresh") === "1";
   const result = await getModelList(force);
   return Response.json(
