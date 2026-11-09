@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
 import { useModels } from '@/hooks/useModels';
@@ -85,21 +85,16 @@ export default function UploadArea() {
   const [pickedModel, setPickedModel] = useState('');
   // 默认模型记忆：与聊天页共用设置里的 defaultModel（doc/user-settings.md §5）
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
-  const settingsHydrated = useSettingsStore((s) => s.hydrated);
   const updateSettings = useSettingsStore((s) => s.update);
 
-  // 派生选中值：用户选过的仍在列表里就沿用，否则回落到首个可用模型（不保留过期模型名）
+  // 派生选中值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
+  // 再回落到首个可用模型（不保留过期模型名）
   const selectedModel = useMemo(() => {
     if (models.length === 0) return '';
     if (pickedModel && models.some((m) => m.name === pickedModel)) return pickedModel;
+    if (defaultModel && models.some((m) => m.name === defaultModel)) return defaultModel;
     return models[0].name;
-  }, [models, pickedModel]);
-
-  // 设置里的默认模型：仅当用户本次尚未手选且该模型仍在列表中时采用
-  useEffect(() => {
-    if (!settingsHydrated || pickedModel || !defaultModel) return;
-    if (models.some((m) => m.name === defaultModel)) setPickedModel(defaultModel);
-  }, [settingsHydrated, defaultModel, pickedModel, models]);
+  }, [models, pickedModel, defaultModel]);
 
   /** 用户手动换模型即视为新的默认偏好，与聊天页共享同一份记忆 */
   const handleModelChange = (model: string) => {
