@@ -1,5 +1,6 @@
 'use client';
 
+import AskUserPanel from '@/components/chat/AskUserPanel';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatList from '@/components/chat/ChatList';
 import AppLayout from '@/components/layout/AppLayout';
@@ -34,6 +35,16 @@ export default function ChatPage() {
 
   const notice = error ?? message;
 
+  // ask_user 待回答的问题挂在最后一条 assistant 消息上（useChat 写入）：
+  // 存在且不在流式生成中时，输入区切换为问题面板，回答即发送一条普通消息
+  const pendingAskQuestions = useMemo(() => {
+    if (loading) return null;
+    const last = messages[messages.length - 1];
+    return last?.role === 'assistant' && last.awaitingQuestions?.length
+      ? last.awaitingQuestions
+      : null;
+  }, [messages, loading]);
+
   return (
     <AppLayout>
       <div className="flex flex-col h-full">
@@ -56,17 +67,24 @@ export default function ChatPage() {
         )}
 
         <div className="px-4 py-4 border-t border-border bg-background">
-          <ChatInput
-            onSend={sendMessage}
-            onStop={stopGeneration}
-            loading={loading}
-            models={models}
-            selectedModel={selectedModel}
-            onModelChange={setPickedModel}
-            providers={providers}
-            modelsLoading={modelsLoading}
-            modelsMessage={notice}
-          />
+          {pendingAskQuestions ? (
+            <AskUserPanel
+              questions={pendingAskQuestions}
+              onSubmit={(text) => void sendMessage(text, [], [])}
+            />
+          ) : (
+            <ChatInput
+              onSend={sendMessage}
+              onStop={stopGeneration}
+              loading={loading}
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={setPickedModel}
+              providers={providers}
+              modelsLoading={modelsLoading}
+              modelsMessage={notice}
+            />
+          )}
         </div>
       </div>
     </AppLayout>
