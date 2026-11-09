@@ -6,6 +6,7 @@
  */
 import type { CompleteOptions, ProviderMessage, StreamDelta } from '@/lib/provider/types.ts';
 import { renderForText } from '../render.ts';
+import { formatAskUserArgs } from '../builtin/ask_user.ts';
 import type {
   ExtractedToolCall,
   ExtractedToolCalls,
@@ -129,7 +130,7 @@ export class TextAdapter implements ToolAdapter {
       let contentStr = '';
 
       if (res.kind === 'awaiting_user') {
-        contentStr = JSON.stringify({ awaiting_user: res.question });
+        contentStr = JSON.stringify({ awaiting_user: res.questions });
       } else if (res.ok) {
         contentStr = JSON.stringify({ ok: true, data: res.data });
       } else {
@@ -152,11 +153,9 @@ export class TextAdapter implements ToolAdapter {
       // 检测是否有 ask_user
       const parseResult = parseTextToolCall(m.content);
       if (parseResult.success && parseResult.call.name === 'ask_user') {
-        const q = parseResult.call.arguments.question;
-        const questionText = typeof q === 'string' ? q : '请补充信息';
         return {
           role: 'assistant',
-          content: `（询问用户）${questionText}`,
+          content: formatAskUserArgs(parseResult.call.arguments),
         };
       }
 
