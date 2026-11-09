@@ -382,7 +382,7 @@ export async function POST(request: Request) {
           } else if (ev.type === 'awaiting_user') {
             controller.enqueue(
               encoder.encode(
-                sse('awaiting_user', { question: ev.question, toolCallId: ev.toolCallId })
+                sse('awaiting_user', { questions: ev.questions, toolCallId: ev.toolCallId })
               )
             );
           } else if (ev.type === 'done') {
