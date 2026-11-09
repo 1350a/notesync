@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# 本地 OCR 运行时资产（由 npm run ocr:assets 从仓库/依赖内派生，见 doc/browser-local-ocr.md）
+/public/ocr/
+
 # production
 /build
 
