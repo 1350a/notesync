@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile } from '@/lib/chat/messages';
+import type { AskUserQuestion } from '@/lib/tools/types';
 
 function parseSseEvent(chunk: string) {
   const lines = chunk.split('\n');
@@ -45,6 +46,24 @@ export function useChat(selectedModel: string) {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
       abortControllerRef.current = new AbortController();
+
+      // 上一条 assistant 还有待回答的 ask_user 时先回填其工具轨迹：
+      // ask_user 是中断语义、没有 tool_result 事件，不回填则"等待回答"永远挂起
+      setMessages((prev) => {
+        const i = prev.length - 1;
+        const last = prev[i];
+        if (last?.role !== 'assistant' || !last.awaitingQuestions?.length) return prev;
+        const next = [...prev];
+        next[i] = {
+          ...last,
+          toolCalls: (last.toolCalls ?? []).map((t) =>
+            t.name === 'ask_user' && !t.result
+              ? { ...t, result: { ok: true, summary: '用户已回答', ms: 0 } }
+              : t
+          ),
+        };
+        return next;
+      });
 
       const userMsg: ChatMsg = { role: 'user', content: text, images, files };
       const history = [...messages, userMsg];
@@ -122,13 +141,15 @@ export function useChat(selectedModel: string) {
                 ),
               }));
             } else if (parsed.event === 'awaiting_user') {
-              // 问题写入 content：下一轮历史回放时模型才能看到问答上下文；
-              // awaitingQuestion 供 UI 渲染提问卡片（替代正文，避免重复展示）
-              appendAssistant((m) => ({
-                ...m,
-                content: parsed.data.question,
-                awaitingQuestion: parsed.data.question,
-              }));
+              // 问题列表只挂在本条 assistant 消息上，供输入区问题面板消费；
+              // content 保留模型前导文本，问答上下文由下一轮用户回答消息自带。
+              // 服务端保证 questions 非空，这里仍窄化防御脏数据
+              const questions = Array.isArray(parsed.data.questions)
+                ? (parsed.data.questions as AskUserQuestion[])
+                : [];
+              if (questions.length > 0) {
+                appendAssistant((m) => ({ ...m, awaitingQuestions: questions }));
+              }
             } else if (parsed.event === 'done') {
               finished = true;
               break;
