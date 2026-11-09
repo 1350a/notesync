@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import type { ChatMsg } from '@/lib/chat/messages';
+import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
 import ToolTrace from './ToolTrace';
 
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
@@ -94,7 +95,7 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
               <div className="markdown-body text-sm">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex, rehypeRaw]}
+                  rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
                 >
                   {m.content || '…'}
                 </ReactMarkdown>
