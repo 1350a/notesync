@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, ReviseCategory } from '@/lib/diagnose/types';
+import { useSettingsStore } from '@/store/useSettingsStore';
 
 /** 四类上传标签，顺序与组装锚点一致 */
 const CATEGORIES: { id: ReviseCategory; label: string; color: string }[] = [
@@ -82,13 +83,29 @@ export default function UploadArea() {
     error: modelsError,
   } = useModels();
   const [pickedModel, setPickedModel] = useState('');
+  // 默认模型记忆：与聊天页共用设置里的 defaultModel（doc/user-settings.md §5）
+  const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
+  const settingsHydrated = useSettingsStore((s) => s.hydrated);
+  const updateSettings = useSettingsStore((s) => s.update);
 
-  // 派生选中值：用户选过的仍在列表里就沿用，否则回落到首个可用模型（不写 localStorage）
+  // 派生选中值：用户选过的仍在列表里就沿用，否则回落到首个可用模型（不保留过期模型名）
   const selectedModel = useMemo(() => {
     if (models.length === 0) return '';
     if (pickedModel && models.some((m) => m.name === pickedModel)) return pickedModel;
     return models[0].name;
   }, [models, pickedModel]);
+
+  // 设置里的默认模型：仅当用户本次尚未手选且该模型仍在列表中时采用
+  useEffect(() => {
+    if (!settingsHydrated || pickedModel || !defaultModel) return;
+    if (models.some((m) => m.name === defaultModel)) setPickedModel(defaultModel);
+  }, [settingsHydrated, defaultModel, pickedModel, models]);
+
+  /** 用户手动换模型即视为新的默认偏好，与聊天页共享同一份记忆 */
+  const handleModelChange = (model: string) => {
+    setPickedModel(model);
+    updateSettings({ defaultModel: model });
+  };
 
   const currentModel = models.find((m) => m.name === selectedModel);
   /** 当前模型不接受图片时，图片会被服务端降级为文字占位，提前告知用户 */
@@ -205,7 +222,7 @@ export default function UploadArea() {
           models={models}
           providers={providers}
           selectedModel={selectedModel}
-          onModelChange={setPickedModel}
+          onModelChange={handleModelChange}
           loading={modelsLoading}
           disabled={isSending}
           emptyHint={modelsError ?? modelsMessage}
