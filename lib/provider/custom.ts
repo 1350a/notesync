@@ -15,6 +15,12 @@ const CUSTOM_API_KEY = process.env.CUSTOM_API_KEY || "";
 const CUSTOM_BASE_URL = process.env.CUSTOM_BASE_URL || "";
 /** 自定义首选模型名（可选，配置后置顶并参与名称校验） */
 const CUSTOM_MODEL = process.env.CUSTOM_MODEL || "";
+/**
+ * 自定义端点是否接受图片直传（显式开启才生效）。
+ * 默认纯文本：自定义端点多为本地 Ollama / vLLM 纯文本模型，默认直传 image_url
+ * 必然 400；真多模态端点由用户显式声明（doc/browser-local-ocr.md §6.3）。
+ */
+const CUSTOM_ALLOW_IMAGES = process.env.CUSTOM_ALLOW_IMAGES === "1";
 
 /** key + base url 齐备才认为自定义模型可用（模型名可由 /models 枚举获得） */
 export function customAvailable(): boolean {
@@ -30,6 +36,8 @@ export class CustomProvider extends OpenAICompatProvider {
       defaultModels: CUSTOM_MODEL ? [CUSTOM_MODEL] : [],
       envModel: CUSTOM_MODEL || undefined,
       displayName: "自定义模型",
+      // 图片能力默认关闭：配合输入区的本地 OCR 转文字通道，纯文本端点也能消费图片内容
+      allowImages: CUSTOM_ALLOW_IMAGES,
       // 自定义端点多为本地 Ollama / vLLM，放宽超时
       probeEnabled: true,
       probeTimeoutMs: PROBE_TIMEOUT_CUSTOM,
