@@ -15,22 +15,16 @@ export default function ChatPage() {
   const [pickedModel, setPickedModel] = useState('');
   // 默认模型记忆：设置里保存的偏好，模型变更时回写（doc/user-settings.md §5）
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
-  const settingsHydrated = useSettingsStore((s) => s.hydrated);
   const updateSettings = useSettingsStore((s) => s.update);
 
-  // 选中模型为派生值：用户选过的模型仍在列表中则沿用，否则回落到后端推荐的第一个，
-  // 列表为空即空（不保留过期模型名，避免带着失效模型发请求）
+  // 选中模型为派生值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
+  // 再回落到后端推荐的第一个。列表为空即空（不保留过期模型名，避免带着失效模型发请求）
   const selectedModel = useMemo(() => {
     if (models.length === 0) return '';
     if (pickedModel && models.some((m) => m.name === pickedModel)) return pickedModel;
+    if (defaultModel && models.some((m) => m.name === defaultModel)) return defaultModel;
     return models[0].name;
-  }, [models, pickedModel]);
-
-  // 设置里的默认模型：仅当用户本次尚未手选且该模型仍在列表中时采用
-  useEffect(() => {
-    if (!settingsHydrated || pickedModel || !defaultModel) return;
-    if (models.some((m) => m.name === defaultModel)) setPickedModel(defaultModel);
-  }, [settingsHydrated, defaultModel, pickedModel, models]);
+  }, [models, pickedModel, defaultModel]);
 
   /** 用户手动换模型即视为新的默认偏好；失效模型不回写（保持派生回落逻辑兜底） */
   const handleModelChange = (model: string) => {
