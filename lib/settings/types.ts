@@ -68,10 +68,13 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     out.temperature = clamp(record.temperature, TEMPERATURE_MIN, TEMPERATURE_MAX);
   }
-  if (typeof record.maxTokens === 'number' && Number.isFinite(record.maxTokens)) {
-    // 整数化并钳制；钳后仍 <1（如负数/NaN 路径）直接丢弃，回到 provider 默认
-    const tokens = Math.floor(clamp(record.maxTokens, MAX_TOKENS_MIN, MAX_TOKENS_MAX));
-    if (tokens >= MAX_TOKENS_MIN) out.maxTokens = tokens;
+  if (
+    typeof record.maxTokens === 'number' &&
+    Number.isFinite(record.maxTokens) &&
+    record.maxTokens >= MAX_TOKENS_MIN
+  ) {
+    // 有效性先于钳制：maxTokens 没有有意义的零值（与 temperature 不同），≤0 直接丢弃
+    out.maxTokens = Math.floor(clamp(record.maxTokens, MAX_TOKENS_MIN, MAX_TOKENS_MAX));
   }
   return out;
 }
