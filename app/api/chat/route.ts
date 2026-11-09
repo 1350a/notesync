@@ -243,6 +243,11 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
 }
 
 export async function POST(request: Request) {
+  // 匿名客户端标识（无登录体系的 user_id 替代，doc/user-settings.md §4）：
+  // 仅日志追溯用，不参与路由/存储，服务端保持逐请求无状态
+  const clientId = request.headers.get('x-client-id') ?? 'anonymous';
+  console.log(`[chat] client=${clientId}`);
+
   // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）
   // 与 files（聊天界面上传的纯文本文件，按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
   const body = (await request.json()) as ChatRequestBody;
