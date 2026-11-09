@@ -90,6 +90,47 @@ async function testNativeHistory() {
     cleanedWithTool[0].role === 'assistant' && cleanedWithTool[0].content === '（询问用户）Q1',
     '带 tool 历史转为纯文本'
   );
+
+  // 3. 新多问题形状（questions 数组）
+  const msgsMulti: ProviderMessage[] = [
+    {
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call_2',
+          type: 'function',
+          function: {
+            name: 'ask_user',
+            arguments: '{"questions":[{"label":"身份","question":"你是谁"},{"question":"你在哪"}]}',
+          },
+        },
+      ],
+    },
+  ];
+  const cleanedMulti = adapter.preprocessMessages(msgsMulti);
+  assert(
+    cleanedMulti[0].role === 'assistant' &&
+      cleanedMulti[0].content === '（询问用户）【身份】你是谁；你在哪',
+    '多问题历史合并为一行文本'
+  );
+
+  // 4. appendResults 对 awaiting_user 写 questions 占位（防御性路径，正常由 loop 中断）
+  const msgsPlaceholder: ProviderMessage[] = [];
+  adapter.appendResults(
+    msgsPlaceholder,
+    [{ id: 'call_9', name: 'ask_user', arguments: {} }],
+    [{ kind: 'awaiting_user', questions: [{ question: 'Q1' }] }]
+  );
+  assert(msgsPlaceholder.length === 2, 'appendResults 产出 assistant+tool 两条');
+  const placeholder = msgsPlaceholder[1];
+  assert(
+    placeholder?.role === 'tool' &&
+      typeof placeholder.content === 'string' &&
+      placeholder.content.includes('"awaiting_user"') &&
+      placeholder.content.includes('"question":"Q1"'),
+    'awaiting_user 占位携带问题数组'
+  );
 }
 
 async function testTextStreamNormal() {
