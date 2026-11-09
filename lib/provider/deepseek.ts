@@ -45,6 +45,14 @@ export class DeepSeekProvider extends OpenAICompatProvider {
       probeTimeoutMs: PROBE_TIMEOUT_CLOUD,
     });
   }
+
+  /**
+   * 按模型名判定图片能力：仅含 vision 的过渡别名可直传，官方文本款一律纯文本。
+   * 文本款直传 image_url 会被上游 400，保守交由输入区的本地 OCR 转文字通道。
+   */
+  modelAcceptsImages(model: string): boolean {
+    return /vision/i.test(model);
+  }
 }
 
 /** 单例导出 */
