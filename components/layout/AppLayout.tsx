@@ -1,12 +1,34 @@
 'use client';
 
-import SettingsModal from '@/components/SettingsModal';
+import SettingsModal from '@/components/settings/SettingsModal';
+import { isDarkEffective, watchSystemTheme } from '@/lib/settings/theme';
 import { useChatStore } from '@/store/useChatStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
+import { useEffect } from 'react';
 import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isSettingsOpen, setSettingsOpen } = useChatStore();
+  // 设置水合与主题应用收口在布局层：全站唯一生效点，各页不再自行处理
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const hydrate = useSettingsStore((s) => s.hydrate);
+
+  // 客户端挂载后从存储水合一次（幂等）
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  // 主题应用到 <html>；'system' 时订阅系统深浅色变化实时联动
+  useEffect(() => {
+    const apply = () => {
+      if (isDarkEffective(theme)) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    };
+    apply();
+    if (theme !== 'system') return;
+    return watchSystemTheme(apply);
+  }, [theme]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
