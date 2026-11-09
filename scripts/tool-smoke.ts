@@ -5,8 +5,8 @@
  * 或：  `node scripts/tool-smoke.ts`
  *
  * 覆盖：
- * 1. ask_user 正常调用 → awaiting_user
- * 2. ask_user 空 question → 参数校验失败
+ * 1. ask_user 正常调用（多问题+选项）→ awaiting_user；超 5 问截断
+ * 2. ask_user 空 question / 缺 questions → 参数校验失败
  * 3. 未知工具 → 错误包装
  * 4. 工具超时 → 错误包装
  * 5. 工具抛错 → 错误包装
@@ -42,23 +42,47 @@ function assertEqual<T>(actual: T, expected: T, label: string): void {
 }
 
 async function testAskUser(): Promise<void> {
-  console.log('\n[1] ask_user 正常调用');
+  console.log('\n[1] ask_user 正常调用（多问题+选项）');
   const result = await invokeTool({
     name: 'ask_user',
-    args: { question: '你卡在哪一步？' },
+    args: {
+      questions: [
+        { label: '身份', question: '你是谁？', options: ['小明', '小红'] },
+        { question: ' 你在哪？ ' },
+      ],
+    },
   });
   assert(result.kind === 'awaiting_user', '返回 awaiting_user');
   if (result.kind === 'awaiting_user') {
-    assertEqual(result.question, '你卡在哪一步？', 'question 透传正确');
+    assertEqual(result.questions.length, 2, '问题数正确');
+    const q1 = result.questions[0];
+    assert(
+      q1?.label === '身份' && q1.question === '你是谁？' && q1.options?.join(',') === '小明,小红',
+      '问题1（label+options）透传正确'
+    );
+    assertEqual(result.questions[1], { question: '你在哪？' }, '问题2 trim 正确');
   }
+
+  // handler 兜底：问题数超过 5 截断（校验器不校验 minItems/maxItems）
+  const truncated = await invokeTool({
+    name: 'ask_user',
+    args: { questions: Array.from({ length: 7 }, (_, i) => ({ question: `Q${i}` })) },
+  });
+  assert(truncated.kind === 'awaiting_user' && truncated.questions.length === 5, '超过 5 个问题截断到 5');
 }
 
 async function testAskUserEmpty(): Promise<void> {
-  console.log('\n[2] ask_user 空 question');
-  const result = await invokeTool({ name: 'ask_user', args: { question: '' } });
-  assert(result.kind === 'result' && !result.ok, '返回 result/ok=false');
-  if (result.kind === 'result' && !result.ok) {
-    assert(result.error.includes('参数校验失败'), '错误信息包含参数校验');
+  console.log('\n[2] ask_user 空 question / 缺 questions');
+  const blank = await invokeTool({ name: 'ask_user', args: { questions: [{ question: '   ' }] } });
+  assert(blank.kind === 'result' && !blank.ok, '纯空白 question 返回 result/ok=false');
+  if (blank.kind === 'result' && !blank.ok) {
+    assert(blank.error.includes('question 不能为空'), '错误信息包含 question 校验');
+  }
+
+  const missing = await invokeTool({ name: 'ask_user', args: {} });
+  assert(missing.kind === 'result' && !missing.ok, '缺 questions 返回 result/ok=false');
+  if (missing.kind === 'result' && !missing.ok) {
+    assert(missing.error.includes('参数校验失败'), '错误信息包含参数校验');
   }
 }
 
