@@ -248,8 +248,10 @@ export async function POST(request: Request) {
   const clientId = request.headers.get('x-client-id') ?? 'anonymous';
   console.log(`[chat] client=${clientId}`);
 
-  // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）
-  // 与 files（聊天界面上传的纯文本文件，按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
+  // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）、
+  // imageTexts（本地 OCR 转文字产物，非空时忽略 images 本体，任何模型可安全消费，
+  // 见 doc/browser-local-ocr.md §6.2）与 files（聊天界面上传的纯文本文件，
+  // 按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
   const body = (await request.json()) as ChatRequestBody;
 
   // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
