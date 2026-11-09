@@ -1,6 +1,6 @@
 # 工具调用（Tool Calling）协议
 
-> 状态：P5（服务端接线完成，前端已消费工具事件）｜最后更新：2026-11-08
+> 状态：P5（服务端接线完成，前端已消费工具事件）｜最后更新：2026-11-09
 > 对应代码：`lib/tools/`（含 `adapters/`）、`lib/provider/types.ts`（仅类型扩展）、`app/api/chat/route.ts`（P4 接线）
 >
 > 2026-11-07 已按已合入实现（P1–P4 全部落地）逐条校准本文件。校准原则：文档向实现对齐；实现尚未兑现的协议承诺**不删除**，统一收敛到 §8「待实现」与 §9，避免文档声称不存在的能力。
@@ -47,11 +47,12 @@ interface ToolDefinition {
 type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolHandlerReturn>;
 
 type ToolHandlerReturn =
-  { kind: 'result'; data: unknown; summary?: string } | { kind: 'awaiting_user'; question: string };
+  { kind: 'result'; data: unknown; summary?: string }
+  | { kind: 'awaiting_user'; questions: AskUserQuestion[] };
 ```
 
 - `kind: "result"` — 普通执行成功。`data` 由 `invoke` 序列化后回填模型；`summary` 可选（不填则自动截断 JSON 字符串到 200 字符，仅供 SSE 展示）。
-- `kind: "awaiting_user"` — 中断本轮，等待用户回答（`ask_user` 专用）。
+- `kind: "awaiting_user"` — 中断本轮，等待用户回答（`ask_user` 专用）。`AskUserQuestion` 定义见 §6。
 - **不自行捕获业务异常**：抛错由 `invoke` 统一转为 `ok: false` 的错误包装，回填模型而非中断 loop。
 - **参数校验由 `invoke` 统一完成**：handler 收到的 `args` 已通过 `validateArguments`，但类型是 `Record<string, unknown>`，handler 内部仍需窄化（`typeof args.x === "string"`）。
 - **超时与中止**：`ctx.timeoutMs`（默认 15000）与 `ctx.signal` 由 `invoke` 通过 `Promise.race` 处理；handler 无需关心。
@@ -102,7 +103,7 @@ interface ExtractedToolCall {
 
 ````
 ```tool
-{"tool": "ask_user", "arguments": {"question": "你是哪一步不会？"}}
+{"tool": "ask_user", "arguments": {"questions": [{"label": "卡点", "question": "你卡在哪一步？"}, {"question": "期望的结果是什么？"}]}}
 ```
 ````
 
@@ -139,11 +140,23 @@ interface ExtractedToolCall {
 
 `ask_user` 不是普通工具——它**不产生工具结果**，而是"中断本轮，等待用户回答"。
 
+一次调用可携带 **1~5 个问题**，每个问题可附**至多 4 个预设选项**（建议 2~3 个，也可以不给，用户始终可以自由输入）：
+
+```ts
+interface AskUserQuestion {
+  label?: string; // 可选短分类标题（如"身份确认"），≤20 字，前端问题面板展示用
+  question: string; // 问题文本，1~500 字
+  options?: string[]; // 可选预设选项，每个 1~200 字，≤4 个
+}
+```
+
+条数限制（`minItems`/`maxItems`）在 inputSchema 中声明给模型，但校验器暂不校验数组长度（见 `validate.ts` 覆盖字段清单），由 **handler 兜底**：问题数超过 5 截断、选项数超过 4 截断，`question` 缺失或纯空白直接抛错（走 `ok:false` 错误包装，不中断 loop）。
+
 ### 6.1 执行
 
 ```
-模型发起 ask_user(question)
-  → invoke() 返回 { kind: "awaiting_user", question }
+模型发起 ask_user(questions)
+  → invoke() 返回 { kind: "awaiting_user", questions }
   → loop 检测到 → 发 awaiting_user 事件 → 立即发 done（本轮结束）
   → 服务端不落任何 ask_user 的 tool 消息
 ```
@@ -154,36 +167,39 @@ interface ExtractedToolCall {
 type ToolInvocation =
   | { kind: 'result'; ok: true; data: unknown; summary: string }
   | { kind: 'result'; ok: false; error: string; summary: string }
-  | { kind: 'awaiting_user'; question: string };
+  | { kind: 'awaiting_user'; questions: AskUserQuestion[] };
 ```
 
 ### 6.2 历史回放（下一次请求）
 
-前端在下一轮请求中会带回上一轮的 assistant 消息（含 `ask_user` 的 tool_calls）和用户回答的 user 消息。
+前端在下一轮请求中会带回上一轮的 assistant 消息（含 `ask_user` 的 tool_calls）和用户回答的 user 消息。用户回答是一条**普通纯文本 user 消息**（格式 `1. 【label】question：answer`，跳过记 `已跳过`），问题文本随回答自带，模型上下文自洽。
 
 服务端在**进入 loop 之前**对历史做一次规范化（`preprocessMessages`）：
 
-| 原始                                                                                  | 转换后                       |
-| ------------------------------------------------------------------------------------- | ---------------------------- |
-| native: `assistant(tool_calls=[{name:"ask_user", arguments:"{\"question\":\"Q\"}"}])` | `assistant("（询问用户）Q")` |
-| text: `assistant(content="```tool\n{\"tool\":\"ask_user\",...}\n```")`                | `assistant("（询问用户）Q")` |
+| 原始                                                                                                     | 转换后                              |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| native: `assistant(tool_calls=[{name:"ask_user", arguments:"{\"questions\":[{\"question\":\"Q\"}]}"}])`  | `assistant("（询问用户）Q")`        |
+| native/text 旧单问题形状: `arguments:"{\"question\":\"Q\"}"`                                             | `assistant("（询问用户）Q")`        |
+| text: `assistant(content="```tool\n{\"tool\":\"ask_user\",...}\n```")`                                   | `assistant("（询问用户）Q")`        |
+
+多个问题的合并格式：每个问题一条 `【label】question`（无 label 则只有 `question`），问题之间用"；"连接，例如 `（询问用户）【身份】你是谁；你在哪`。
 
 **关键**：转换后**不留任何 `role:"tool"` 的占位消息**，避免违反 OpenAI 协议（有 tool_call 必须有 tool 结果）。
 
 其他工具（非 `ask_user`）的历史照常按 `tool_calls` + `tool` 消息回放。
 
-### 6.3 历史清洗（P3 适配器实现）
+### 6.3 历史清洗（适配器实现）
 
-为防止带有 `ask_user` 的 `assistant` 消息在后续请求中违反协议，适配器层（`native.ts` / `text.ts`）提供 `preprocessMessages`：
+为防止带有 `ask_user` 的 `assistant` 消息在后续请求中违反协议，适配器层（`native.ts` / `text.ts`）提供 `preprocessMessages`，问题文本的提取与合并统一走 `builtin/ask_user.ts` 导出的 `formatAskUserArgs()`：
 
 - **native 模式**：扫描 `assistant.tool_calls`。如果包含 `name === "ask_user"`：
-  1. 解析 `function.arguments` 中的 `question`。
-  2. 构造一条纯文本消息：`{ role: "assistant", content: "（询问用户）" + question }`。
+  1. 解析 `function.arguments` 中的 `questions`（新）或 `question`（旧历史兼容）。
+  2. 构造一条纯文本消息：`{ role: "assistant", content: formatAskUserArgs(args) }`。
   3. 丢弃 `tool_calls` 字段。
   4. （由于服务端不落 tool 结果，历史中必然没有对应的 `role:"tool"` 消息，直接替换即可）。
 - **text 模式**：扫描 `assistant.content`。如果匹配到围栏 ` ```tool ` 且内部 JSON 的 `tool === "ask_user"`：
-  1. 提取 `question`。
-  2. 将整条消息替换为：`{ role: "assistant", content: "（询问用户）" + question }`。
+  1. 提取 `arguments`，同样走 `formatAskUserArgs()`。
+  2. 将整条消息替换为对应的纯文本 assistant 消息。
 
 **目的**：让模型在下一轮看到的历史是“我向用户提问了，用户回答了”，而不是“我生成了不知所谓的工具标记”。
 
@@ -196,7 +212,7 @@ event: reasoning    data: {"delta":"思考过程增量"}
 event: content      data: {"delta":"回复内容增量"}
 event: tool_call    data: {"id":"call_x","name":"ask_user","arguments":{"question":"..."}}
 event: tool_result  data: {"id":"call_x","ok":true,"summary":"= 42","ms":12}
-event: awaiting_user data: {"question":"你是哪一步不会？","toolCallId":"call_x"}
+event: awaiting_user data: {"questions":[{"label":"卡点","question":"你是哪一步不会？"}],"toolCallId":"call_x"}
 event: done         data: {"model":"deepseek-chat","provider":"deepseek","usedRounds":1,"finishReason":"stop"}
 event: error        data: {"code":"provider_error","error":"...","model":"...","provider":"..."}
 ```
@@ -205,7 +221,7 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | --------------- | ------------------------------------------------- | ---------------------------------------------------------- |
 | `tool_call`     | `id` / `name` / `arguments`（已解析对象）         | 顺序与模型返回一致；native 多调用时逐条下发                |
 | `tool_result`   | `id` / `ok` / `summary` / `ms`                    | `summary` 由 handler 提供，缺省为 JSON 前 200 字符         |
-| `awaiting_user` | `question` / `toolCallId`                         | 发出后**必须紧跟 `done`**，本轮 SSE 结束                   |
+| `awaiting_user` | `questions`（`AskUserQuestion[]`，§6）/ `toolCallId` | 发出后**必须紧跟 `done`**，本轮 SSE 结束；前端在输入区问题面板逐题收集回答（`components/chat/AskUserPanel.tsx`） |
 | `done`          | `model` / `provider` / `usedRounds` / `finishReason` | `finishReason` ∈ `stop` / `awaiting_user` / `max_rounds` |
 | `error`         | `code` / `error` / `model`? / `provider`? / `available`? | 见 §8；`code` 现在必有值（loop 内 `parse_error`，其余由路由层兜底 `provider_error`） |
 
@@ -258,3 +274,4 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | 2026-11-07 | P1   | 初版：双模式、`ask_user` 中断语义、SSE 事件定义 |
 | 2026-11-07 | P4   | 按已合入实现校准：删除不存在的 `index` 字段、`tool_result` 去掉 `name`、`done` 补 `model`/`provider`、新增 §8.1 `error.code` 四态与 §8.3 待实现清单；§9 改为「扩展点与实现状态」 |
 | 2026-11-08 | P5   | §8.3 三项落地：text 解析失败重试一次后视为普通回答、`maxRounds` 收敛请求（不带 tools）、error 事件全量带 `code`；前端消费 `tool_call`/`tool_result`/`awaiting_user`，状态推进到 P5 |
+| 2026-11-09 | P5   | ask_user 升级为多问题 + 可选预设选项：入参 `question` → `questions[]`（含 `label`/`options`，兼容旧形状），`awaiting_user` 事件与 `ToolInvocation` 同步改字段；前端交互从消息气泡追问卡片迁至输入区问题面板（`AskUserPanel`），用户回答以纯文本消息回传 |
