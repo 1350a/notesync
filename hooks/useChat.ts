@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile } from '@/lib/chat/messages';
+import { CLIENT_ID_HEADER, getClientId } from '@/lib/client-id';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
 function parseSseEvent(chunk: string) {
@@ -75,7 +76,7 @@ export function useChat(selectedModel: string) {
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', [CLIENT_ID_HEADER]: getClientId() },
           body: JSON.stringify({
             model: selectedModel,
             // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）
