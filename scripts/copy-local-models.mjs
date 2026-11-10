@@ -4,18 +4,19 @@
  *
  * 见 doc/browser-local-inference.md §3：
  * - 模型权重从 HF 下载（默认直连，HF_MIRROR 可切镜像），镜像完整仓库目录结构；
- * - ORT wasm 从 transformers 嵌套依赖内复制（bundler 实际解析的副本，
- *   根目录 onnxruntime-web 版本不同不可用）；
+ * - ORT wasm 从根依赖 onnxruntime-web/dist 复制：package.json 的 overrides 已把
+ *   全树 ORT 统一到 transformers 精确依赖的同一版本，bundler 与拷贝脚本解析到
+ *   同一份副本，wasm 与 glue 必然同包同版本；
  * - public/models/ 为派生产物不入库；运行时零外联，资产缺失 = 功能不可用。
  */
-import { access, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const root = process.cwd();
 const MODEL_REPO = "onnx-community/bge-small-zh-v1.5-ONNX";
 const BASE = process.env.HF_MIRROR || "https://huggingface.co";
 const DEST = "public/models/bge-small-zh-v1.5";
-const ORT_SRC = "node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist";
+const ORT_SRC = "node_modules/onnxruntime-web/dist";
 const ORT_DEST = "public/models/ort";
 
 /** 下载清单：minBytes 按实测体积（2026-11-10）设下限，拦截截断/HTML 错误页 */
@@ -80,7 +81,29 @@ for (const item of DOWNLOADS) {
   }
 }
 
-// 2) 复制 ORT wasm（来源在依赖内，可离线重复执行）
+// 2) 复制 ORT wasm（来源为依赖内单一副本，可离线重复执行）
+// 前置校验：已安装 ORT 版本必须与 package.json 声明一致，否则拷出的 wasm 可能与
+// 打包进 bundle 的 glue 不同版本（overrides 失效、漏装都会走到这里）
+try {
+  const installedOrt = JSON.parse(
+    await readFile(path.join(root, "node_modules/onnxruntime-web/package.json"), "utf8"),
+  ).version;
+  const declaredOrt = JSON.parse(
+    await readFile(path.join(root, "package.json"), "utf8"),
+  ).dependencies?.["onnxruntime-web"];
+  if (installedOrt !== declaredOrt) {
+    failed = true;
+    console.error(
+      `FAIL ORT 版本漂移：已安装 ${installedOrt} ≠ package.json 声明 ${declaredOrt}（先 npm install）`,
+    );
+  } else {
+    console.log(`ok   ORT 版本 ${installedOrt}（wasm 与 glue 同包同版本）`);
+  }
+} catch (err) {
+  failed = true;
+  console.error(`FAIL ORT 版本校验: ${err.message}`);
+}
+
 for (const name of ORT_FILES) {
   const from = path.join(root, ORT_SRC, name);
   const to = path.join(root, ORT_DEST, name);
