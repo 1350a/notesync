@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
 import { useModels } from '@/hooks/useModels';
@@ -116,12 +116,6 @@ export default function UploadArea() {
   const currentModel = models.find((m) => m.name === selectedModel);
   const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
 
-  // 没有图片行时撤销当次覆盖，下次添加图片重新按设置与模型能力派生
-  const hasImageRows = rows.some((row) => row.dataUrl);
-  useEffect(() => {
-    if (!hasImageRows) setOcrOverride(null);
-  }, [hasImageRows]);
-
   /** 加入文件：先判定类型，再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
     const drafts = incoming.map((file) => {
@@ -178,7 +172,10 @@ export default function UploadArea() {
   };
 
   const removeRow = (id: string) => {
-    setRows((prev) => prev.filter((row) => row.id !== id));
+    const next = rows.filter((row) => row.id !== id);
+    setRows(next);
+    // 图片行清空即撤销当次覆盖（事件内重置，不用 effect），下次添加图片重新派生
+    if (!next.some((row) => row.dataUrl)) setOcrOverride(null);
   };
 
   const readyRows = rows.filter((row) => row.supported && (row.dataUrl || row.text));
