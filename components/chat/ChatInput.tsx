@@ -3,6 +3,11 @@
 import ModelSelect from '@/components/ModelSelect';
 import { Button } from '@/components/ui/button';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
+import {
+  convertImagesToTexts,
+  resolveImageSendMode,
+  type ImageSendMode,
+} from '@/lib/ocr/image-handling';
 import type { ProviderModel, ProviderStatus } from '@/lib/provider/types';
 import { useEffect, useRef, useState } from 'react';
 
@@ -44,6 +49,8 @@ export interface ChatInputProps {
   modelsLoading?: boolean;
   /** 无可用模型时的后端提示 */
   modelsMessage?: string;
+  /** 设置页"优先本地OCR"偏好（ocr.preferLocal）：true 时图片一律先转文字 */
+  preferLocalOcr: boolean;
 }
 
 export default function ChatInput({
@@ -56,6 +63,7 @@ export default function ChatInput({
   providers,
   modelsLoading = false,
   modelsMessage,
+  preferLocalOcr,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -64,6 +72,10 @@ export default function ChatInput({
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
+  const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
+  /** 本地 OCR 进行中进度；非 null 时阻断重复发送 */
+  const [ocrBusy, setOcrBusy] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -158,15 +170,40 @@ export default function ChatInput({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // 图片清空后撤销当次覆盖，下次贴图重新按设置与模型能力派生
+  useEffect(() => {
+    if (images.length === 0) setOcrOverride(null);
+  }, [images.length]);
+
+  const currentModel = models.find((m) => m.name === selectedModel);
+  const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
   const hasPayload = input.trim().length > 0 || images.length > 0 || files.length > 0;
 
-  const handleSend = () => {
-    if (!hasPayload || loading) return;
-    onSend(input.trim(), images, files);
+  const handleSend = async () => {
+    if (!hasPayload || loading || ocrBusy) return;
+    let ocrTexts: string[] | undefined;
+    if (images.length > 0 && imageMode === 'local-ocr') {
+      setOcrBusy({ done: 0, total: images.length });
+      const result = await convertImagesToTexts(images, (done, total) =>
+        setOcrBusy({ done, total })
+      );
+      setOcrBusy(null);
+      if (result.failures.length > 0) {
+        // 失败阻断发送：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
+        const index = result.failures.map((f) => f.index + 1).join('、');
+        pushHint(
+          `第 ${index} 张图本地OCR失败：${result.failures[0].reason}。可移除该图或改用「直传原图」。`
+        );
+        return;
+      }
+      ocrTexts = result.texts as string[];
+    }
+    onSend(input.trim(), images, files, ocrTexts);
     setInput('');
     setImages([]);
     setFiles([]);
     setHint('');
+    setOcrOverride(null);
   };
 
   return (
@@ -223,7 +260,16 @@ export default function ChatInput({
         </div>
       )}
 
-      {hint && <div className="px-2 text-[11px] text-amber-600">{hint}</div>}
+      {(hint || ocrBusy) && (
+        <div className="px-2 text-[11px] text-amber-600">
+          {ocrBusy && (
+            <div className="text-muted-foreground">
+              本地OCR识别中 {ocrBusy.done}/{ocrBusy.total}…
+            </div>
+          )}
+          {hint}
+        </div>
+      )}
 
       {/*
         大外框容器：这是一个带有边框和背景的整体
@@ -268,7 +314,7 @@ export default function ChatInput({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              handleSend();
+              void handleSend();
             }
           }}
           placeholder="输入你的问题，支持上传图片与文本文件，回车发送…"
@@ -281,7 +327,7 @@ export default function ChatInput({
           }}
         />
 
-        {/* 底栏：左侧上传，右侧发送 */}
+        {/* 底栏：左侧上传与图片发送方式，右侧发送 */}
         <div className="flex items-center justify-between px-1 pt-1">
           <div className="flex items-center gap-2">
             <Button
@@ -309,6 +355,41 @@ export default function ChatInput({
                 />
               </svg>
             </Button>
+            {/* 图片发送方式：有图时才出现；默认值按模型能力与设置派生，可当次切换 */}
+            {images.length > 0 && (
+              <div
+                className="flex items-center overflow-hidden rounded-md border border-border text-[11px]"
+                role="group"
+                aria-label="图片发送方式"
+              >
+                <button
+                  type="button"
+                  disabled={loading || ocrBusy !== null}
+                  onClick={() => setOcrOverride('direct')}
+                  className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    imageMode === 'direct'
+                      ? 'bg-foreground/10 font-medium text-foreground'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                  title="图片原图随消息直传（需所选模型支持多模态，否则会被服务端降级为文字占位）"
+                >
+                  直传原图
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || ocrBusy !== null}
+                  onClick={() => setOcrOverride('local-ocr')}
+                  className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    imageMode === 'local-ocr'
+                      ? 'bg-foreground/10 font-medium text-foreground'
+                      : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                  title="图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）"
+                >
+                  OCR转文字
+                </button>
+              </div>
+            )}
           </div>
 
           {loading ? (
@@ -321,8 +402,8 @@ export default function ChatInput({
             </Button>
           ) : (
             <Button
-              onClick={handleSend}
-              disabled={!hasPayload || !selectedModel}
+              onClick={() => void handleSend()}
+              disabled={!hasPayload || !selectedModel || ocrBusy !== null}
               className="rounded-full h-8 px-4 text-xs bg-foreground text-background hover:bg-foreground/90"
             >
               发送
