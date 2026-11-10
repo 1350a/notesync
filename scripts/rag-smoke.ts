@@ -66,12 +66,11 @@ const chunks: KnowledgeChunk[] = [
   { id: 'c', title: '应用指南', kind: 'knowledge', subject: '应用指南', content: '本应用是什么', tags: [] },
 ];
 // 人造向量：a 与 query 同向，b 半相关，c 正交
-// 语料向量按 rankChunks 签名用 Float32Array（与真实嵌入输出一致）
-const vecA = Float32Array.from([1, 0, 0]);
-const vecB = Float32Array.from([0.5, 0.5, 0]);
-const vecC = Float32Array.from([0, 0, 1]);
-const vecQ = Float32Array.from([1, 0, 0]);
-const vectors = [vecA, vecB, vecC];
+const vecA = [1, 0, 0];
+const vecB = [0.5, 0.5, 0];
+const vecC = [0, 0, 1];
+const vecQ = [1, 0, 0];
+const vectors = [vecA, vecB, vecC].map((v) => Float32Array.from(v));
 
 check('按综合分降序', rankChunks(vecQ, '二次函数', chunks, vectors)[0].chunk.id === 'a');
 check('topK 生效', rankChunks(vecQ, '二次函数', chunks, vectors, { topK: 2 }).length === 2);
