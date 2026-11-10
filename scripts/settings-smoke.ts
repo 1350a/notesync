@@ -61,7 +61,14 @@ check('generation 非对象丢弃', eq(normalizeSettings({ generation: 'high' })
 /* ---------- normalizeSettings：ocr 与未知字段 ---------- */
 check('ocr.preferLocal 严格 true', normalizeSettings({ ocr: { preferLocal: true } }).ocr.preferLocal === true);
 check("ocr.preferLocal 'true' 字符串视为否", normalizeSettings({ ocr: { preferLocal: 'true' } }).ocr.preferLocal === false);
-check('未知字段一律丢弃', eq(Object.keys(normalizeSettings({ theme: 'dark', hacked: 1 })), ['theme', 'defaultModel', 'language', 'systemPrompt', 'generation', 'ocr']));
+
+/* ---------- normalizeSettings：rag（本地检索开关，从严布尔同 ocr） ---------- */
+check('rag.enabled 严格 true', normalizeSettings({ rag: { enabled: true } }).rag.enabled === true);
+check("rag.enabled 'true' 字符串视为否", normalizeSettings({ rag: { enabled: 'true' } }).rag.enabled === false);
+check('rag 非对象回落默认', normalizeSettings({ rag: 'on' }).rag.enabled === false);
+check('rag 缺省回落 false', normalizeSettings({}).rag.enabled === false);
+
+check('未知字段一律丢弃', eq(Object.keys(normalizeSettings({ theme: 'dark', hacked: 1 })), ['theme', 'defaultModel', 'language', 'systemPrompt', 'generation', 'ocr', 'rag']));
 
 /* ---------- 默认值不可变性 ---------- */
 const before = JSON.stringify(cloneDefaults());
