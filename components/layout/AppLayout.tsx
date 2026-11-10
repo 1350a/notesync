@@ -9,15 +9,16 @@ import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isSettingsOpen, setSettingsOpen } = useChatStore();
+  const { isSettingsOpen, setSettingsOpen, hydrateUI } = useChatStore();
   // 设置水合与主题应用收口在布局层：全站唯一生效点，各页不再自行处理
   const theme = useSettingsStore((s) => s.settings.theme);
   const hydrate = useSettingsStore((s) => s.hydrate);
 
-  // 客户端挂载后从存储水合一次（幂等）
+  // 客户端挂载后从存储水合一次（幂等）：设置 + 侧栏开合记忆（doc/mobile-ux.md §2）
   useEffect(() => {
     hydrate();
-  }, [hydrate]);
+    hydrateUI();
+  }, [hydrate, hydrateUI]);
 
   // 主题应用到 <html>；'system' 时订阅系统深浅色变化实时联动
   useEffect(() => {
