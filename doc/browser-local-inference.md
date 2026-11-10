@@ -43,6 +43,15 @@ env 配置要点（依 v4 官方文档核实，2026-11-10）：浏览器下 `env
 （`env.useWasmCache` 默认 true，wasm 亦入 Cache API）。dtype 由引擎按探测结果
 显式传单值（'q4f16' / 'q8'），不使用官方未文档化的 per-device 映射写法。
 
+ORT 版本口径（2026-11-10 依官方包声明核实）：`@huggingface/transformers@4.3.2`
+在其 `dependencies` 中**精确锁定**（非语义化范围）
+`onnxruntime-web@1.31.0-dev.20260914-8d85527a0`，这就是官方认可的运行时版本——
+官方文档源码（guides/tutorials）未提供 ORT 版本控制与 wasm 自托管路径的章节，
+唯一权威约束即该精确依赖。故本项目 `package.json` 声明同一版本，并用
+`overrides` 把 `onnxruntime-web` 与 `onnxruntime-common` 收敛为全树唯一副本：
+消除「根依赖一份 + transformers 嵌套一份」的双 runtime，保证 glue（`ort*.mjs`）
+与 wasm 同包同版本。
+
 ## 3. 资产分发（自托管，运行时零外联）
 
 资产由 `npm run local:assets`（`scripts/copy-local-models.mjs`）下载到
@@ -55,6 +64,9 @@ env 配置要点（依 v4 官方文档核实，2026-11-10）：浏览器下 `env
   （如 `https://hf-mirror.com`）；脚本按上表体积做完整性校验，缺文件即报错。
 - 运行时不引用任何外部 CDN；Transformers.js 的 `env.remoteHost` 保持默认关闭，
   模型一律经 `from_pretrained('/models/bge-small-zh-v1.5', ...)` 从同源加载。
+- ORT wasm 一律从根依赖 `node_modules/onnxruntime-web/dist` 拷贝（与 bundler
+  解析到的是同一份副本）；脚本复制前校验已安装版本与 `package.json` 声明一致，
+  版本漂移直接失败退出，避免 wasm 与 glue 错版。
 - 资产缺失属**可检测的未就绪状态**：调用方必须据此把能力标记为不可用并提示
   `npm run local:assets`，不得渲染假可用 UI（AGENTS.md §8）。
 
