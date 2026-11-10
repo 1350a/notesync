@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_e4cd277fdd0d11f1997d52540024e231
+    ReservedCode1: 31d3IC0/A2PbQxovg7hAr2O4gG/P3Oq5TtrWVqiqYkidplgJsH24NAHY7zZjzNaMlD0OCaygL5aORN2xcWp+C7RJLMyYQf66bc8oH5vyAzGHOPeZV+lvtzRTsu67Qg4Xy4Rsu+OzPoUZK/7y8R7g4f18WTKGiq4nUOyQ2xz403AO4k7ssYa/bFPkXos=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_e4cd277fdd0d11f1997d52540024e231
+    ReservedCode2: 31d3IC0/A2PbQxovg7hAr2O4gG/P3Oq5TtrWVqiqYkidplgJsH24NAHY7zZjzNaMlD0OCaygL5aORN2xcWp+C7RJLMyYQf66bc8oH5vyAzGHOPeZV+lvtzRTsu67Qg4Xy4Rsu+OzPoUZK/7y8R7g4f18WTKGiq4nUOyQ2xz403AO4k7ssYa/bFPkXos=
+---
+
 # notesync — 错题认知诊断引擎
 
 > 面向学生的错题 AI 诊断 Web 应用：既支持单题多轮对话深挖薄弱点，也支持批量试卷诊断。
@@ -183,3 +194,4 @@ notesync/
 ---
 
 本项目为 AI Web 大赛参赛作品，代码原创；密钥仅经环境变量注入，不随仓库公开。本文档为工程说明，若与 `doc/` 协议或代码实现冲突，以代码与 `doc/` 为准。
+*（内容由AI生成，仅供参考）*
