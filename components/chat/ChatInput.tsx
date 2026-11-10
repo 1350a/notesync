@@ -35,7 +35,8 @@ function isTextFile(file: File): boolean {
 }
 
 export interface ChatInputProps {
-  onSend: (text: string, images: string[], files: ChatTextFile[]) => void;
+  /** ocrTexts：OCR 转文字模式下与 images 一一对应的识别文本；直传模式不传 */
+  onSend: (text: string, images: string[], files: ChatTextFile[], ocrTexts?: string[]) => void;
   onStop: () => void;
   loading: boolean;
   /** 真实可用模型列表（来自 GET /api/models，非硬编码） */
@@ -163,17 +164,15 @@ export default function ChatInput({
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
+    const next = images.filter((_, i) => i !== index);
+    setImages(next);
+    // 图片清空即撤销当次覆盖，下次贴图重新按设置与模型能力派生（事件内重置，不用 effect）
+    if (next.length === 0) setOcrOverride(null);
   };
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
-
-  // 图片清空后撤销当次覆盖，下次贴图重新按设置与模型能力派生
-  useEffect(() => {
-    if (images.length === 0) setOcrOverride(null);
-  }, [images.length]);
 
   const currentModel = models.find((m) => m.name === selectedModel);
   const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
