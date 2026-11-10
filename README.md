@@ -1,0 +1,185 @@
+# notesync — 错题认知诊断引擎
+
+> 面向学生的错题 AI 诊断 Web 应用：既支持单题多轮对话深挖薄弱点，也支持批量试卷诊断。
+> **本地能力（图片 OCR、语义嵌入与知识检索）全部在浏览器内完成，图片与语料不出设备**；
+> 对话生成由可配置的云端模型服务承担（DeepSeek / 智谱 / 自定义 OpenAI 兼容端点）。
+
+## 1. 项目定位与能力边界
+
+- **诊断而非搜题**：错题不是"给答案"，而是通过提问逐步收敛到知识点层面的薄弱环节，产出可执行的复习建议。
+- **本地能力底座**：OCR（tesseract.js）与 embedding + RAG（Transformers.js + onnxruntime-web）在 Web Worker 内运行，模型与 wasm 资产**自托管**，运行时不引用任何 CDN。
+- **诚实接线**：未实装的能力不出现在界面上；保留的占位行一律禁用并标注"未实装"（`AGENTS.md` §8）。
+
+边界说明（**重要，勿误读为"完全离线"**）：
+
+| 能力 | 数据是否离开设备 | 说明 |
+| --- | --- | --- |
+| OCR（本地） | 否 | 图片在浏览器内转文字，服务端只分发静态资产 |
+| 知识检索（RAG） | 否 | 语料与查询向量存本机 IndexedDB；仅命中的**文本片段**随消息上行 |
+| 对话生成 | 是 | 由所配置的云端 Provider 处理；本分支不提供本地小模型对话（v2 挂账） |
+
+因此准确表述是：**本地能力零外联、模型资产自托管、无需联网即可完成 OCR 与检索**；而"对话生成完全离线"并不成立，历史文档中的"支持完全离线运行"属过时说法，请以本表为准。
+
+## 2. 能力现状
+
+| 模块 | 状态 | 位置 |
+| --- | --- | --- |
+| 单题多轮对话诊断 | 实装 | `app/chat`、`hooks/useChat.ts` |
+| 批量试卷 / 文件诊断 | 实装 | `app/diagnose`、`lib/diagnose/` |
+| 本地 OCR（chi_sim） | 实装 | `lib/ocr/local.ts`、`app/ocr` 自检页 |
+| 图片发送模式派生（直传 / 本地 OCR） | 实装 | `lib/ocr/image-handling.ts` |
+| 浏览器端 embedding + 知识检索（RAG） | 实装（用户显式开启） | `lib/local/` |
+| 工具调用（native / text 双模式，含 `ask_user` 中断） | 实装 | `lib/tools/` |
+| 三家 Provider 路由与模型列表探测 | 实装 | `lib/provider/` |
+| 设置（主题 / 默认模型 / 本地能力 / 数据管理） | 实装 | `lib/settings/`、`components/settings/` |
+| 基础版 CSP 响应头 | 实装 | `next.config.ts` |
+| 本地小模型对话、云 OCR、云端 embedding | 挂账 | 见 `doc/browser-local-inference.md` §8、`doc/browser-local-ocr.md` §7 |
+
+## 3. 技术栈
+
+| 层 | 技术 |
+| --- | --- |
+| 框架 | Next.js 16.4.3（App Router + Turbopack）+ React 19.3.0 |
+| 语言 | TypeScript 5（`strict`，禁 `any` / `@ts-ignore`） |
+| 样式 | Tailwind CSS 4、shadcn 风格自建组件 |
+| 模型接入 | DeepSeek / 智谱 BigModel / 自定义 OpenAI 兼容端点（服务端环境变量注入密钥） |
+| 本地 OCR | tesseract.js 7（LSTM，纯 wasm，Web Worker） |
+| 本地嵌入 | @huggingface/transformers 4.3.2 + onnxruntime-web 1.31.0-dev.20260914-8d85527a0（`bge-small-zh-v1.5`，512 维） |
+| 存储 | localStorage（设置、会话）+ IndexedDB（RAG 向量） |
+
+## 4. 环境要求
+
+- **Node.js ≥ 22.6**：`scripts/*.ts` 冒烟脚本直接用 `node --experimental-strip-types` 运行 TypeScript（22.6 起提供该能力）。当前开发验证版本 22.12.0；更低版本会在执行 `npm run smoke:*` 时失败。
+- **npm ≥ 10**（随 Node 22 附带即可）。
+- **浏览器**：Chrome / Edge 近期版本。本地嵌入优先 WebGPU（`shader-f16` 可用时走 q4f16），不可用时自动回退 WASM（q8）；站点未配置 COOP/COEP，ORT 单线程加载 asyncify 档，资产清单已同步该档。
+- **磁盘**：`public/models` 约 55MB（q8 约 24MB + q4f16 约 30MB）、`public/ocr` 约 15MB，均为派生产物，不入库。
+
+## 5. 快速开始
+
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 生成两类本地运行时资产（必需，见 §6）
+npm run local:assets
+npm run ocr:assets
+
+# 3. 配置环境变量（至少填一家 Provider 的 Key）
+cp .env.example .env        # Windows: copy .env.example .env
+
+# 4. 启动开发服务器
+npm run dev                 # http://localhost:3000
+
+# 5. 生产构建与启动
+npm run build
+npm run start
+```
+
+不配置任何 Key 时 `/api/models` 返回 `unconfigured`，界面提示去填 `.env`；对话链路不可用，但本地 OCR 自检页（`/ocr`）仍可验证。
+
+## 6. 两步必需的资产操作
+
+两个脚本都是**幂等、离线可重复执行**的资产派生步骤，产物目录均被 `.gitignore` 忽略，因此 `npm install` 之后必须各跑一次。
+
+### 6.1 `npm run local:assets`
+
+- 作用：从 Hugging Face 下载 `onnx-community/bge-small-zh-v1.5-ONNX` 模型（`HF_MIRROR` 可切换镜像，如 `https://hf-mirror.com`），并从根依赖 `node_modules/onnxruntime-web/dist` 复制 ORT 的 wasm/glue 到 `public/models/ort/`。
+- 产物：`public/models/bge-small-zh-v1.5/`（config / tokenizer / 两档权重含 `_data`）、`public/models/ort/`（含 asyncify 档共 6+ 文件）。
+- 校验：按实测体积设下限，拦截截断与 HTML 错误页；复制 ORT 前校验已安装版本与 `package.json` 声明一致，版本漂移直接失败退出。
+- **失败后果**：`checkLocalAssets()` 返回 `ready: false` 并列出缺失路径，「设置 → 本地能力」中的知识检索开关被禁用、本地引擎显示资产缺失与修复命令；聊天发送时 RAG 静默跳过（消息照常发送，不阻断）。若只缺 asyncify 档，会在引擎实例化阶段报 `Failed to fetch dynamically imported module`。
+
+### 6.2 `npm run ocr:assets`
+
+- 作用：把 `tesseract.js` 的 worker、6 个 core wasm 变体与仓库内 `tessdata/` 语言包复制到 `public/ocr/`。
+- 产物：`public/ocr/worker/`、`public/ocr/core/`、`public/ocr/tessdata/`。
+- **失败后果**：`checkOcrAssets()` 返回 `ready: false`，`/ocr` 自检报 FAIL；选择"优先本地 OCR"时图片**无法发送**（逐张列明原因），不会静默改为原图直传，也不会静默回落云 OCR。
+
+## 7. 环境变量
+
+模板见 [.env.example](./.env.example)。密钥只能来自服务端环境变量，禁止写入客户端代码或存储（`AGENTS.md` §7）。
+
+| 变量 | 必填 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `DEEPSEEK_API_KEY` | 三选一 | — | DeepSeek 官方 Key（OpenAI 兼容，`{BASE_URL}/chat/completions`） |
+| `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com` | 自定义端点 |
+| `DEEPSEEK_MODEL` | 否 | `deepseek-v4-flash` | 该 Provider 默认选中模型 |
+| `ZHIPU_API_KEY` | 三选一 | — | 智谱 BigModel Key |
+| `ZHIPU_BASE_URL` | 否 | `https://open.bigmodel.cn/api/paas/v4` | 自定义端点 |
+| `ZHIPU_MODEL` | 否 | `glm-5.3` | 该 Provider 默认选中模型 |
+| `CUSTOM_API_KEY` | 三选一 | — | 自定义 OpenAI 兼容端点 Key |
+| `CUSTOM_BASE_URL` | 否 | — | 自定义端点地址（须含版本前缀，如 `.../v1`） |
+| `CUSTOM_MODEL` | 否 | — | 自定义模型名 |
+| `TOOLS_ENABLED` | 否 | `true` | 是否向模型下发工具集 |
+| `TOOL_MAX_ROUNDS` | 否 | `3` | 工具调用最大循环轮数（防死循环） |
+| `CUSTOM_TOOL_MODE` | 否 | `native` | `native`（原生 tools 协议）/ `text`（文本 JSON 协议） |
+| `CUSTOM_ALLOW_IMAGES` | 否 | `false`（不设置或非 `1` 均视为 false） | 自定义端点是否接受图片直传；默认纯文本，图片先经本地 OCR 转文字，避免 `image_url` 被纯文本端点 400 |
+| `MOCK_MODEL` | 否 | `0` | 置 `1` 时不调用任何上游，仅回显组装后的发送结构（零 token 验证上传 → 组装 → 发送链路） |
+| `MOCK_IMAGE_MODE` | 否 | 空 | MOCK 下的图片投喂方式：`multimodal` / `text-only` |
+| `HF_MIRROR` | 否 | — | 仅 `npm run local:assets` 使用，模型下载镜像基址 |
+
+`.env.example` 底部以注释保留了已停用旧链路（`lib/harness`、`lib/agent`、`lib/rag`、`lib/ocr.ts`、`lib/pdf.ts`）的历史参数，当前代码不再读取。
+
+## 8. 分支与质量门禁约定
+
+- **当前工作分支**：`beta/browser-ocr-planb`（浏览器本地能力方向的 beta 线：本地 OCR + 浏览器端 embedding/RAG）。协议文档中若出现历史方向名 `feat/browser-ai-inference`，指同一方向的早期命名。
+- **质量门禁**（`AGENTS.md` §5）：`npm run lint` 与 `npm run build` **均须退出码 0** 才算完成；提交前另跑 `npx tsc --noEmit`。任一失败先修，禁止只跑一项就宣称完成。
+- **冒烟脚本**（零依赖，`node --experimental-strip-types` 直跑）：`smoke:tools` / `smoke:adapters` / `smoke:loop` / `smoke:files` / `smoke:chat` / `smoke:settings` / `smoke:rag` / `smoke:xss`，另有 `scan:xss`。
+- **提交纪律**（`AGENTS.md` §6）：一文件一 commit；`git add` 与 `git commit` 分两行执行；message 形如 `<type>: <中文描述>`，`<type>` ∈ `feat|fix|refactor|style|docs|test|chore|revert`。
+- **类型纪律**（§3）：`strict` 不放松，禁 `any` 与 `@ts-ignore`。
+- **协议先行**（§9）：诊断流程、API 契约、事件结构、数据模型等业务协议写在 `doc/`，**改协议先改 doc 再改代码**。
+
+## 9. 目录结构
+
+```
+notesync/
+├── app/
+│   ├── page.tsx                # 首页
+│   ├── chat/page.tsx           # 单题对话诊断（SSE 流式）
+│   ├── diagnose/               # 批量试卷/文件诊断
+│   ├── ocr/page.tsx            # 本地 OCR 自检与试用
+│   └── api/
+│       ├── chat/route.ts       # 对话 SSE（附件/OCR/RAG/工具编排）
+│       └── models/route.ts     # 三家 Provider 模型列表与健康状态
+├── components/                 # chat / settings / layout / ui 组件
+├── hooks/                      # useChat、useModels、代码高亮
+├── lib/
+│   ├── local/                  # 浏览器端推理：assets / engine / embedding / worker / rag
+│   ├── ocr/                    # 本地 OCR 服务与图片发送模式派生
+│   ├── provider/               # deepseek / zhipu / custom 路由与探测
+│   ├── tools/                  # 工具调用（registry / adapters / loop / builtin）
+│   ├── chat/                   # 请求体校验与消息组装
+│   ├── diagnose/               # 附件分类、提取、组装
+│   ├── settings/               # 设置模型、存储、主题
+│   └── agent/ harness/ rag/    # 历史诊断链路（已停用，保留源码）
+├── scripts/                    # 资产派生脚本 + 冒烟/扫描脚本
+├── doc/                        # 业务协议文档（唯一事实来源）
+├── public/models、public/ocr   # 派生产物（不入库，由 §6 两步生成）
+├── tessdata/                   # OCR 语言包源文件（入库）
+├── AGENTS.md                   # 工程约定（目录边界、类型、门禁、提交纪律）
+└── next.config.ts              # CSP、Turbopack、serverExternalPackages
+```
+
+## 10. 文档索引
+
+`doc/` 是业务协议的唯一事实来源，改协议须先改文档再改代码。
+
+| 文档 | 内容 |
+| --- | --- |
+| [doc/browser-local-ocr.md](./doc/browser-local-ocr.md) | 浏览器端本地 OCR 协议：选型、资产分发、服务契约、能力页验收、`imageTexts` 接入、Provider 能力默认值 |
+| [doc/browser-local-inference.md](./doc/browser-local-inference.md) | 浏览器端本地推理协议：embedding + RAG、ORT 版本口径与资产自托管、服务契约、检索算法、`ragContexts` 契约、设置联动、挂账 |
+| [doc/user-settings.md](./doc/user-settings.md) | 用户设置协议：`UserSettings` 结构、normalize 规则、存储接口、客户端标识、UI 分区与实装状态 |
+| [doc/tool-protocol.md](./doc/tool-protocol.md) | 工具调用协议：native / text 双模式、`ask_user` 中断语义、SSE 事件扩展、错误码、扩展点与实现状态 |
+| [doc/diagnose-file-intake.md](./doc/diagnose-file-intake.md) | 诊断模式文件接入契约：四类标签、判定与提取规则、请求体、组装产物、MOCK 调试开关 |
+| [doc/TECHNICAL_DOC.old.md](./doc/TECHNICAL_DOC.old.md) | 已归档的旧版技术文档（对应"简易重构前"的实现，含本地 ollama 回退链路），仅作历史参考 |
+
+## 11. 已知挂账
+
+- 本地小模型对话（v2，Qwen3-0.6B / Qwen2.5-0.5B-Instruct ONNX 待评测）、云端 embedding、云 OCR 两段管线。
+- `disposeLocalEngine()` 已实现（`Promise<void>`）但当前无调用方，页面卸载/内存释放的接线待补；OCR 侧 `disposeOcrWorker()` 已在 `/ocr` 页面接入。
+- 设置中的 `generation` / `systemPrompt` / 语言 / 朗读音色未接线（服务端注入待做）；会话持久化 `/api/sessions` 未做。
+- 工具调用：多工具并行、外部 MCP server 注册未实现。
+- Safari WebGPU EP 内存问题（onnxruntime #26827）跟踪中，届时可能对 Safari 强制 q8/WASM。
+
+---
+
+本项目为 AI Web 大赛参赛作品，代码原创；密钥仅经环境变量注入，不随仓库公开。本文档为工程说明，若与 `doc/` 协议或代码实现冲突，以代码与 `doc/` 为准。
