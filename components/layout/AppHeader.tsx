@@ -55,7 +55,7 @@ export default function AppHeader() {
                 variant="ghost"
                 size="icon"
                 onClick={toggleSidebar}
-                className="h-8 w-8 text-muted-foreground hover:bg-muted"
+                className="touch:h-11 touch:w-11 h-8 w-8 text-muted-foreground hover:bg-muted"
                 title="展开侧边栏"
               >
                 <svg
@@ -82,7 +82,7 @@ export default function AppHeader() {
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed"
+                  className="touch:h-11 touch:w-11 h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed"
                   title="搜索尚未接入：当前没有可检索的历史会话数据"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,7 +98,7 @@ export default function AppHeader() {
                   variant="ghost"
                   size="icon"
                   onClick={handleNewChat}
-                  className="h-8 w-8 text-muted-foreground"
+                  className="touch:h-11 touch:w-11 h-8 w-8 text-muted-foreground"
                   title="新建对话（清空当前会话）"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +122,7 @@ export default function AppHeader() {
             size="icon"
             onClick={cycleTheme}
             title={`主题：${THEME_LABEL[theme]}（点击切换）`}
-            className="h-8 w-8"
+            className="touch:h-11 touch:w-11 h-8 w-8"
           >
             {THEME_ICON[theme]}
           </Button>
@@ -131,7 +131,7 @@ export default function AppHeader() {
             size="icon"
             onClick={() => setSettingsOpen(true)}
             title="系统设置"
-            className="h-8 w-8"
+            className="touch:h-11 touch:w-11 h-8 w-8"
           >
             ⚙️
           </Button>
