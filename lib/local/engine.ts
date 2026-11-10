@@ -133,15 +133,28 @@ export function engineEmbed(texts: string[]): Promise<Float32Array[]> {
   });
 }
 
-/** 终止并释放 Worker（页面卸载或显式释放内存时调用） */
-export function disposeLocalEngine(): void {
+/**
+ * 终止并释放 Worker（页面卸载或显式释放内存时调用）。
+ * 返回 Promise：terminate() 是同步调用，但浏览器丢弃在途消息是异步的，
+ * 故让出一个宏任务再 resolve，保证调用方 await 之后重建引擎时，
+ * 旧 Worker 的迟到消息（progress/ready/embed-*）不会串入新单例。
+ */
+export async function disposeLocalEngine(): Promise<void> {
   for (const pending of pendingEmbeds.values()) {
     pending.reject(new Error("引擎已释放"));
   }
   pendingEmbeds.clear();
-  worker?.terminate();
+  const w = worker;
   worker = null;
   initPromise = null;
   progressListener = null;
   status = { state: "idle" };
+  if (w) {
+    // 先摘除常驻监听再 terminate，避免终止瞬间的消息进入已失效的状态机
+    w.onmessage = null;
+    w.terminate();
+  }
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
