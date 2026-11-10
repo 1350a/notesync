@@ -267,6 +267,12 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 | `media-src` | `'self' blob: data:` | 语音/媒体预览 |
 | `object-src` / `base-uri` / `form-action` / `frame-ancestors` | `'none'` / `'self'` / `'self'` / `'self'` | 基础加固 |
 
-仍未做（继续挂账）：nonce / hash 化的严格 `script-src`（需与 Turbopack 产物验证后
-才能去掉 `'unsafe-inline'`）、`require-trusted-types-for`、CSP 违规上报端点。
+仍未做（继续挂账）：严格 `script-src`、`require-trusted-types-for`、CSP 违规上报端点。
+
+严格 `script-src` 的两条非 nonce 路线已于 2026-11-11 在生产构建 + 无头浏览器实测排除：
+hash 白名单下 Next/Turbopack 注入的内联脚本全部被拒（全站 54 条 `script-src` 违规，
+反闪烁脚本之外的框架脚本哈希随构建漂移不可白名单化）；实验性 `experimental.sri` 只给
+外链资源加 integrity 属性，对内联脚本无帮助（违规数不变）。剩余唯一官方路线是 proxy
+每请求发 nonce + `'strict-dynamic'`，但文档明确 PPR/`cacheComponents` 与 nonce 不兼容
+（本项目已开启），需放弃静态渲染架构才能落地——挂账待架构决策。
 *（内容由AI生成，仅供参考）*
