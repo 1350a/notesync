@@ -69,7 +69,8 @@ const chunks: KnowledgeChunk[] = [
 const vecA = [1, 0, 0];
 const vecB = [0.5, 0.5, 0];
 const vecC = [0, 0, 1];
-const vecQ = [1, 0, 0];
+// 基线 rankChunks 签名要求查询向量也是 Float32Array（上游后续放宽，本分支未含）
+const vecQ = Float32Array.from([1, 0, 0]);
 const vectors = [vecA, vecB, vecC].map((v) => Float32Array.from(v));
 
 check('按综合分降序', rankChunks(vecQ, '二次函数', chunks, vectors)[0].chunk.id === 'a');
