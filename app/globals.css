@@ -171,3 +171,15 @@
   background-color: var(--muted);
   font-weight: bold;
 }
+
+/* 宽表格转为块级横向滚动，避免撑破气泡溢出视口（doc/mobile-ux.md §5） */
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* KaTeX 显示公式同理：长公式横向滚动 */
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
