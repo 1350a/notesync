@@ -1,23 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 /**
  * 订阅 media query 的通用 hook。
  *
- * SSR/客户端首帧一律返回 false（按桌面/无匹配渲染），mount 后与实际值校正，
- * 保证两帧 markup 一致、无 hydration 闪烁（doc/mobile-ux.md §1）。
+ * 用 useSyncExternalStore 而非 effect + setState：media query 是外部可订阅源，
+ * 快照式读取天然避免级联渲染。getServerSnapshot 恒返回 false——SSR/客户端首帧
+ * 一致（按桌面/无匹配渲染），mount 后随实际值校正，无 hydration 闪烁。
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    },
+    [query]
+  );
 
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    setMatches(mql.matches);
-    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, [query]);
+  const getSnapshot = useCallback(() => window.matchMedia(query).matches, [query]);
 
-  return matches;
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
