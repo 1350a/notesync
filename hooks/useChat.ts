@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import type { ChatMsg, ChatTextFile } from '@/lib/chat/messages';
+import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
+import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
 import { CLIENT_ID_HEADER, getClientId } from '@/lib/client-id';
+import { searchKnowledge } from '@/lib/local/rag/store';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
 function parseSseEvent(chunk: string) {
@@ -23,6 +26,8 @@ export function useChat(selectedModel: string) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
+  const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -84,6 +89,25 @@ export function useChat(selectedModel: string) {
       setMessages(history);
       setLoading(true);
 
+      // 本地检索（doc/browser-local-inference.md §6.1）：开关打开且引擎就绪时，
+      // 发送前在浏览器内检索种子知识库，命中片段随请求上行。引擎未就绪/嵌入失败
+      // 一律静默跳过（数据不出设备，检索是纯增益），消息照常裸发、绝不阻断。
+      let ragContexts: RagContext[] | undefined;
+      if (ragEnabled && text.trim()) {
+        try {
+          const hits = await searchKnowledge(text);
+          if (hits.length > 0) {
+            ragContexts = hits.map((h) => ({
+              title: h.chunk.title,
+              snippet: h.chunk.content.slice(0, RAG_SNIPPET_MAX_CHARS),
+              score: Math.round(h.score * 10000) / 10000,
+            }));
+          }
+        } catch {
+          // 静默跳过：设备内事件（§1 设备边界规则）
+        }
+      }
+
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
 
       try {
@@ -101,6 +125,8 @@ export function useChat(selectedModel: string) {
               imageTexts: m.ocrTexts,
               files: m.files,
             })),
+            // 本地检索命中片段（可能为 undefined：开关关闭/引擎未就绪/未命中）
+            ragContexts,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -201,7 +227,7 @@ export function useChat(selectedModel: string) {
         abortControllerRef.current = null;
       }
     },
-    [messages, loading, selectedModel]
+    [messages, loading, selectedModel, ragEnabled]
   );
 
   return { messages, loading, sendMessage, stopGeneration, clearMessages };
