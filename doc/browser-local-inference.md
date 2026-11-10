@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_e615ca59dd0d11f1bc42525400638852
+    ReservedCode1: +D1aqrfwAAzp0JgzDa1oN/yaTGesN1Mj8pAb2/1X0uVJzza3QQFoCS8RX2jWLGG2EBr7BeWXDhumO0276l0drqBBtaLhZUfyqU/V1zLWVN0KhOR+ow2Aj/f/62/SWfkDHZb0CgD4aN2y9uGr4Fppi+fl13nrWVoZXIIoeNwZmVDWdXOE92mYNsrmo2c=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_e615ca59dd0d11f1bc42525400638852
+    ReservedCode2: +D1aqrfwAAzp0JgzDa1oN/yaTGesN1Mj8pAb2/1X0uVJzza3QQFoCS8RX2jWLGG2EBr7BeWXDhumO0276l0drqBBtaLhZUfyqU/V1zLWVN0KhOR+ow2Aj/f/62/SWfkDHZb0CgD4aN2y9uGr4Fppi+fl13nrWVoZXIIoeNwZmVDWdXOE92mYNsrmo2c=
+---
+
 # 浏览器端本地推理协议（browser-local-inference）
 
 ## 1. 定位与范围
@@ -258,3 +269,4 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 
 仍未做（继续挂账）：nonce / hash 化的严格 `script-src`（需与 Turbopack 产物验证后
 才能去掉 `'unsafe-inline'`）、`require-trusted-types-for`、CSP 违规上报端点。
+*（内容由AI生成，仅供参考）*
