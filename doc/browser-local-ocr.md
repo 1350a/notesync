@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_e6c5d658dd0d11f1bc42525400638852
+    ReservedCode1: LYJ/CCIp39UdI5ywTJgWJwugo3L5YMVLyQJjwhO8yfcptbU9BdmEPGr4LW8xwMV7ZKs+AQEN3qS+9jbwEqXbeoxi4In53RkQjflirT+A223GhO1XOJIdG/tyhADZeAadFp9H5/FcWLTN+PODRz8LXyaBVMr7rjXY4K2np5a+U+TTDtJl6wodSp2fCtg=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_e6c5d658dd0d11f1bc42525400638852
+    ReservedCode2: LYJ/CCIp39UdI5ywTJgWJwugo3L5YMVLyQJjwhO8yfcptbU9BdmEPGr4LW8xwMV7ZKs+AQEN3qS+9jbwEqXbeoxi4In53RkQjflirT+A223GhO1XOJIdG/tyhADZeAadFp9H5/FcWLTN+PODRz8LXyaBVMr7rjXY4K2np5a+U+TTDtJl6wodSp2fCtg=
+---
+
 # 浏览器端本地 OCR 协议（browser-local-ocr）
 
 ## 1. 定位与范围
@@ -153,3 +164,4 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 - 云 OCR 选项（用户显式选择，走设备边界规则提示）。
 - 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7），
   云端档位待云 OCR 时一并落地。
+*（内容由AI生成，仅供参考）*
