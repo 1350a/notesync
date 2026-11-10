@@ -22,6 +22,10 @@
   - `<768px`：overlay 抽屉（`components/ui/drawer.tsx`，`swipeDirection="left"` 左侧贴边、
     宽度 min(75%, 16rem)、遮罩点击关闭、支持手势滑出）。
 - **路由切换自动收起**：仅移动端在 pathname 变化时收起；桌面保持开合状态跨路由不变。
+- **结构约束（关键）**：AppLayout 必须由 `app/(main)/layout.tsx` 路由组承载，
+  不得在各 page 内自行包裹——页面内包裹会使布局随导航重挂载，
+  造成抽屉重开、双 portal 残留与 hydrateUI 重复执行（实测复现过）。
+- **持久化粒度：单 flag**（桌面与移动共用，浏览器本地存储，无用户系统）。
 
 ## 3. 聊天自动吸底契约（用户操作优先）
 
