@@ -59,7 +59,6 @@ interface ProgressInfo {
 }
 
 let extractor: Extractor | null = null;
-let activeDevice: "webgpu" | "wasm" = "wasm";
 
 // 跨文件聚合计权进度：按 file 记录 loaded/total，汇总为整体 0~1
 const fileProgress = new Map<string, { loaded: number; total: number }>();
@@ -112,7 +111,6 @@ async function init(): Promise<void> {
       progress_callback: onProgress,
     });
     extractor = created as unknown as Extractor;
-    activeDevice = device;
     scope.postMessage({ type: "ready", device, dtype });
   } catch (err) {
     scope.postMessage({
