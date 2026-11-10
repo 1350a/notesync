@@ -2,7 +2,7 @@
  * 用户设置 - 模式定义与校验（纯函数，无副作用，可被脚本零依赖直跑冒烟）。
  *
  * 协议见 doc/user-settings.md §2：修改字段前先改文档。
- * 声明但未接线的字段（language/systemPrompt/generation/ocr）仅做类型占位与
+ * 声明但未接线的字段（language/systemPrompt/generation）仅做类型占位与
  * normalize 钳制，UI 与服务端消费按文档 §6 挂账逐步落地。
  */
 
@@ -28,6 +28,8 @@ export interface UserSettings {
   generation: GenerationSettings;
   /** OCR 偏好（未接线占位，无 UI） */
   ocr: { preferLocal: boolean };
+  /** 本地知识检索（已接线，doc/browser-local-inference.md §7）：true=发送前浏览器内检索并注入命中片段 */
+  rag: { enabled: boolean };
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   systemPrompt: '',
   generation: {},
   ocr: { preferLocal: false },
+  rag: { enabled: false },
 };
 
 export const SYSTEM_PROMPT_MAX_CHARS = 8000;
@@ -49,12 +52,13 @@ export const MAX_TOKENS_MAX = 200_000;
 
 const THEMES: readonly ThemePreference[] = ['light', 'dark', 'system'];
 
-/** 深拷贝默认值，避免消费方误改共享嵌套对象（generation/ocr） */
+/** 深拷贝默认值，避免消费方误改共享嵌套对象（generation/ocr/rag） */
 export function cloneDefaults(): UserSettings {
   return {
     ...DEFAULT_SETTINGS,
     generation: { ...DEFAULT_SETTINGS.generation },
     ocr: { ...DEFAULT_SETTINGS.ocr },
+    rag: { ...DEFAULT_SETTINGS.rag },
   };
 }
 
@@ -83,6 +87,12 @@ function normalizeOcr(raw: unknown): UserSettings['ocr'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { preferLocal: false };
   // 布尔语义从严：只有显式 true 才生效，其余（含 'true' 字符串）视为未设置
   return { preferLocal: (raw as Record<string, unknown>).preferLocal === true };
+}
+
+function normalizeRag(raw: unknown): UserSettings['rag'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { enabled: false };
+  // 与 ocr.preferLocal 同款从严布尔：路由绝对权在使用者，默认关闭
+  return { enabled: (raw as Record<string, unknown>).enabled === true };
 }
 
 /**
@@ -114,5 +124,6 @@ export function normalizeSettings(raw: unknown): UserSettings {
     systemPrompt,
     generation: normalizeGeneration(record.generation),
     ocr: normalizeOcr(record.ocr),
+    rag: normalizeRag(record.rag),
   };
 }
