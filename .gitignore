@@ -20,6 +20,9 @@
 # 本地 OCR 运行时资产（由 npm run ocr:assets 从仓库/依赖内派生，见 doc/browser-local-ocr.md）
 /public/ocr/
 
+# 本地推理模型资产（由 npm run local:assets 从 HF/依赖内派生，见 doc/browser-local-inference.md）
+/public/models/
+
 # production
 /build
 
