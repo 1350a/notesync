@@ -3,6 +3,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 触屏设备能力查询 variant：44px 触控热区等移动端样式用它挂载（doc/mobile-ux.md §4） */
+@custom-variant touch (@media (pointer: coarse));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
