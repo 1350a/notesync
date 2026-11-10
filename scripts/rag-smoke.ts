@@ -70,7 +70,7 @@ const vecA = [1, 0, 0];
 const vecB = [0.5, 0.5, 0];
 const vecC = [0, 0, 1];
 const vecQ = [1, 0, 0];
-const vectors = [vecA, vecB, vecC];
+const vectors = [vecA, vecB, vecC].map((v) => Float32Array.from(v));
 
 check('按综合分降序', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors)[0].chunk.id === 'a');
 check('topK 生效', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors, { topK: 2 }).length === 2);
