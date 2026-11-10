@@ -5,11 +5,13 @@ import AccountSection from './AccountSection';
 import AgreementSection from './AgreementSection';
 import DataSection from './DataSection';
 import GeneralSection from './GeneralSection';
+import LocalCapabilitySection from './LocalCapabilitySection';
 
-type SettingsSection = 'general' | 'account' | 'data' | 'agreement';
+type SettingsSection = 'general' | 'local' | 'account' | 'data' | 'agreement';
 
 const NAV_ITEMS: { key: SettingsSection; icon: string; label: string }[] = [
   { key: 'general', icon: '⚙️', label: '通用设置' },
+  { key: 'local', icon: '🧩', label: '本地能力' },
   { key: 'account', icon: '👤', label: '账号管理' },
   { key: 'data', icon: '🗃️', label: '数据管理' },
   { key: 'agreement', icon: '📄', label: '服务协议' },
@@ -67,6 +69,7 @@ export default function SettingsModal({
             ✕
           </button>
           {section === 'general' && <GeneralSection />}
+          {section === 'local' && <LocalCapabilitySection />}
           {section === 'account' && <AccountSection />}
           {section === 'data' && <DataSection />}
           {section === 'agreement' && <AgreementSection />}
