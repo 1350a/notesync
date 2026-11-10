@@ -3,7 +3,6 @@
 import AskUserPanel from '@/components/chat/AskUserPanel';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatList from '@/components/chat/ChatList';
-import AppLayout from '@/components/layout/AppLayout';
 import { useChat } from '@/hooks/useChat';
 import { useModels } from '@/hooks/useModels';
 import { useChatStore } from '@/store/useChatStore';
@@ -104,62 +103,60 @@ export default function ChatPage() {
   }, [messages, loading]);
 
   return (
-    <AppLayout>
-      <div className="flex flex-col h-full">
-        <div
-          ref={scrollRef}
-          onScroll={syncFollowUi}
-          className="flex-1 overflow-y-auto px-4 py-6"
-        >
-          <ChatList messages={messages} loading={loading} />
-        </div>
+    <div className="flex flex-col h-full">
+      <div
+        ref={scrollRef}
+        onScroll={syncFollowUi}
+        className="flex-1 overflow-y-auto px-4 py-6"
+      >
+        <ChatList messages={messages} loading={loading} />
+      </div>
 
-        {notice && (
-          <div className="mx-auto w-full max-w-3xl px-4">
-            <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              <span className="flex-1">{notice}</span>
-              <button
-                onClick={() => void reload()}
-                className="shrink-0 font-medium text-foreground underline underline-offset-2 hover:opacity-80"
-              >
-                重新检测
-              </button>
-            </div>
+      {notice && (
+        <div className="mx-auto w-full max-w-3xl px-4">
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <span className="flex-1">{notice}</span>
+            <button
+              onClick={() => void reload()}
+              className="shrink-0 font-medium text-foreground underline underline-offset-2 hover:opacity-80"
+            >
+              重新检测
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="px-4 py-4 border-t border-border bg-background">
+        {showBackToBottom && (
+          <div className="flex justify-center pb-2">
+            <button
+              onClick={handleBackToBottom}
+              className="rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs shadow-md backdrop-blur hover:bg-muted touch:px-4 touch:py-2.5"
+            >
+              ↓ 回到底部
+            </button>
           </div>
         )}
-
-        <div className="px-4 py-4 border-t border-border bg-background">
-          {showBackToBottom && (
-            <div className="flex justify-center pb-2">
-              <button
-                onClick={handleBackToBottom}
-                className="rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs shadow-md backdrop-blur hover:bg-muted touch:px-4 touch:py-2.5"
-              >
-                ↓ 回到底部
-              </button>
-            </div>
-          )}
-          {pendingAskQuestions ? (
-            <AskUserPanel
-              questions={pendingAskQuestions}
-              onSubmit={(text) => void sendMessage(text, [], [])}
-            />
-          ) : (
-            <ChatInput
-              onSend={sendMessage}
-              onStop={stopGeneration}
-              loading={loading}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={handleModelChange}
-              providers={providers}
-              modelsLoading={modelsLoading}
-              modelsMessage={notice}
-              preferLocalOcr={preferLocalOcr}
-            />
-          )}
-        </div>
+        {pendingAskQuestions ? (
+          <AskUserPanel
+            questions={pendingAskQuestions}
+            onSubmit={(text) => void sendMessage(text, [], [])}
+          />
+        ) : (
+          <ChatInput
+            onSend={sendMessage}
+            onStop={stopGeneration}
+            loading={loading}
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={handleModelChange}
+            providers={providers}
+            modelsLoading={modelsLoading}
+            modelsMessage={notice}
+            preferLocalOcr={preferLocalOcr}
+          />
+        )}
       </div>
-    </AppLayout>
+    </div>
   );
 }
