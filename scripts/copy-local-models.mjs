@@ -35,6 +35,9 @@ const ORT_FILES = [
   "ort-wasm-simd-threaded.mjs",
   "ort-wasm-simd-threaded.jsep.wasm",
   "ort-wasm-simd-threaded.jsep.mjs",
+  // 非跨源隔离环境（无 SharedArrayBuffer）ORT 实际加载 asyncify 档，必须与上面两档一起就位
+  "ort-wasm-simd-threaded.asyncify.wasm",
+  "ort-wasm-simd-threaded.asyncify.mjs",
 ];
 
 async function existsAtLeast(rel, minBytes) {
