@@ -13,6 +13,10 @@ import { env, pipeline } from "@huggingface/transformers";
 // 否则永远尝试远程加载；allowRemoteModels=false 保证零外联。
 env.allowLocalModels = true;
 env.allowRemoteModels = false;
+// 双保险：库默认 remoteHost = "https://huggingface.co/"，若有代码路径绕过
+// allowRemoteModels 走到远程分支，默认主机名会被拼进请求 URL。显式置空后
+// pathJoin 只会产出站内相对路径，请求不会离开同源。
+env.remoteHost = "";
 // localModelPath 浏览器默认即 /models/，显式声明以固定布局契约
 env.localModelPath = "/models/";
 // ORT wasm 自托管路径（useWasmCache 默认 true，wasm 亦进 Cache API，离线可复用）。
