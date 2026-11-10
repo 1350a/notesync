@@ -10,6 +10,13 @@ import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+/** 距底 ≤ 80px 视为"在底部"，跟随新内容（doc/mobile-ux.md §3） */
+const FOLLOW_BOTTOM_THRESHOLD = 80;
+/** 距底 ≤ 16px 视为回到底部，复位用户打断状态 */
+const NEAR_BOTTOM_THRESHOLD = 16;
+/** 滚动位置较上次向上移动超过此差值即判为用户操作（滚轮/滚动条/键盘/触摸全覆盖） */
+const SCROLL_UP_EPSILON = 4;
+
 export default function ChatPage() {
   const { models, providers, loading: modelsLoading, message, error, reload } = useModels();
   const [pickedModel, setPickedModel] = useState('');
@@ -34,6 +41,44 @@ export default function ChatPage() {
 
   const { messages, loading, sendMessage, stopGeneration, clearMessages } =
     useChat(selectedModel);
+
+  // --- 条件式吸底（doc/mobile-ux.md §3）：用户操作优先，仅"未打断 ∧ 贴近底部"才跟随 ---
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 高频状态放 ref 避免每次 chunk 触发渲染；仅按钮可见性走 state
+  const followState = useRef({ interrupted: false, atBottom: true, lastTop: 0 });
+  const [showBackToBottom, setShowBackToBottom] = useState(false);
+
+  /** scroll 事件统一入口：维护距底/打断状态并同步按钮可见性 */
+  const syncFollowUi = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const state = followState.current;
+    // 方向增量法：程序吸底只向下，向上位移必是用户操作
+    if (el.scrollTop < state.lastTop - SCROLL_UP_EPSILON) state.interrupted = true;
+    state.lastTop = el.scrollTop;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    state.atBottom = distance <= FOLLOW_BOTTOM_THRESHOLD;
+    if (distance <= NEAR_BOTTOM_THRESHOLD) state.interrupted = false;
+    setShowBackToBottom(state.interrupted && distance > NEAR_BOTTOM_THRESHOLD);
+  };
+
+  // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const state = followState.current;
+    if (state.interrupted || !state.atBottom) return;
+    el.scrollTop = el.scrollHeight;
+    state.lastTop = el.scrollTop;
+  }, [messages, loading]);
+
+  const handleBackToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followState.current.interrupted = false;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setShowBackToBottom(false);
+  };
   // 图片处理偏好（设置页"优先本地OCR"）：交由 ChatInput 派生图片发送方式
   const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
 
@@ -61,7 +106,11 @@ export default function ChatPage() {
   return (
     <AppLayout>
       <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div
+          ref={scrollRef}
+          onScroll={syncFollowUi}
+          className="flex-1 overflow-y-auto px-4 py-6"
+        >
           <ChatList messages={messages} loading={loading} />
         </div>
 
@@ -80,6 +129,16 @@ export default function ChatPage() {
         )}
 
         <div className="px-4 py-4 border-t border-border bg-background">
+          {showBackToBottom && (
+            <div className="flex justify-center pb-2">
+              <button
+                onClick={handleBackToBottom}
+                className="rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs shadow-md backdrop-blur hover:bg-muted touch:px-4 touch:py-2.5"
+              >
+                ↓ 回到底部
+              </button>
+            </div>
+          )}
           {pendingAskQuestions ? (
             <AskUserPanel
               questions={pendingAskQuestions}
