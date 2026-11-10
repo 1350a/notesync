@@ -2,6 +2,7 @@
 
 import ModelSelect from '@/components/ModelSelect';
 import { Button } from '@/components/ui/button';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
 import {
   convertImagesToTexts,
@@ -73,6 +74,8 @@ export default function ChatInput({
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 触屏（虚拟键盘）Enter 应为换行，发送只靠按钮，避免选字回车误发（doc/mobile-ux.md §4）
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
   const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
   /** 本地 OCR 进行中进度；非 null 时阻断重复发送 */
@@ -218,9 +221,10 @@ export default function ChatInput({
                 alt="preview"
                 className="h-16 w-16 object-cover rounded-lg border border-border shadow-sm"
               />
+              {/* 删除按钮常显：hover 驱动在触屏上永远不可见（doc/mobile-ux.md §4） */}
               <button
                 onClick={() => removeImage(idx)}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 touch:h-6 touch:w-6 touch:text-sm transition-colors"
               >
                 ✕
               </button>
@@ -311,11 +315,14 @@ export default function ChatInput({
           onChange={(e) => setInput(e.target.value)}
           onPaste={handlePaste}
           onKeyDown={(e) => {
+            // 触屏放开 Enter 给输入法换行；桌面维持回车直发
+            if (isCoarsePointer) return;
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               void handleSend();
             }
           }}
+          enterKeyHint="send"
           placeholder="输入你的问题，支持上传图片与文本文件，回车发送…"
           // 关键点：背景透明、无边框、无 resize，去掉所有可能干扰的样式
           className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground leading-relaxed min-h-[44px]"
@@ -332,7 +339,7 @@ export default function ChatInput({
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted"
+              className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted touch:h-11 touch:w-11"
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
               title="上传图片或文本文件"
@@ -365,7 +372,7 @@ export default function ChatInput({
                   type="button"
                   disabled={loading || ocrBusy !== null}
                   onClick={() => setOcrOverride('direct')}
-                  className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                     imageMode === 'direct'
                       ? 'bg-foreground/10 font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-muted'
@@ -378,7 +385,7 @@ export default function ChatInput({
                   type="button"
                   disabled={loading || ocrBusy !== null}
                   onClick={() => setOcrOverride('local-ocr')}
-                  className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                     imageMode === 'local-ocr'
                       ? 'bg-foreground/10 font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-muted'
@@ -395,7 +402,7 @@ export default function ChatInput({
             <Button
               onClick={onStop}
               variant="destructive"
-              className="rounded-full h-8 px-4 text-xs"
+              className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5"
             >
               停止
             </Button>
@@ -403,7 +410,7 @@ export default function ChatInput({
             <Button
               onClick={() => void handleSend()}
               disabled={!hasPayload || !selectedModel || ocrBusy !== null}
-              className="rounded-full h-8 px-4 text-xs bg-foreground text-background hover:bg-foreground/90"
+              className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5 bg-foreground text-background hover:bg-foreground/90"
             >
               发送
             </Button>
