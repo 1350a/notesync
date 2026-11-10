@@ -92,7 +92,7 @@ npm run start
 
 - 作用：把 `tesseract.js` 的 worker、6 个 core wasm 变体与仓库内 `tessdata/` 语言包复制到 `public/ocr/`。
 - 产物：`public/ocr/worker/`、`public/ocr/core/`、`public/ocr/tessdata/`。
-- **失败后果**：`checkOcrAssets()` 返回 `ready: false`，`/ocr` 自检报 FAIL；选择"优先本地 OCR"时图片**无法发送**（逐张列明原因），不会静默改为原图直传，也不会静默回落云 OCR。
+- **失败后果**：`checkOcrAssets()` 返回 `ready: false`，`/ocr` 自检逐项报 FAIL；聊天/诊断侧不做资产前置门禁，而是在识别阶段失败——「图片处理」选「优先本地OCR」时该图片会被**阻断发送**并逐张列明原因（附修复命令），不会静默改为原图直传，也不会静默回落云 OCR。
 
 ## 7. 环境变量
 
