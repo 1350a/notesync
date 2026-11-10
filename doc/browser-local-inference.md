@@ -37,6 +37,12 @@ doc/browser-local-ocr.md）：**语义嵌入（embedding）与 RAG 检索完全�
 
 运行时按设备只加载其中一档（q8 或 q4f16），首次下载 24–30MB。
 
+env 配置要点（依 v4 官方文档核实，2026-11-10）：浏览器下 `env.allowLocalModels`
+**默认为 false**，必须显式置 `true`；`env.allowRemoteModels = false` 关闭一切远程
+加载；`env.backends.onnx.wasm.wasmPaths = '/models/ort/'` 指向自托管 ORT wasm
+（`env.useWasmCache` 默认 true，wasm 亦入 Cache API）。dtype 由引擎按探测结果
+显式传单值（'q4f16' / 'q8'），不使用官方未文档化的 per-device 映射写法。
+
 ## 3. 资产分发（自托管，运行时零外联）
 
 资产由 `npm run local:assets`（`scripts/copy-local-models.mjs`）下载到
