@@ -325,7 +325,8 @@ export default function ChatInput({
           enterKeyHint="send"
           placeholder="输入你的问题，支持上传图片与文本文件，回车发送…"
           // 关键点：背景透明、无边框、无 resize，去掉所有可能干扰的样式
-          className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground leading-relaxed min-h-[44px]"
+          // touch 16px：iOS 对 <16px 输入框聚焦时强制放大页面（doc/mobile-ux.md §4）
+          className="w-full resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground leading-relaxed min-h-[44px] touch:text-base"
           style={{
             // 清除可能被感染的全局代码块样式
             fontFamily: 'inherit',
