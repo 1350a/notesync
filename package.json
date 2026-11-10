@@ -15,7 +15,8 @@
     "scan:xss": "node --experimental-strip-types scripts/xss-scan.ts",
     "smoke:xss": "node --experimental-strip-types scripts/xss-render-smoke.ts",
     "smoke:settings": "node --experimental-strip-types scripts/settings-smoke.ts",
-    "ocr:assets": "node scripts/copy-ocr-assets.mjs"
+    "ocr:assets": "node scripts/copy-ocr-assets.mjs",
+    "local:assets": "node scripts/copy-local-models.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
