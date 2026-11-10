@@ -322,7 +322,7 @@ export default function UploadArea() {
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`relative flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
+        className={`relative flex flex-col items-center justify-center p-6 md:p-12 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
           isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
         }`}
       >
