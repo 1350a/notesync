@@ -13,6 +13,9 @@
   必须显式提示并获用户同意，不允许静默。
 - **路由绝对权在使用者**：本能力不自动替用户切换到云端。
 
+第二块拼图（浏览器端 embedding + RAG）见 doc/browser-local-inference.md；
+本协议的设备边界规则与自托管资产模式由其继承。
+
 ## 2. 技术选型
 
 | 项 | 决定 | 理由 |
@@ -135,4 +138,5 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 
 - 接入 diagnose 图片诊断链路（替代已停用的服务端 `lib/ocr.ts`）。
 - 云 OCR 选项（用户显式选择，走设备边界规则提示）。
-- 设置粒度：OCR 走本地/云端的偏好档位归属用户设置协议（user-settings.md）。
+- 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7），
+  云端档位待云 OCR 时一并落地。
