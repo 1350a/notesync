@@ -43,8 +43,13 @@ export interface ChatMsg {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
-  /** 用户随消息上传的图片 dataUrl */
+  /** 用户随消息上传的图片 dataUrl（OCR 模式下仅用于本地展示，不再上行） */
   images?: string[];
+  /**
+   * 本地 OCR 转文字产物（与 images 一一对应）：上行时以 imageTexts 契约随消息发送，
+   * 服务端拼成文本块；气泡上以"已本地OCR"标注透出（doc/browser-local-ocr.md §6.2）
+   */
+  ocrTexts?: string[];
   /** 用户随消息上传的纯文本文件 */
   files?: ChatTextFile[];
   /** assistant 消息：本轮工具调用轨迹 */
