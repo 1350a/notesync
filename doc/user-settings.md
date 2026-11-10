@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_e77edf90dd0d11f1997d52540024e231
+    ReservedCode1: VHBepwLPp52Ol7ka9MXB5WcoQkLwDWRsM0pJaG1nMzyQbFNxWv5C/iZB8cttCVau8xoTMSORQlX3IZI/AdfHyVt61xR4TWTjRqGQHBcDpQMIAusWJaTtckP+Q1WRzt+EOuBtNYUkCtUAKKHYmt6irBpCmCg+P/pC5mi8xW+r6FdEzfn/RbA4geeGQIQ=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_e77edf90dd0d11f1997d52540024e231
+    ReservedCode2: VHBepwLPp52Ol7ka9MXB5WcoQkLwDWRsM0pJaG1nMzyQbFNxWv5C/iZB8cttCVau8xoTMSORQlX3IZI/AdfHyVt61xR4TWTjRqGQHBcDpQMIAusWJaTtckP+Q1WRzt+EOuBtNYUkCtUAKKHYmt6irBpCmCg+P/pC5mi8xW+r6FdEzfn/RbA4geeGQIQ=
+---
+
 # 用户设置（User Settings）协议
 
 > 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt / 语言 未接线）｜最后更新：2026-11-10
@@ -98,3 +109,4 @@ interface SettingsStorage {
   的 `headers()` 全站下发，`scripts/xss-scan.ts` 的 `csp.missing` 不再触发；指令明细与
   剩余项（nonce/hash 严格 script-src、Trusted Types、上报端点）见
   doc/browser-local-inference.md §9。
+*（内容由AI生成，仅供参考）*
