@@ -1,12 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, ReviseCategory } from '@/lib/diagnose/types';
+import {
+  convertImagesToTexts,
+  mergeOcrText,
+  resolveImageSendMode,
+  type ImageSendMode,
+} from '@/lib/ocr/image-handling';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
 /** 四类上传标签，顺序与组装锚点一致 */
@@ -85,7 +91,12 @@ export default function UploadArea() {
   const [pickedModel, setPickedModel] = useState('');
   // 默认模型记忆：与聊天页共用设置里的 defaultModel（doc/user-settings.md §5）
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
+  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
   const updateSettings = useSettingsStore((s) => s.update);
+  /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
+  const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
+  /** 本地 OCR 进行中进度（提交阶段）；非 null 时阻断重复提交 */
+  const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null);
 
   // 派生选中值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
   // 再回落到首个可用模型（不保留过期模型名）
@@ -103,8 +114,13 @@ export default function UploadArea() {
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
-  /** 当前模型不接受图片时，图片会被服务端降级为文字占位，提前告知用户 */
-  const imageDowngraded = currentModel?.acceptsImages === false;
+  const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
+
+  // 没有图片行时撤销当次覆盖，下次添加图片重新按设置与模型能力派生
+  const hasImageRows = rows.some((row) => row.dataUrl);
+  useEffect(() => {
+    if (!hasImageRows) setOcrOverride(null);
+  }, [hasImageRows]);
 
   /** 加入文件：先判定类型，再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
@@ -168,20 +184,50 @@ export default function UploadArea() {
   const readyRows = rows.filter((row) => row.supported && (row.dataUrl || row.text));
   const blockedCount = rows.length - readyRows.length;
 
-  /** 提交：把提取结果按四类标签发给 /api/chat，服务端负责组装成模型消息 */
+  /** 提交：把提取结果按四类标签发给 /api/chat，服务端负责组装成模型消息。
+   *  OCR 模式下图片行先在浏览器本地转文字，再以纯文本附件上行（原图不出设备） */
   const handleSubmit = async () => {
-    if (readyRows.length === 0 || isSending || !selectedModel) return;
+    if (readyRows.length === 0 || isSending || !selectedModel || ocrProgress) return;
     setIsSending(true);
     setResult('');
     setError('');
 
     try {
+      let prepared = readyRows;
+      const imageRows = readyRows.filter((row) => row.dataUrl);
+      if (imageMode === 'local-ocr' && imageRows.length > 0) {
+        setOcrProgress({ done: 0, total: imageRows.length });
+        const result = await convertImagesToTexts(
+          imageRows.map((row) => row.dataUrl!),
+          (done, total) => setOcrProgress({ done, total })
+        );
+        setOcrProgress(null);
+        if (result.failures.length > 0) {
+          // 失败阻断提交：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
+          const names = result.failures.map((f) => imageRows[f.index].name).join('、');
+          setError(
+            `本地OCR未能识别：${names}（${result.failures[0].reason}）。可移除该文件或改用「直传原图」。`
+          );
+          return;
+        }
+        const textByRow = new Map(
+          imageRows.map((row, i) => [row.id, result.texts[i] as string] as const)
+        );
+        prepared = readyRows.map((row) => {
+          const ocrText = textByRow.get(row.id);
+          // OCR 成功的图片行：识别文本并入 text，不再上行 dataUrl（走纯文本附件通道）
+          return ocrText
+            ? { ...row, text: mergeOcrText(row.text, ocrText), dataUrl: undefined }
+            : row;
+        });
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: selectedModel,
-          attachments: readyRows.map((row) => ({
+          attachments: prepared.map((row) => ({
             name: row.name,
             category: row.category,
             dataUrl: row.dataUrl,
@@ -228,11 +274,46 @@ export default function UploadArea() {
             {modelsError ?? modelsMessage ?? '暂无可选模型'}
           </span>
         ) : (
-          <span className="text-xs text-slate-500">
-            {imageDowngraded
-              ? '该模型标注为仅文本，图片会转为文字占位后再发送'
-              : '图片将按多模态直接发送；若该模型实际不吃图片，会返回明确的错误提示'}
-          </span>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {/* 图片发送方式：默认按模型能力与设置派生，可当次切换（doc/browser-local-ocr.md §6.1） */}
+            <div
+              className="flex items-center overflow-hidden rounded-md border border-slate-200 text-[11px]"
+              role="group"
+              aria-label="图片发送方式"
+            >
+              <button
+                type="button"
+                disabled={isSending || ocrProgress !== null}
+                onClick={() => setOcrOverride('direct')}
+                className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  imageMode === 'direct'
+                    ? 'bg-slate-100 font-medium text-slate-800'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+                title="图片原图随附件直传（需所选模型支持多模态）"
+              >
+                直传原图
+              </button>
+              <button
+                type="button"
+                disabled={isSending || ocrProgress !== null}
+                onClick={() => setOcrOverride('local-ocr')}
+                className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  imageMode === 'local-ocr'
+                    ? 'bg-slate-100 font-medium text-slate-800'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+                title="图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）"
+              >
+                OCR转文字
+              </button>
+            </div>
+            <span className="min-w-0 flex-1 text-xs text-slate-500">
+              {imageMode === 'local-ocr'
+                ? '图片将经浏览器本地OCR转文字后发送（原图不出设备，纯文本模型可用）'
+                : '图片将按多模态直接发送；若该模型实际不吃图片，会返回明确的错误提示'}
+            </span>
+          </div>
         )}
       </div>
 
@@ -272,7 +353,9 @@ export default function UploadArea() {
                   ? '正在提取内容…'
                   : row.status === 'ready'
                     ? row.dataUrl
-                      ? '图片已就绪'
+                      ? imageMode === 'local-ocr'
+                        ? '图片已就绪（发送时本地OCR转文字）'
+                        : '图片已就绪'
                       : `文字已提取（${row.text?.length ?? 0} 字符）`
                     : null;
               return (
@@ -328,11 +411,15 @@ export default function UploadArea() {
           )}
 
           <button
-            onClick={handleSubmit}
-            disabled={readyRows.length === 0 || isSending || !selectedModel}
+            onClick={() => void handleSubmit()}
+            disabled={readyRows.length === 0 || isSending || !selectedModel || ocrProgress !== null}
             className="w-full py-4 mt-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
-            {isSending ? '正在诊断…' : `开始诊断（${readyRows.length} 个文件）`}
+            {ocrProgress
+              ? `本地OCR识别中 ${ocrProgress.done}/${ocrProgress.total}…`
+              : isSending
+                ? '正在诊断…'
+                : `开始诊断（${readyRows.length} 个文件）`}
           </button>
           {readyRows.length === 0 && (
             <p className="text-xs text-slate-500">至少需要 1 个已成功提取内容的文件才能开始诊断</p>
