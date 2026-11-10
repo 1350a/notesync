@@ -75,7 +75,23 @@ export interface ChatRequestBody {
   }>;
   content?: string;
   attachments?: unknown;
+  /** 本地检索命中片段（浏览器端 RAG 产物，doc/browser-local-inference.md §6.2） */
+  ragContexts?: unknown;
 }
+
+/** 本地检索命中片段：客户端检索后随请求上行，服务端校验后注入正文 */
+export interface RagContext {
+  title: string;
+  snippet: string;
+  score: number;
+}
+
+/** 注入片段条数上限 */
+export const MAX_RAG_CONTEXTS = 4;
+/** 单条命中标题字符上限 */
+export const RAG_TITLE_MAX_CHARS = 200;
+/** 单条命中片段字符上限 */
+export const RAG_SNIPPET_MAX_CHARS = 800;
 
 /**
  * 上游对图片输入的拒绝五花八门（invalid image input / does not support vision …），
@@ -167,6 +183,46 @@ export function mergeTextFiles(text: string, files: ChatTextFile[]): string {
   return [text.trim(), ...blocks].filter(Boolean).join('\n\n');
 }
 
+/**
+ * 校验并规整本地检索命中片段（ragContexts）。从严口径（doc/browser-local-inference.md §6.2）：
+ * 条数超限、任一条字段缺失/越界 → 整组丢弃，按未提供处理；绝不抛错、绝不静默改写。
+ */
+export function parseRagContexts(raw: unknown): RagContext[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_RAG_CONTEXTS) return [];
+  const out: RagContext[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === 'string' ? record.title.trim() : '';
+    const snippet = typeof record.snippet === 'string' ? record.snippet.trim() : '';
+    const score = record.score;
+    const scoreValid =
+      typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1;
+    if (
+      !title ||
+      !snippet ||
+      title.length > RAG_TITLE_MAX_CHARS ||
+      snippet.length > RAG_SNIPPET_MAX_CHARS ||
+      !scoreValid
+    ) {
+      return [];
+    }
+    out.push({ title, snippet, score });
+  }
+  return out;
+}
+
+/** 把检索命中片段格式化为注入正文的【本地检索】块；空数组返回空串（不注入） */
+export function formatRagBlock(contexts: RagContext[]): string {
+  if (contexts.length === 0) return '';
+  const lines = contexts.map((c, i) => `[${i + 1}] ${c.title}\n${c.snippet}`);
+  return [
+    '【本地检索】以下为浏览器本地知识库检索结果，供参考：',
+    ...lines,
+    '【/本地检索】',
+  ].join('\n');
+}
+
 /** buildProviderMessages 的可选行为开关 */
 export interface BuildMessagesOptions {
   /**
@@ -224,6 +280,16 @@ export function buildProviderMessages(
   let droppedImageMessages = 0;
   let droppedFileMessages = 0;
   const allowImages = options?.allowImages !== false;
+  // 本地检索命中片段只注入最后一条用户消息（doc/browser-local-inference.md §6.2）；
+  // 解析失败整组丢弃，注入是纯增益，不影响消息发送
+  const ragBlock = formatRagBlock(parseRagContexts(body.ragContexts));
+  let lastUserIndex = -1;
+  for (let i = body.messages.length - 1; i >= 0; i -= 1) {
+    if (body.messages[i].role === 'user') {
+      lastUserIndex = i;
+      break;
+    }
+  }
   const messages: ProviderMessage[] = body.messages.map((m, index) => {
     const ocrTexts = m.role === 'user' ? parseImageTexts(m.imageTexts) : [];
     const isOcrTextMessage = ocrTexts.length > 0;
@@ -233,6 +299,9 @@ export function buildProviderMessages(
     if (files.length > 0 && !keepFiles.has(index)) droppedFileMessages += 1;
 
     let text = mergeTextFiles(m.content || '', keepFiles.has(index) ? files : []);
+    if (index === lastUserIndex && ragBlock) {
+      text = `${ragBlock}\n\n${text}`;
+    }
     if (files.length > 0 && !keepFiles.has(index)) {
       text = [text, '[该条消息附带的文件内容已省略]'].filter(Boolean).join('\n\n');
     }
