@@ -48,7 +48,9 @@
 - `pointer: coarse` 下 Enter 键不发送、允许换行，发送仅靠按钮；桌面维持 Enter 直发。
 - 触屏（coarse）下图标按钮热区提升至 44px（`touch:` variant，globals.css 定义
   `@custom-variant touch (@media (pointer: coarse))`）；桌面尺寸不变。
-- 移动键盘 `enterKeyHint="send"`（键盘右下角显示"发送"）。
+- 回车提示跟随 Enter 实际行为：桌面 `enterKeyHint="send"`（键盘右下角显示"发送"）、
+  占位符含"回车发送"；coarse 下 Enter 已放开给输入法换行（本节第二条），故
+  `enterKeyHint="enter"`（显示"换行"）、占位符省略"回车发送"——发送仅靠按钮。
 - 可聚焦文本控件（textarea / 文本 input）触屏字号 16px（`touch:text-base`）：
   iOS Safari 对 computed font-size < 16px 的输入框聚焦时会强制放大页面。
   select 与 file input 不触发缩放，disabled 输入框不可聚焦，均无需处理。
