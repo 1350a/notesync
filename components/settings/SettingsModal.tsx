@@ -30,8 +30,8 @@ export default function SettingsModal({
 
   if (!isOpen) return null;
 
+  // <md 铺满视口成全屏 sheet，桌面维持定高弹窗（doc/mobile-ux.md §7）
   return (
-    {/* <md 铺满视口成全屏 sheet，桌面维持定高弹窗（doc/mobile-ux.md §7） */}
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm max-md:p-0">
       <div className="flex h-[560px] max-h-[85dvh] w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-background shadow-xl max-md:h-dvh max-md:max-h-none max-md:rounded-none max-md:border-0">
         {/* 左侧固定导航 */}
