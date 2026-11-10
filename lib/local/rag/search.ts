@@ -93,6 +93,16 @@ export function chunkText(text: string, maxLen = 500): string[] {
   return out;
 }
 
+/**
+ * 取前 k 条（纯函数，无 IO）：k 非有限数或 ≤ 0 返回空数组，k 超长时返回全部。
+ * 与 rankChunks 解耦，便于冒烟脚本单独覆盖边界；文档 §5.3 列明的纯函数之一。
+ */
+export function topK<T>(items: readonly T[], k: number): T[] {
+  const limit = Number.isFinite(k) ? Math.floor(k) : 0;
+  if (limit <= 0 || items.length === 0) return [];
+  return items.slice(0, limit);
+}
+
 /** 混合检索：纯函数入口，向量与语料全部由调用方提供 */
 export function rankChunks(
   queryVector: Float32Array,
@@ -104,7 +114,7 @@ export function rankChunks(
   const {
     kind,
     subject,
-    topK = DEFAULT_TOP_K,
+    topK: topKLimit = DEFAULT_TOP_K,
     minScore = DEFAULT_MIN_SCORE,
   } = options;
 
@@ -127,5 +137,5 @@ export function rankChunks(
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK);
+  return topK(scored, topKLimit);
 }
