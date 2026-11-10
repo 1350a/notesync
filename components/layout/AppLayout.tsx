@@ -31,7 +31,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [theme]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    {/* dvh 而非 vh：移动浏览器动态工具栏下 100vh ≠ 可视高度（doc/mobile-ux.md §1） */}
+    <div className="flex h-dvh w-full overflow-hidden bg-background">
       <AppSidebar />
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
