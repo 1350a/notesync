@@ -19,6 +19,10 @@
     "ocr:assets": "node scripts/copy-ocr-assets.mjs",
     "local:assets": "node scripts/copy-local-models.mjs"
   },
+  "overrides": {
+    "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
+    "onnxruntime-common": "1.31.0-dev.20260911-2a43ec07e"
+  },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@hugeicons/core-free-icons": "^4.4.0",
@@ -31,7 +35,7 @@
     "framer-motion": "^14.9.0",
     "katex": "^0.19.1",
     "next": "16.4.3",
-    "onnxruntime-web": "^1.31.1",
+    "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
     "pdfjs-dist": "^5.6.205",
     "react": "19.3.0",
     "react-dom": "19.3.0",
