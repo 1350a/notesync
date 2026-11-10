@@ -26,7 +26,6 @@
     "@huggingface/transformers": "^4.3.2",
     "@tesseract.js-data/chi_sim": "^1.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
-    "ai": "^7.0.159",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "framer-motion": "^14.9.0",
