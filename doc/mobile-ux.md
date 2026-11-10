@@ -49,6 +49,9 @@
 - 触屏（coarse）下图标按钮热区提升至 44px（`touch:` variant，globals.css 定义
   `@custom-variant touch (@media (pointer: coarse))`）；桌面尺寸不变。
 - 移动键盘 `enterKeyHint="send"`（键盘右下角显示"发送"）。
+- 可聚焦文本控件（textarea / 文本 input）触屏字号 16px（`touch:text-base`）：
+  iOS Safari 对 computed font-size < 16px 的输入框聚焦时会强制放大页面。
+  select 与 file input 不触发缩放，disabled 输入框不可聚焦，均无需处理。
 
 ## 5. 内容渲染契约
 
