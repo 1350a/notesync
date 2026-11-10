@@ -141,6 +141,21 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
                   ))}
                 </div>
               ) : null}
+              {m.ocrTexts && m.ocrTexts.length > 0 ? (
+                <div className="mb-2">
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                    style={{
+                      border: '1px solid var(--border)',
+                      backgroundColor: 'var(--bg-deep)',
+                      color: 'var(--text-secondary)',
+                    }}
+                    title={`图片已在浏览器本地OCR转文字后发送，原图未离开浏览器：\n${m.ocrTexts.join('\n---\n')}`}
+                  >
+                    🖼️→📄 已本地OCR转文字（{m.ocrTexts.length} 张）
+                  </span>
+                </div>
+              ) : null}
               {m.content ? <div>{m.content}</div> : null}
             </>
           )}
