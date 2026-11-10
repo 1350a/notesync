@@ -64,6 +64,19 @@ function Section({
   );
 }
 
+/** 存储用量摘要（尽力而为：estimate 不可用或失败时返回空串，不影响自检） */
+async function storageNote(): Promise<string> {
+  try {
+    const est = await navigator.storage?.estimate?.();
+    if (!est) return '';
+    const usedMb = ((est.usage ?? 0) / 1024 / 1024).toFixed(1);
+    const quotaMb = ((est.quota ?? 0) / 1024 / 1024).toFixed(0);
+    return `；存储已用 ${usedMb}MB / 配额 ${quotaMb}MB`;
+  } catch {
+    return '';
+  }
+}
+
 export default function LocalTestPanel() {
   const { status, assets, init } = useLocalEngine();
   const [assetState, setAssetState] = useState<SectionState>(IDLE);
@@ -86,7 +99,7 @@ export default function LocalTestPanel() {
         });
         return;
       }
-      setAssetState({ phase: 'pass', detail: `11 项资产全部就位（含 ORT wasm）` });
+      setAssetState({ phase: 'pass', detail: `11 项资产全部就位（含 ORT wasm）${await storageNote()}` });
 
       // 2) 引擎初始化 + 嵌入校验
       setEmbedState({ phase: 'running', detail: '首次运行需下载 24~30MB 模型权重' });
@@ -166,15 +179,7 @@ export default function LocalTestPanel() {
         {running ? '检测中…' : '运行自检'}
       </button>
 
-      <div className="grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
-        <p>引擎：{engineLabel}</p>
-        <p>
-          存储：
-          {typeof navigator !== 'undefined' && navigator.storage?.estimate
-            ? '可查询（见自检日志）'
-            : '不可用'}
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground">引擎：{engineLabel}</p>
 
       <Section title="① 模型资产（public/models/，11 项）" state={assetState} />
       <Section
