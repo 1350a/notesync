@@ -66,19 +66,20 @@ const chunks: KnowledgeChunk[] = [
   { id: 'c', title: '应用指南', kind: 'knowledge', subject: '应用指南', content: '本应用是什么', tags: [] },
 ];
 // 人造向量：a 与 query 同向，b 半相关，c 正交
-const vecA = [1, 0, 0];
-const vecB = [0.5, 0.5, 0];
-const vecC = [0, 0, 1];
-const vecQ = [1, 0, 0];
+// 语料向量按 rankChunks 签名用 Float32Array（与真实嵌入输出一致）
+const vecA = Float32Array.from([1, 0, 0]);
+const vecB = Float32Array.from([0.5, 0.5, 0]);
+const vecC = Float32Array.from([0, 0, 1]);
+const vecQ = Float32Array.from([1, 0, 0]);
 const vectors = [vecA, vecB, vecC];
 
-check('按综合分降序', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors)[0].chunk.id === 'a');
-check('topK 生效', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors, { topK: 2 }).length === 2);
-check('kind 过滤', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors, { kind: 'mistake' }).every((h) => h.chunk.kind === 'mistake'));
-check('subject 过滤', rankChunks(Float32Array.from(vecQ), '应用', chunks, vectors, { subject: '应用指南' }).every((h) => h.chunk.subject === '应用指南'));
-check('minScore 阈值截断', rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors, { minScore: 0.9 }).every((h) => h.score >= 0.9));
+check('按综合分降序', rankChunks(vecQ, '二次函数', chunks, vectors)[0].chunk.id === 'a');
+check('topK 生效', rankChunks(vecQ, '二次函数', chunks, vectors, { topK: 2 }).length === 2);
+check('kind 过滤', rankChunks(vecQ, '二次函数', chunks, vectors, { kind: 'mistake' }).every((h) => h.chunk.kind === 'mistake'));
+check('subject 过滤', rankChunks(vecQ, '应用', chunks, vectors, { subject: '应用指南' }).every((h) => h.chunk.subject === '应用指南'));
+check('minScore 阈值截断', rankChunks(vecQ, '二次函数', chunks, vectors, { minScore: 0.9 }).every((h) => h.score >= 0.9));
 check('命中携带向量分与关键词分', (() => {
-  const hit = rankChunks(Float32Array.from(vecQ), '二次函数', chunks, vectors)[0];
+  const hit = rankChunks(vecQ, '二次函数', chunks, vectors)[0];
   return hit.vectorScore === 1 && hit.keywordScore > 0;
 })());
 
