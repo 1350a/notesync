@@ -34,6 +34,8 @@ export default function ChatPage() {
 
   const { messages, loading, sendMessage, stopGeneration, clearMessages } =
     useChat(selectedModel);
+  // 图片处理偏好（设置页"优先本地OCR"）：交由 ChatInput 派生图片发送方式
+  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
 
   // 顶栏「新建对话」：信号递增即清空当前会话（首帧不触发）
   const newChatSignal = useChatStore((s) => s.newChatSignal);
@@ -94,6 +96,7 @@ export default function ChatPage() {
               providers={providers}
               modelsLoading={modelsLoading}
               modelsMessage={notice}
+              preferLocalOcr={preferLocalOcr}
             />
           )}
         </div>
