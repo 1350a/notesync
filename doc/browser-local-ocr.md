@@ -2,7 +2,8 @@
 
 ## 1. 定位与范围
 
-本地能力底座（`feat/browser-ai-inference` 方向）的第一块拼图：**OCR 完全在浏览器内完成，
+本地能力底座（当前分支 `beta/browser-ocr-planb`；该方向早期命名为
+`feat/browser-ai-inference`，二者指同一条线）的第一块拼图：**OCR 完全在浏览器内完成，
 图片与识别文本均不经过服务器**。服务端只负责分发静态资产（模型/词库/wasm 文件），
 不参与推理、不接收图片。
 
@@ -47,6 +48,18 @@
   实现，与本协议无关。
 - 资产缺失属**可检测的未就绪状态**：调用方必须据此把能力标记为不可用并提示
   `npm run ocr:assets`，不得渲染假可用 UI（AGENTS.md §8）。
+
+代码侧核对（2026-11-10，按当前实现实查）：
+
+- `checkOcrAssets()` 当前**唯一调用方是 `/ocr` 自检面板**
+  （`app/ocr/_components/ocr-test-panel.tsx`，`HEAD` + `no-store` 逐项探测并逐条报 FAIL）。
+- 聊天/诊断链路**不做 OCR 资产前置门禁**：`ocr.preferLocal` 开关位于「通用设置」的
+  「图片处理」行（`components/settings/GeneralSection.tsx`，本轮核对其实**尚未**迁入
+  「本地能力」分区），资产缺失时不会在开关处禁用，而是在识别阶段失败 → 按 §6.4
+  阻断发送、逐张列明原因并提示 `npm run ocr:assets`。这是有意取舍：OCR 资产体积小、
+  失败原因可判读，不重复做前置探测。
+- `next.config.ts` 的 `serverExternalPackages: ["tesseract.js"]` 确实只服务旧服务端
+  实现，浏览器侧走自托管 worker/core，不受其影响。
 
 ## 4. 服务契约（`lib/ocr/local.ts`）
 
