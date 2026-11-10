@@ -2,7 +2,8 @@
 
 ## 1. 定位与范围
 
-本地能力底座（`feat/browser-ai-inference` 方向）的第二块拼图（第一块见
+本地能力底座（当前分支 `beta/browser-ocr-planb`；该方向早期命名为
+`feat/browser-ai-inference`，二者指同一条线）的第二块拼图（第一块见
 doc/browser-local-ocr.md）：**语义嵌入（embedding）与 RAG 检索完全在浏览器内完成**，
 语料与查询向量均不经过服务器。服务端只负责分发静态模型资产，不参与推理。
 
@@ -40,7 +41,9 @@ doc/browser-local-ocr.md）：**语义嵌入（embedding）与 RAG 检索完全�
 env 配置要点（依 v4 官方文档核实，2026-11-10）：浏览器下 `env.allowLocalModels`
 **默认为 false**，必须显式置 `true`；`env.allowRemoteModels = false` 关闭一切远程
 加载；`env.backends.onnx.wasm.wasmPaths = '/models/ort/'` 指向自托管 ORT wasm
-（`env.useWasmCache` 默认 true，wasm 亦入 Cache API）。dtype 由引擎按探测结果
+（`env.useWasmCache` 默认 true，wasm 亦入 Cache API）；`env.remoteHost` 库默认是
+`https://huggingface.co/`，代码**显式置空**（`env.remoteHost = ''`）作为双保险——
+即便某条路径绕过 `allowRemoteModels`，也拼不出可用的远程 URL。dtype 由引擎按探测结果
 显式传单值（'q4f16' / 'q8'），不使用官方未文档化的 per-device 映射写法。
 
 ORT 版本口径（2026-11-10 依官方包声明核实）：`@huggingface/transformers@4.3.2`
@@ -73,7 +76,8 @@ ORT 版本口径（2026-11-10 依官方包声明核实）：`@huggingface/transf
 
 - 下载源默认 `huggingface.co` 直连，`HF_MIRROR` 环境变量可切换
   （如 `https://hf-mirror.com`）；脚本按上表体积做完整性校验，缺文件即报错。
-- 运行时不引用任何外部 CDN；Transformers.js 的 `env.remoteHost` 保持默认关闭，
+- 运行时不引用任何外部 CDN；`env.allowRemoteModels = false` 且 `env.remoteHost = ''`
+  ——注意是**显式置空**而非"保持默认"（库默认值是 `https://huggingface.co/`），
   模型一律经 `from_pretrained('/models/bge-small-zh-v1.5', ...)` 从同源加载。
 - ORT wasm 一律从根依赖 `node_modules/onnxruntime-web/dist` 拷贝（与 bundler
   解析到的是同一份副本）；脚本复制前校验已安装版本与 `package.json` 声明一致，
@@ -114,6 +118,11 @@ embedTexts(texts: string[]): Promise<Float32Array[]>
 - **嵌入失败（模型损坏/内存不足）** → `embedTexts` 抛错，调用方跳过本次检索
   （聊天链路直接裸发，不阻断消息发送），不回落云端。
 
+实装状态（2026-11-10 复核）：`disposeLocalEngine()` 签名已为 `Promise<void>`（内含
+`setTimeout(0)` 防迟到的 Worker 消息串入下一实例），但**当前无调用方**——页面卸载 /
+切换会话时的释放接线仍未做，挂在 §8；OCR 侧的 `disposeOcrWorker()` 已在 `/ocr` 页面
+接入，可作为接线时的参照实现。
+
 ## 5. RAG 协议（`lib/local/rag/`）
 
 ### 5.1 语料（v1）
@@ -141,8 +150,14 @@ score = 0.65 × cosine(queryVec, chunkVec) + 0.35 × keywordScore(query, chunk)
 - `keywordScore`：query 检索单元（中文 unigram+bigram，对齐旧 `tokenizeText`）
   在 chunk 文本的覆盖率——向量检索的中文兜底。
 - 预算：`topK = 4`，`minScore = 0.05`；查询向量经同一引擎嵌入。
-- `search.ts` 只含纯函数（`cosine` / `topK` / `chunkText` / 混合评分），
-  不触碰 IndexedDB 与 Worker，`npm run smoke:rag` 直接可跑（AGENTS.md 脚本零依赖约定）。
+- `search.ts` 只含纯函数：`cosineSimilarity`、`keywordScore`、`hybridScore`
+  （= `VECTOR_WEIGHT × 向量分 + KEYWORD_WEIGHT × 关键词分`）、`chunkText`、
+  `rankChunks`，以及通用取前 k 的 `topK<T>(items, k)`——它只负责截断排序结果，
+  与向量运算解耦，由 `rankChunks` 内部调用。权重与预算常量
+  `VECTOR_WEIGHT = 0.65` / `KEYWORD_WEIGHT = 0.35` / `DEFAULT_TOP_K = 4` /
+  `DEFAULT_MIN_SCORE = 0.05` 由 `rankChunks(query, topKLimit, minScore)` 的默认
+  参数消费，调用方不传即取默认；本文件不触碰 IndexedDB 与 Worker，
+  `npm run smoke:rag` 直接可跑（AGENTS.md 脚本零依赖约定）。
 
 ## 6. 聊天链路接入（ragContexts 契约）
 
@@ -152,8 +167,12 @@ score = 0.65 × cosine(queryVec, chunkVec) + 0.35 × keywordScore(query, chunk)
 
 ### 6.1 客户端（`hooks/useChat.ts`）
 
-发送前若 `rag.enabled === true` 且引擎就绪：嵌入 query → topK → 请求体附
-`ragContexts`。引擎未就绪/嵌入失败 → **静默跳过**（消息照常裸发，设备内事件，§1）。
+发送前若 `rag.enabled === true` 且用户输入非空：直接调用 `searchKnowledge(text)`
+（嵌入 query → topK → 取回 chunk），命中则把 `{title, snippet(≤800), score(4 位小数)}`
+附到请求体 `ragContexts`。链路**不额外判断引擎状态**：引擎未就绪时由 `embedTexts`
+内部先 `initLocalEngine` 惰性拉起来，首次会触发 24–30MB 资产加载与编译，该条消息
+因耗时过长不保证带上 `ragContexts`；任何抛错（资产缺失、Worker 启动失败、内存不足）
+一律 **静默跳过**（消息照常裸发，设备内事件，§1），绝不阻断发送。
 
 ### 6.2 请求契约（/api/chat 请求体新增字段）
 
@@ -194,14 +213,48 @@ rag: { enabled: boolean };  // 【已接线】true=发送前浏览器本地检�
 
 normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.preferLocal` 同款从严布尔）。
 
+代码侧逐项核对（2026-11-10，按当前实现实查）：
+
+- **`rag.enabled` 已真实接线**：开关写 `settings.rag.enabled`；`hooks/useChat.ts`
+  以 `useSettingsStore` 读取并在发送前检索（§6.1），依赖数组含 `ragEnabled`。
+- **`checkLocalAssets()` 有真实调用方**：`components/settings/LocalCapabilitySection.tsx`
+  挂载时 `useEffect` 内 `void checkLocalAssets().then(...)` 探测一次（`HEAD` + `no-store`，
+  不缓存派生资产），结果驱动「开启」按钮 `disabled`、缺失清单与修复命令展示；
+  当前这是唯一调用点（OCR 侧对应 `checkOcrAssets`），**不是**只导出未使用的死代码。
+- **引擎状态如实展示**：`getLocalEngineStatus()` 初始态 + 预加载按钮的 `progress`
+  回调共同驱动 `[role="status"]` 文案；探测未完成时 `assets === null` 一律按
+  「未就绪」处理，不做乐观假设。
+
 ## 8. 后续挂账（不属于本协议 v1）
 
 - v2 小 LLM：Qwen3-0.6B 优先（新导出待核），Qwen2.5-0.5B-Instruct ONNX 备选
   （2026-11-10 实测：q4f16 483MB / q4 786MB / int8 512MB，单文件格式）；
   闲聊/FAQ 生成 + 非业务问询本地拦截。
 - 云 OCR 两段管线（视觉模型转文字 → imageTexts → 纯文本模型）。
-- 云端 embedding 选项、对话任务本地档位、模型镜像端点配置（`env.remoteHost`）。
+- 云端 embedding 选项、对话任务本地档位、模型镜像端点可配置（当前 `env.remoteHost`
+  固定为空、不允许外联，属**有意锁定**而非待补功能）。
 - 用户会话/笔记语料索引化（待数据层协议明确后扩展 §5.1）。
+- 本地引擎释放接线：`disposeLocalEngine()` 已实现且返回 `Promise<void>`，但**无调用方**
+  （§4 实装状态），页面卸载 / 切换会话的释放尚未接。
 - Safari 26 WebGPU EP 内存问题跟踪（onnxruntime #26827）——影响 q4f16 档在
   Safari 的可用性，届时或对 Safari 强制 q8/wasm。
-- CSP 响应头（本分支落地基础版：self + `worker-src 'self' blob:`）。
+
+## 9. 已落地加固项：CSP
+
+基础版 CSP 已随 `next.config.ts` 落地（原列在 §8 挂账，2026-11-10 复核后移出）。
+`headers()` 以 `source: '/:path*'` 全站下发，指令只按实际实现需要放行：
+
+| 指令 | 取值 | 放行理由 |
+| --- | --- | --- |
+| `default-src` | `'self'` | 默认全站同源 |
+| `script-src` | `'self' 'unsafe-inline' 'wasm-unsafe-eval'`（dev 追加 `'unsafe-eval'`） | Next 内联 bootstrap 与防闪烁脚本；ORT / Tesseract 的 wasm 编译（只放开 wasm，不放宽 JS eval） |
+| `style-src` | `'self' 'unsafe-inline'` | Tailwind 运行时内联样式 |
+| `img-src` | `'self' data: blob:` | Markdown 内联图与上传预览 |
+| `font-src` | `'self' data:` | KaTeX 字体 |
+| `connect-src` | `'self' blob: data:`（dev 追加 `ws: wss:`） | 本地资产 `fetch`、HMR |
+| `worker-src` / `child-src` | `'self' blob:` | Turbopack 模块 Worker 与 ORT 多线程 wasm 的 blob Worker |
+| `media-src` | `'self' blob: data:` | 语音/媒体预览 |
+| `object-src` / `base-uri` / `form-action` / `frame-ancestors` | `'none'` / `'self'` / `'self'` / `'self'` | 基础加固 |
+
+仍未做（继续挂账）：nonce / hash 化的严格 `script-src`（需与 Turbopack 产物验证后
+才能去掉 `'unsafe-inline'`）、`require-trusted-types-for`、CSP 违规上报端点。
