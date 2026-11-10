@@ -1,11 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
-import { checkLocalAssets } from '@/lib/local/assets';
-import type { LocalAssetStatus } from '@/lib/local/assets';
-import { getLocalEngineStatus, initLocalEngine } from '@/lib/local/engine';
+import { useLocalEngine } from '@/hooks/useLocalEngine';
 import type { LocalEngineStatus } from '@/lib/local/engine';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -29,47 +27,25 @@ const TOGGLE_CLASS =
 /**
  * 「本地能力」分区（doc/browser-local-inference.md §7）。
  * 诚实接线（AGENTS.md §8）：资产未就绪时开关一律置灰并给出修复命令，
- * 不渲染任何假可用控件；引擎状态与下载进度直接取自 Worker 的 progress 回调。
+ * 不渲染任何假可用控件；引擎状态与下载进度经 useLocalEngine 与 app/local
+ * 能力页同源（引擎单例 800ms 轮询，分区条件挂载即停表）。
  */
 export default function LocalCapabilitySection() {
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   const updateSettings = useSettingsStore((s) => s.update);
 
-  const [assets, setAssets] = useState<LocalAssetStatus | null>(null);
-  const [engine, setEngine] = useState<LocalEngineStatus>(getLocalEngineStatus);
+  const { status: engine, assets, init } = useLocalEngine();
+  // starting 提供点击→首帧 loading 间的即时反馈（轮询粒度 800ms，补齐这个空窗）
   const [starting, setStarting] = useState(false);
-
-  // 资产探测（HEAD 全量路径）；卸载后不再回写，避免已关闭弹窗内的失效更新
-  useEffect(() => {
-    let cancelled = false;
-    void checkLocalAssets().then((status) => {
-      if (!cancelled) setAssets(status);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // 未探测完成按"未就绪"处理：宁可禁用，也不做乐观假设
   const assetsReady = assets?.ready ?? false;
 
-  const startEngine = useCallback(async () => {
+  const startEngine = useCallback(() => {
     setStarting(true);
-    try {
-      const finalStatus = await initLocalEngine((progress) => {
-        // 复用 Worker 的 progress_callback：加载/编译期间实时回显进度
-        setEngine({ state: 'loading', progress });
-      });
-      setEngine(finalStatus);
-    } catch (err) {
-      setEngine({
-        state: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setStarting(false);
-    }
-  }, []);
+    // init 正常不 reject（错误终态由引擎单例状态机承载并经轮询回显）
+    void init().finally(() => setStarting(false));
+  }, [init]);
 
   const engineBusy = starting || engine.state === 'loading';
 
