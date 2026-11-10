@@ -1,6 +1,6 @@
 # 用户设置（User Settings）协议
 
-> 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt / OCR / 语言 未接线）｜最后更新：2026-11-09
+> 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt / 语言 未接线）｜最后更新：2026-11-10
 > 对应代码：`lib/settings/`、`store/useSettingsStore.ts`、`components/settings/`、`lib/client-id.ts`、`components/layout/AppLayout.tsx`（水合与主题收口）
 
 本文件是用户设置的**唯一事实来源**。修改协议必须先改本文件，再改代码（见 `AGENTS.md` §9）。
@@ -27,6 +27,7 @@ interface UserSettings {
     maxTokens?: number;               //   钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
   };
   ocr: { preferLocal: boolean };      // 【已接线】true=聊天/诊断的图片一律先经浏览器本地 OCR 转文字再发送（隐私/省 token 优先）
+  rag: { enabled: boolean };          // 【已接线】true=发送前浏览器本地检索知识库并注入命中片段（见 doc/browser-local-inference.md §6）
 }
 ```
 
@@ -40,6 +41,7 @@ interface UserSettings {
 | generation.temperature | 非有限数字 → 丢弃；越界 → 钳制到 0–2 |
 | generation.maxTokens | 非有限数字 / ≤0 → 丢弃；向下取整并钳制到 1–200_000 |
 | ocr.preferLocal | 严格 `=== true` 才为 true |
+| rag.enabled | 严格 `=== true` 才为 true |
 | 未知字段 | 一律丢弃（前向兼容：新版本读旧数据补默认，旧版本读新数据不崩） |
 
 ## 3. 存储接口（SettingsStorage）
@@ -71,7 +73,8 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；图片处理（自动=按模型能力派生 / 优先本地 OCR，写 `ocr.preferLocal`，语义见 doc/browser-local-ocr.md §6）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 本地能力 | **实装** | 按任务三行（见 doc/browser-local-inference.md §7）：图片处理（自动=按模型能力派生 / 优先本地 OCR，写 `ocr.preferLocal`，自通用设置迁入）；知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）；本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
 | 服务协议 | 静态 | 本地存储声明、无遥测、密钥仅环境变量、数据由所配模型服务商处理 |
@@ -82,6 +85,7 @@ interface SettingsStorage {
 
 - generation / systemPrompt 服务端注入：扩展 `ChatRequestBody` + `/api/chat` 校验读取（参数经 `CompleteOptions` 透传 provider）。
 - OCR `preferLocal` 已接线（2026-11-10，语义见 doc/browser-local-ocr.md §6）；云 OCR 选项仍挂账（设备边界规则：数据跨出设备必须显式同意）。
+- RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；云端 embedding 与对话本地档位挂账（同文档 §8）。
 - 语言（i18n）、朗读音色（TTS）实装。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
 - 会话持久化 /api/sessions（复用 X-Client-Id）。
