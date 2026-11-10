@@ -45,12 +45,23 @@ env 配置要点（依 v4 官方文档核实，2026-11-10）：浏览器下 `env
 
 ORT 版本口径（2026-11-10 依官方包声明核实）：`@huggingface/transformers@4.3.2`
 在其 `dependencies` 中**精确锁定**（非语义化范围）
-`onnxruntime-web@1.31.0-dev.20260914-8d85527a0`，这就是官方认可的运行时版本——
+`onnxruntime-web@1.31.0-dev.20260914-8d85527a0`，这是库作者声明的运行时版本——
 官方文档源码（guides/tutorials）未提供 ORT 版本控制与 wasm 自托管路径的章节，
-唯一权威约束即该精确依赖。故本项目 `package.json` 声明同一版本，并用
+唯一可依的约束即该精确依赖。故本项目 `package.json` 声明同一版本，并用
 `overrides` 把 `onnxruntime-web` 与 `onnxruntime-common` 收敛为全树唯一副本：
 消除「根依赖一份 + transformers 嵌套一份」的双 runtime，保证 glue（`ort*.mjs`）
 与 wasm 同包同版本。
+
+实测记录（2026-11-10，Chrome 153 + AMD RDNA3，站点未配 COOP/COEP）：
+
+- WASM 路径实测通过：点「预加载引擎」后状态为「已就绪 · WASM」，随后开启知识
+  检索发一条消息，`/api/chat` 请求体带 4 条 `ragContexts` 且 score 连续
+  （0.3457 / 0.3218 / 0.2841 / 0.2549），说明 q8 档嵌入真实产出向量并完成排序；
+- WebGPU 路径本机未触发：`navigator.gpu.requestAdapter()` 能返回适配器，但
+  `adapter.features.has('shader-f16')` 为 false，引擎按上文设备探测策略回退
+  WASM（q4f16 档依赖 f16 着色器）。要在 WebGPU 分支上取证，需在暴露
+  `shader-f16` 的设备打开「设置 → 本地能力 → 预加载引擎」，状态应显示
+  「已就绪 · WebGPU」。
 
 ## 3. 资产分发（自托管，运行时零外联）
 
