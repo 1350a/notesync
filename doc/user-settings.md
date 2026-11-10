@@ -73,11 +73,16 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
-| 本地能力 | **实装** | 按任务三行（见 doc/browser-local-inference.md §7）：图片处理（自动=按模型能力派生 / 优先本地 OCR，写 `ocr.preferLocal`，自通用设置迁入）；知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）；本地对话（禁用 + "未实装"标注，v2 小 LLM） |
+| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；图片处理（自动 / 优先本地OCR，写 `ocr.preferLocal`）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 本地能力 | **实装** | 按任务（见 doc/browser-local-inference.md §7）：知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）；本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
 | 服务协议 | 静态 | 本地存储声明、无遥测、密钥仅环境变量、数据由所配模型服务商处理 |
+
+> 口径更正（2026-11-10 复核）：原计划把「图片处理」行从通用设置迁入「本地能力」分区，
+> 但当前代码（`components/settings/GeneralSection.tsx`）仍把它渲染在通用设置里，
+> 本地能力分区只有知识检索与本地引擎两行实装 + 本地对话占位。本表按**代码现状**记录，
+> 迁移与否待后续决定，勿据旧表述判断 UI 位置。
 
 主题消费收口：`AppLayout` 负责水合 + 把 `theme` 应用到 `documentElement`（'system' 时订阅 matchMedia 变化实时联动）；顶栏按钮循环切换 浅色→深色→跟随系统。根布局另有防闪烁内联脚本（静态常量，见 `lib/settings/anti-flash.ts`）。
 
@@ -89,4 +94,7 @@ interface SettingsStorage {
 - 语言（i18n）、朗读音色（TTS）实装。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
 - 会话持久化 /api/sessions（复用 X-Client-Id）。
-- CSP 响应头（XSS/密钥加固的后续项，见 scripts/xss-scan.ts 的 `csp.missing`）。
+- ~~CSP 响应头~~ **已落地（2026-11-10 复核移出挂账）**：基础版 CSP 由 `next.config.ts`
+  的 `headers()` 全站下发，`scripts/xss-scan.ts` 的 `csp.missing` 不再触发；指令明细与
+  剩余项（nonce/hash 严格 script-src、Trusted Types、上报端点）见
+  doc/browser-local-inference.md §9。
