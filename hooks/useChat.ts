@@ -43,7 +43,12 @@ export function useChat(selectedModel: string) {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string, images: string[], files: ChatTextFile[] = []) => {
+    async (
+      text: string,
+      images: string[],
+      files: ChatTextFile[] = [],
+      ocrTexts?: string[]
+    ) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
       abortControllerRef.current = new AbortController();
@@ -66,7 +71,15 @@ export function useChat(selectedModel: string) {
         return next;
       });
 
-      const userMsg: ChatMsg = { role: 'user', content: text, images, files };
+      // ocrTexts 与 images 一一对应：本地 OCR 转文字模式产物，随消息上行供服务端
+      // 以文本块拼进正文（doc/browser-local-ocr.md §6.2）；images 保留在本地用于气泡展示
+      const userMsg: ChatMsg = {
+        role: 'user',
+        content: text,
+        images,
+        files,
+        ...(ocrTexts && ocrTexts.length > 0 ? { ocrTexts } : {}),
+      };
       const history = [...messages, userMsg];
       setMessages(history);
       setLoading(true);
@@ -79,11 +92,13 @@ export function useChat(selectedModel: string) {
           headers: { 'Content-Type': 'application/json', [CLIENT_ID_HEADER]: getClientId() },
           body: JSON.stringify({
             model: selectedModel,
-            // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）
+            // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）；
+            // OCR 模式消息只上行 imageTexts，图片本体不再出浏览器（省带宽且符合隐私语义）
             messages: history.map((m) => ({
               role: m.role,
               content: m.content,
-              images: m.images,
+              images: m.ocrTexts?.length ? undefined : m.images,
+              imageTexts: m.ocrTexts,
               files: m.files,
             })),
           }),
