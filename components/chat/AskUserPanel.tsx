@@ -113,13 +113,13 @@ export default function AskUserPanel({
         </div>
       )}
 
-      {/* 自由输入 */}
+      {/* 自由输入：touch 16px 防 iOS 聚焦强制放大（doc/mobile-ux.md §4） */}
       <input
         value={drafts[idx] ?? ''}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="输入你的答案…"
-        className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30"
+        className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 touch:text-base"
       />
 
       {/* 底栏：翻页 + 跳过/下一题/提交 */}
