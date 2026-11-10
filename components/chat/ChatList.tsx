@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -37,12 +37,7 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
 }
 
 export default function ChatList({ messages, loading }: { messages: ChatMsg[]; loading: boolean }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
-
+  // 滚动跟随收口在页面层（app/chat/page.tsx）：用户操作优先的条件式吸底（doc/mobile-ux.md §3）
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-4">
       {messages.length === 0 && (
@@ -184,7 +179,6 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
           </div>
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }
