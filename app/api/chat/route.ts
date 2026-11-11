@@ -215,7 +215,11 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
         '',
         '**诊断模式（MOCK 摘要）**',
         `- 状态机: ${diagnoseSession.context.state}（追问已用 ${diagnoseSession.context.clarifyUsed} 次，阶梯 L${diagnoseSession.context.hintLevel}）`,
-        `- 完整度: ${JSON.stringify(diagnoseSession.completeness)}`,
+        `- 完整度: ${JSON.stringify(diagnoseSession.completeness)}${
+          attachments.length > 0
+            ? '（来源：四类附件推导）'
+            : '（来源：四类附件推导；本请求无附件，聊天页输入的完整度由模型在 intake 判定，MOCK 下不跑模型故全 false）'
+        }`,
         `- 机械判定证据: ${buildVerifyEvidence(attachments) || '（无，缺少成对的 wrong/correct 文本）'}`,
         `- 分状态系统提示词: ${
             buildDiagnoseSystemPrompt({
