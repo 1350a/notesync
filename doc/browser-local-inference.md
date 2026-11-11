@@ -275,7 +275,14 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 | `connect-src` | `'self' blob: data:`（dev 追加 `ws: wss:`） | 本地资产 `fetch`、HMR |
 | `worker-src` / `child-src` | `'self' blob:` | Turbopack 模块 Worker 与 ORT 多线程 wasm 的 blob Worker |
 | `media-src` | `'self' blob: data:` | 语音/媒体预览 |
-| `object-src` / `base-uri` / `form-action` / `frame-ancestors` | `'none'` / `'self'` / `'self'` / `'self'` | 基础加固 |
+| `object-src` / `base-uri` / `form-action` / `frame-ancestors` | `'none'` / `'self'` / `'self'` / `'none'` | 基础加固；`frame-ancestors 'none'` 表示本站不提供被嵌入能力（等同 `X-Frame-Options: DENY` 的现代写法），不再放行同源嵌套 |
+
+除 CSP 外，同一 `headers()` 条目还下发两条零成本加固头：
+
+| 响应头 | 取值 | 理由 |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | 禁止 MIME 嗅探，避免 `public/models`、`public/ocr` 等自托管资产被误判为可执行脚本类型 |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | 跨源出站只带源站，避免站内路径信息外泄 |
 
 仍未做（继续挂账）：严格 `script-src`、`require-trusted-types-for`、CSP 违规上报端点。
 
