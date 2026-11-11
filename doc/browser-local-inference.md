@@ -212,9 +212,15 @@ type RagContext = { title: string; snippet: string; score: number };
 
 | 行 | 状态 | 内容 |
 | --- | --- | --- |
-| 图片处理（OCR） | **实装**（自通用设置迁入） | 自动 / 优先本地 OCR（写 `ocr.preferLocal`，语义见 browser-local-ocr.md §6） |
-| 知识检索（RAG） | **实装** | 开关写 `rag.enabled`（默认 false）+ 引擎状态（未下载时展示 `npm run local:assets` 提示与下载进度）|
+| 知识检索（RAG） | **实装** | 开关写 `rag.enabled`（默认 false）+ 命中口径说明；资产未就绪时「开启」置灰并给修复命令 |
+| 本地引擎 | **实装** | 引擎状态 + 预加载入口（bge-small-zh-v1.5，WebGPU 优先、不可用时回退 WASM），下载进度经单例轮询回显 |
 | 本地对话 | 占位 | v1 仅云端；本地选项禁用 + “未实装”标注（AGENTS.md §8） |
+
+**「图片处理（OCR）」不在本分区**：`ocr.preferLocal` 开关保留在「通用设置」的
+「图片处理」行（`components/settings/GeneralSection.tsx`），语义见
+`browser-local-ocr.md` §6——OCR 是独立能力域，其资产探测（`checkOcrAssets`）、
+失败语义与验收口径自成一套（见 `browser-local-ocr.md` §3 / §5 / §6.4），
+不并入「本地推理」分区，避免同一开关在两处设置里重复出现。
 
 `UserSettings` 新增：
 
@@ -228,10 +234,14 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 
 - **`rag.enabled` 已真实接线**：开关写 `settings.rag.enabled`；`hooks/useChat.ts`
   以 `useSettingsStore` 读取并在发送前检索（§6.1），依赖数组含 `ragEnabled`。
-- **`checkLocalAssets()` 有真实调用方**：`components/settings/LocalCapabilitySection.tsx`
-  挂载时 `useEffect` 内 `void checkLocalAssets().then(...)` 探测一次（`HEAD` + `no-store`，
-  不缓存派生资产），结果驱动「开启」按钮 `disabled`、缺失清单与修复命令展示；
-  当前这是唯一调用点（OCR 侧对应 `checkOcrAssets`），**不是**只导出未使用的死代码。
+- **`checkLocalAssets()` 有真实调用方（共 3 处）**：①
+  `components/settings/LocalCapabilitySection.tsx` 挂载时 `useEffect` 内
+  `void checkLocalAssets().then(...)` 探测一次（`HEAD` + `no-store`，不缓存派生资产），
+  结果驱动「开启」按钮 `disabled`、缺失清单与修复命令展示；② `hooks/useLocalEngine.ts`
+  在 hook 挂载时探测一次，供「本地引擎」行与能力页读同一份就绪结论；③
+  `app/(main)/local/_components/local-test-panel.tsx` 自检段①每次运行都 fresh 全量探测
+  （不复用挂载期缓存，因为自检要判「此刻是否真就绪」）。**不是**只导出未使用的死代码；
+  OCR 侧对应独立入口 `checkOcrAssets`（`browser-local-ocr.md` §3）。
 - **引擎状态如实展示**：`getLocalEngineStatus()` 初始态 + 预加载按钮的 `progress`
   回调共同驱动 `[role="status"]` 文案；探测未完成时 `assets === null` 一律按
   「未就绪」处理，不做乐观假设。
