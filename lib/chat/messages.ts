@@ -4,9 +4,9 @@
  * 与诊断附件共用同一套图片过滤口径：非 data:image/ 开头或超出体积上限的项逐张丢弃，
  * 不因一条脏数据让整个请求失败。
  */
-import type { ProviderMessage } from '../provider/types';
-import type { AskUserQuestion } from '../tools/types';
-import { formatOcrBlock } from '../ocr/image-handling';
+import type { ProviderMessage } from '../provider/types.ts';
+import type { AskUserQuestion } from '../tools/types.ts';
+import { formatOcrBlock } from '../ocr/image-handling.ts';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
 export const MAX_DATA_URL = 12 * 1024 * 1024;
