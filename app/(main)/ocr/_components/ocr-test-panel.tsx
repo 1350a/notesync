@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  SelfTestSection,
+  type SelfTestPhase,
+} from '@/components/ui/self-test';
+import {
   checkOcrAssets,
   disposeOcrWorker,
   normalizeOcrText,
@@ -117,6 +121,24 @@ export default function OcrTestPanel() {
   const assetsReady = assets?.ready ?? false;
   const busy = selfTest.phase === 'running' || custom.phase === 'running';
 
+  // 分区徽标口径：未跑为待检测，跑完按有无错误/是否一致落 PASS 或 FAIL
+  const selfTestPhase: SelfTestPhase =
+    selfTest.phase === 'idle'
+      ? 'idle'
+      : selfTest.phase === 'running'
+        ? 'running'
+        : selfTest.error || !selfTest.pass
+          ? 'fail'
+          : 'pass';
+  const customPhase: SelfTestPhase =
+    custom.phase === 'idle'
+      ? 'idle'
+      : custom.phase === 'running'
+        ? 'running'
+        : custom.error
+          ? 'fail'
+          : 'pass';
+
   const runSelfTest = useCallback(async () => {
     setSelfTest({ phase: 'running' });
     setProgress(null);
@@ -200,12 +222,11 @@ export default function OcrTestPanel() {
       <ProgressLine progress={progress} />
 
       {/* 内置自检 */}
-      <section className="rounded-lg border p-4">
-        <h2 className="mb-1 text-lg font-semibold">内置自检</h2>
-        <p className="mb-3 text-sm text-muted-foreground">
-          用 canvas 生成含已知文本的图片并识别，与期望文本规范化比对
-          （期望：{EXPECTED_LINES.join(' / ')}）。
-        </p>
+      <SelfTestSection
+        title="内置自检"
+        description={`用 canvas 生成含已知文本的图片并识别，与期望文本规范化比对（期望：${EXPECTED_LINES.join(' / ')}）。`}
+        state={{ phase: selfTestPhase }}
+      >
         <button
           type="button"
           onClick={runSelfTest}
@@ -237,14 +258,14 @@ export default function OcrTestPanel() {
             <ResultBlock result={selfTest.result} />
           </div>
         )}
-      </section>
+      </SelfTestSection>
 
       {/* 自定义图片 */}
-      <section className="rounded-lg border p-4">
-        <h2 className="mb-1 text-lg font-semibold">自定义图片识别</h2>
-        <p className="mb-3 text-sm text-muted-foreground">
-          选择本机图片进行本地识别，图片不会离开浏览器。
-        </p>
+      <SelfTestSection
+        title="自定义图片识别"
+        description="选择本机图片进行本地识别，图片不会离开浏览器。"
+        state={{ phase: customPhase }}
+      >
         <input
           type="file"
           accept="image/*"
@@ -274,7 +295,7 @@ export default function OcrTestPanel() {
         {custom.phase === 'done' && custom.result && (
           <ResultBlock result={custom.result} />
         )}
-      </section>
+      </SelfTestSection>
     </div>
   );
 }
