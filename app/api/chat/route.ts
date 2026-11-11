@@ -61,6 +61,8 @@ import type {
 import type { AskUserQuestion } from '@/lib/tools/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
+import { isBlockedSignal } from '@/lib/safety/block-detect';
+import { CHAT_BASE_SYSTEM_PROMPT, CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
 import { createAdapter } from '@/lib/tools/adapters';
 import { registerBuiltinTools } from '@/lib/tools/builtin';
 import { createSubmissionStore, createSubmitDiagnosisTool } from '@/lib/tools/builtin/submit_diagnosis';
@@ -552,6 +554,10 @@ export async function POST(request: Request) {
     if (systemPrompt) {
       providerMessages.unshift({ role: 'system', content: systemPrompt });
     }
+  } else if (providerMessages.length > 0) {
+    // 普通聊天注入基础行为提示：软引导（§5.2）与关怀转介（§5.3）的模型侧承载；
+    // 诊断模式不走此提示（离题由 reject 态处置，两套口径不叠加）
+    providerMessages.unshift({ role: 'system', content: CHAT_BASE_SYSTEM_PROMPT });
   }
 
   // 工具配置判断
@@ -602,6 +608,10 @@ export async function POST(request: Request) {
           tools,
           maxRounds,
           signal: request.signal,
+          // 上游拦截判定（两条路径：finish_reason 异常值 / 拒绝性文本，§3）
+          blockedDetector: isBlockedSignal,
+          // 上游终端用户标识（随机 UUID；wip-safety-protocol §6）
+          user: typeof body.user === 'string' && body.user.length <= 64 ? body.user : undefined,
         });
 
         for await (const ev of generator) {
@@ -641,6 +651,20 @@ export async function POST(request: Request) {
                   // loop 已标注 code（parse_error/provider_error）则透传；未标注按模型请求失败兜底
                   code: ev.code ?? 'provider_error',
                   error: explainProviderError(ev.message),
+                  model,
+                  provider: provider.name,
+                })
+              )
+            );
+          } else if (ev.type === 'blocked') {
+            // 上游拦截：循环已丢弃本轮历史（§3.1），这里归一为 content_blocked 通知；
+            // 客户端据此丢弃已流出片段并展示固定说明（不重试——重试只会再被拦一次，§2）
+            failed = true;
+            controller.enqueue(
+              encoder.encode(
+                sse('error', {
+                  code: 'content_blocked',
+                  error: CONTENT_BLOCKED_MESSAGE,
                   model,
                   provider: provider.name,
                 })
