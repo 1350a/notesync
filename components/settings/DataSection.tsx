@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { resetUserId, USER_ID_STORAGE_KEY } from '@/lib/client-id';
 import SettingsRow from './SettingsRow';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -9,6 +11,17 @@ const LOCAL_PREFIX = 'notesync';
 
 export default function DataSection() {
   const reset = useSettingsStore((s) => s.reset);
+  // 重置后的新标识只展示尾段，完整值不出设置页（避免被整段复制外传）
+  const [newUserId, setNewUserId] = useState('');
+
+  /** 重置上游终端用户标识（doc/user-settings.md §4.1，合规可撤销要求） */
+  const resetDeviceId = () => {
+    if (!window.confirm('将更换发送给模型服务商的匿名设备标识，此前标识即失效。继续？')) {
+      return;
+    }
+    const generated = resetUserId();
+    setNewUserId(generated.slice(-8));
+  };
 
   /** 清除本浏览器内全部 notesync 本地数据后刷新（客户端标识一并重置，不可撤销） */
   const clearAll = () => {
@@ -35,6 +48,19 @@ export default function DataSection() {
         <Button variant="outline" size="sm" onClick={reset}>
           恢复默认
         </Button>
+      </SettingsRow>
+      <SettingsRow
+        label="重置设备标识"
+        hint={`更换发送给模型服务商的匿名标识（${USER_ID_STORAGE_KEY}），此前标识即失效`}
+      >
+        <div className="flex items-center gap-2">
+          {newUserId && (
+            <span className="text-[11px] text-muted-foreground">新标识尾段 …{newUserId}</span>
+          )}
+          <Button variant="outline" size="sm" onClick={resetDeviceId}>
+            重置
+          </Button>
+        </div>
       </SettingsRow>
       <SettingsRow
         label="清除全部本地数据"
