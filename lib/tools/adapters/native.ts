@@ -24,11 +24,13 @@ export class NativeAdapter implements ToolAdapter {
   buildRequest(
     model: string,
     messages: ProviderMessage[],
-    tools: ToolDefinition[]
+    tools: ToolDefinition[],
+    user?: string
   ): CompleteOptions {
     return {
       model,
       messages,
+      user,
       tools: tools.length > 0 ? renderForNative(tools) : undefined,
       toolChoice: tools.length > 0 ? 'auto' : undefined,
     };
@@ -40,10 +42,14 @@ export class NativeAdapter implements ToolAdapter {
     onReasoning: (delta: string) => void
   ): Promise<ExtractedToolCalls> {
     let rawContent = '';
+    let rawFinishReason: string | undefined;
     // 按 index 累积 tool_calls 增量
     const toolCallsMap = new Map<number, { id: string; name: string; argsBuf: string }>();
 
     for await (const delta of stream) {
+      if (delta.finishReason) {
+        rawFinishReason = delta.finishReason; // 最后一次出现的为准
+      }
       if (delta.content) {
         rawContent += delta.content;
         onContent(delta.content);
@@ -76,7 +82,7 @@ export class NativeAdapter implements ToolAdapter {
       }
     }
 
-    return { calls, raw: rawContent, parseError };
+    return { calls, raw: rawContent, parseError, finishReason: rawFinishReason };
   }
 
   appendResults(
