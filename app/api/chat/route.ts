@@ -7,8 +7,10 @@
  *   event: content       data: {"delta":"回复内容增量"}
  *   event: tool_call     data: {"id":"...","name":"...","arguments":{...}}
  *   event: tool_result   data: {"id":"...","ok":true,"summary":"...","ms":12}
- *   event: awaiting_user data: {"question":"...","toolCallId":"..."}
- *   event: done          data: {"model":"...","provider":"...","usedRounds":1,"finishReason":"stop"}
+ *   event: awaiting_user data: {"questions":[...],"toolCallId":"..."}
+ *   event: diagnosis     data: {"result":{...DiagnosisResult}}（仅诊断模式，在 done 之前下发）
+ *   event: done          data: {"model":"...","provider":"...","usedRounds":1,"finishReason":"stop",
+ *                            "diagnose":{"context":{...DiagnoseContext}}}（diagnose 仅诊断模式携带）
  *   event: error         data: {"code":"...","error":"..."}
  *
  * error.code 取值（前端据此区分提示口径，error 事件必有 code）：
@@ -24,6 +26,12 @@
  * 所选模型不支持图片（按模型判定）时，附件与聊天历史里的图片一并自动降级为文字占位，不做静默丢弃。
  * MOCK_MODEL=1 时不调用任何上游，只回显组装结构，用于零 token 验证发送数据。
  *
+ * 诊断状态机：请求体可带 diagnose { context, event }（DiagnoseRequestPayload）。
+ * 服务端按状态注入分阶段 system prompt（lib/diagnose/prompts.ts）并挂 submit_diagnosis 工具；
+ * 响应后由 lib/diagnose/runtime.ts finalizeDiagnosis 做提交校验、guard 引用判据（重试一次）
+ * 与状态推进，结果经 diagnosis 事件下发，最新上下文经 done.diagnose.context 回传客户端持久。
+ * 缺省该字段即普通聊天，行为不变。
+ *
  * 实现：按模型名归属路由到 Provider 后，委托 lib/tools/loop.ts 的 runToolLoop 编排，
  * 使用适配器屏蔽 native 与 text 模式的差异；任何异常均以 error 事件回传由前端展示。
  */
@@ -35,11 +43,19 @@ import {
   type ChatRequestBody,
 } from '@/lib/chat/messages';
 import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
+import { buildDiagnoseSystemPrompt } from '@/lib/diagnose/prompts';
+import {
+  buildVerifyEvidence,
+  finalizeDiagnosis,
+  resolveDiagnoseSession,
+  type LoopRunResult,
+} from '@/lib/diagnose/runtime';
 import type { DiagnoseAttachment, ReviseCategory } from '@/lib/diagnose/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
 import { createAdapter } from '@/lib/tools/adapters';
 import { registerBuiltinTools } from '@/lib/tools/builtin';
+import { createSubmissionStore, createSubmitDiagnosisTool } from '@/lib/tools/builtin/submit_diagnosis';
 import { runToolLoop } from '@/lib/tools/loop';
 import { getEnabledTools } from '@/lib/tools/registry';
 import type { ToolMode } from '@/lib/tools/types';
@@ -192,6 +208,26 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
     typeof m.content === 'string' ? m.content.trim().length > 0 : m.content.length > 0
   );
 
+  // 诊断模式零 token 摘要：回显状态机上下文、完整度与注入的系统提示词规模
+  const diagnoseSession = resolveDiagnoseSession(body.diagnose, attachments);
+  const diagnoseBlock = diagnoseSession
+    ? [
+        '',
+        '**诊断模式（MOCK 摘要）**',
+        `- 状态机: ${diagnoseSession.context.state}（追问已用 ${diagnoseSession.context.clarifyUsed} 次，阶梯 L${diagnoseSession.context.hintLevel}）`,
+        `- 完整度: ${JSON.stringify(diagnoseSession.completeness)}`,
+        `- 机械判定证据: ${buildVerifyEvidence(attachments) || '（无，缺少成对的 wrong/correct 文本）'}`,
+        `- 分状态系统提示词: ${
+            buildDiagnoseSystemPrompt({
+              state: diagnoseSession.context.state,
+              ctx: diagnoseSession.context,
+              completeness: diagnoseSession.completeness,
+              verifyEvidence: buildVerifyEvidence(attachments),
+            })?.length ?? 0
+          } 字符`,
+      ].join('\n')
+    : '';
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       // 纯聊天请求（无诊断附件）：回显 messages 组装结构，便于零 token 校验图片是否真的进了请求
@@ -203,7 +239,7 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
           controller.close();
           return;
         }
-        controller.enqueue(encoder.encode(sse('content', { delta: summarizeChatMessages(chatMessages) })));
+        controller.enqueue(encoder.encode(sse('content', { delta: summarizeChatMessages(chatMessages) + diagnoseBlock })));
         controller.enqueue(
           encoder.encode(
             sse('done', { model: 'mock', provider: 'mock', usedRounds: 0, finishReason: 'mock' })
@@ -224,7 +260,7 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
         controller.close();
         return;
       }
-      controller.enqueue(encoder.encode(sse("content", { delta: summarizeForMock(assembled) })));
+      controller.enqueue(encoder.encode(sse("content", { delta: summarizeForMock(assembled) + diagnoseBlock })));
       controller.enqueue(
         encoder.encode(
           sse("done", {
@@ -339,10 +375,28 @@ export async function POST(request: Request) {
     }
   }
 
+  // 诊断状态机会话：payload 解析 + 客户端事件应用（未携带 diagnose 字段则为普通聊天）
+  const diagnose = resolveDiagnoseSession(body.diagnose, attachments);
+  if (diagnose) {
+    const verifyEvidence = buildVerifyEvidence(attachments);
+    const systemPrompt = buildDiagnoseSystemPrompt({
+      state: diagnose.context.state,
+      ctx: diagnose.context,
+      completeness: diagnose.completeness,
+      verifyEvidence,
+    });
+    if (systemPrompt) {
+      providerMessages.unshift({ role: 'system', content: systemPrompt });
+    }
+  }
+
   // 工具配置判断
   const toolsEnabled = process.env.TOOLS_ENABLED !== 'false';
-  const tools = toolsEnabled ? getEnabledTools() : [];
+  const baseTools = toolsEnabled ? getEnabledTools() : [];
   const maxRounds = parseInt(process.env.TOOL_MAX_ROUNDS || '3', 10);
+  // submit_diagnosis 是逐请求工厂件（提交存储随请求走，避免并发覆盖），不走注册表单例
+  const submissionStore = createSubmissionStore();
+  const tools = diagnose ? [...baseTools, createSubmitDiagnosisTool(submissionStore)] : baseTools;
 
   // 决定适配器模式（默认 native；custom 可以强制降级 text）
   let mode: ToolMode = 'native';
@@ -354,13 +408,32 @@ export async function POST(request: Request) {
   // 清洗历史（如将上轮的 ask_user 调用痕迹转为普通文本）
   providerMessages = adapter.preprocessMessages(providerMessages);
 
+  // guard 判据的学生文字来源之一：本轮最新一条用户消息正文（作答也可能打在对话里）
+  const lastUserText = (() => {
+    if (typeof body.content === 'string' && body.content.trim()) return body.content;
+    const msgs = Array.isArray(body.messages) ? body.messages : [];
+    for (let i = msgs.length - 1; i >= 0; i -= 1) {
+      if (msgs[i].role === 'user') return msgs[i].content || '';
+    }
+    return '';
+  })();
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      try {
+      /**
+       * 跑一次工具循环并转发流：done 持有不发（诊断后处理可能追加 diagnosis 事件，
+       * done 必须保持终止符语义），正文累计供 guard 引用判据比对。
+       */
+      const pump = async (messages: ProviderMessage[]): Promise<LoopRunResult> => {
+        let outputText = '';
+        let done: LoopRunResult['done'] = null;
+        let awaitingUser = false;
+        let failed = false;
+
         const generator = runToolLoop({
           model: model!,
           provider,
-          messages: providerMessages,
+          messages,
           adapter,
           tools,
           maxRounds,
@@ -371,6 +444,7 @@ export async function POST(request: Request) {
           // 防御：上游若仍下发空事件（undefined），直接跳过，避免取属性抛错导致整条 SSE 中断
           if (!ev) continue;
           if (ev.type === 'content') {
+            outputText += ev.delta;
             controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
           } else if (ev.type === 'reasoning') {
             controller.enqueue(encoder.encode(sse('reasoning', { delta: ev.delta })));
@@ -387,23 +461,16 @@ export async function POST(request: Request) {
               )
             );
           } else if (ev.type === 'awaiting_user') {
+            awaitingUser = true;
             controller.enqueue(
               encoder.encode(
                 sse('awaiting_user', { questions: ev.questions, toolCallId: ev.toolCallId })
               )
             );
           } else if (ev.type === 'done') {
-            controller.enqueue(
-              encoder.encode(
-                sse('done', {
-                  model,
-                  provider: provider.name,
-                  usedRounds: ev.usedRounds,
-                  finishReason: ev.finishReason,
-                })
-              )
-            );
+            done = { usedRounds: ev.usedRounds, finishReason: ev.finishReason };
           } else if (ev.type === 'error') {
+            failed = true;
             controller.enqueue(
               encoder.encode(
                 sse('error', {
@@ -416,6 +483,43 @@ export async function POST(request: Request) {
               )
             );
           }
+        }
+        return { outputText, done, awaitingUser, failed };
+      };
+
+      try {
+        const mainRun = await pump(providerMessages);
+
+        // 诊断后处理：提交补交 / guard 重试由 finalize 编排（重试段内容照常流式转发），
+        // 随后统一发 diagnosis 与 done；awaiting_user / 失败轮不做后处理
+        if (diagnose && mainRun.done && !mainRun.awaitingUser && !mainRun.failed) {
+          const fin = await finalizeDiagnosis({
+            session: diagnose,
+            baseMessages: providerMessages,
+            mainRun,
+            attachments,
+            submissionStore,
+            lastUserText,
+            runLoop: pump,
+          });
+          diagnose.context = fin.context;
+          if (fin.diagnosis) {
+            controller.enqueue(encoder.encode(sse('diagnosis', { result: fin.diagnosis })));
+          }
+        }
+
+        if (mainRun.done) {
+          controller.enqueue(
+            encoder.encode(
+              sse('done', {
+                model,
+                provider: provider.name,
+                usedRounds: mainRun.done.usedRounds,
+                finishReason: mainRun.done.finishReason,
+                ...(diagnose ? { diagnose: { context: diagnose.context } } : {}),
+              })
+            )
+          );
         }
       } catch (err) {
         controller.enqueue(
