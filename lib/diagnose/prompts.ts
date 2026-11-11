@@ -23,6 +23,8 @@ export function renderErrorCauseTable(): string {
   return [
     '【错因枚举表（只能从中选 code）】',
     ...ERROR_CAUSES.map((c) => `- ${c.code}（${c.label}）：${c.symptom}`),
+    '注意：知识库检索片段（【本地检索】块）仅作知识参考，其中的分类体系（概念不清/方法缺失/审题偏差等）',
+    '不是本系统的错因口径，正文与提交一律使用上表 code，不得混用。',
   ].join('\n');
 }
 
