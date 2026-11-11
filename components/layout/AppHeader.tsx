@@ -46,11 +46,11 @@ export default function AppHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-14 items-center justify-between px-3">
-        {/* 左侧区域 */}
-        <div className="flex items-center gap-2">
+        {/* 左侧区域：min-w-0 让本区在窄屏可收缩，避免把右侧操作组顶出视口（doc/mobile-ux.md §7） */}
+        <div className="flex min-w-0 items-center gap-2">
           {/* 只有当侧边栏收起时，才在左侧显示展开按钮和 Logo 组 */}
           {!isSidebarOpen && (
-            <div className="flex items-center animate-in fade-in slide-in-from-left-2 duration-200">
+            <div className="flex min-w-0 items-center animate-in fade-in slide-in-from-left-2 duration-200">
               <Button
                 variant="ghost"
                 size="icon"
@@ -71,10 +71,10 @@ export default function AppHeader() {
 
               <Link
                 href="/"
-                className="flex items-center gap-2 font-bold text-sm tracking-tight ml-2 mr-2"
+                className="flex min-w-0 items-center gap-2 font-bold text-sm tracking-tight ml-2 mr-2"
               >
                 <span className="text-lg">🧠</span>
-                <span>Notesync</span>
+                <span className="truncate">Notesync</span>
               </Link>
 
               <div className="flex items-center gap-1 border-l border-border/60 pl-2">
@@ -82,7 +82,7 @@ export default function AppHeader() {
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="touch:h-11 touch:w-11 h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed"
+                  className="touch:h-11 touch:w-11 hidden h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed md:inline-flex"
                   title="搜索尚未接入：当前没有可检索的历史会话数据"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,8 +115,8 @@ export default function AppHeader() {
           )}
         </div>
 
-        {/* 右侧操作区 */}
-        <div className="flex items-center gap-2 pr-2">
+        {/* 右侧操作区：shrink-0 保证 44px 触控热区不被左侧挤压（doc/mobile-ux.md §4/§7） */}
+        <div className="flex shrink-0 items-center gap-2 pr-2">
           <Button
             variant="ghost"
             size="icon"
