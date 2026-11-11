@@ -63,10 +63,11 @@ AIGC:
 代码侧核对（2026-11-10，按当前实现实查）：
 
 - `checkOcrAssets()` 当前**唯一调用方是 `/ocr` 自检面板**
-  （`app/ocr/_components/ocr-test-panel.tsx`，`HEAD` + `no-store` 逐项探测并逐条报 FAIL）。
+  （`app/(main)/ocr/_components/ocr-test-panel.tsx`，`HEAD` + `no-store` 逐项探测并逐条报 FAIL）。
 - 聊天/诊断链路**不做 OCR 资产前置门禁**：`ocr.preferLocal` 开关位于「通用设置」的
-  「图片处理」行（`components/settings/GeneralSection.tsx`，本轮核对其实**尚未**迁入
-  「本地能力」分区），资产缺失时不会在开关处禁用，而是在识别阶段失败 → 按 §6.4
+  「图片处理」行（`components/settings/GeneralSection.tsx`），**不迁入**「本地能力」分区
+  （口径见 `browser-local-inference.md` §7：OCR 是独立能力域，开关只在一处出现），
+  资产缺失时不会在开关处禁用，而是在识别阶段失败 → 按 §6.4
   阻断发送、逐张列明原因并提示 `npm run ocr:assets`。这是有意取舍：OCR 资产体积小、
   失败原因可判读，不重复做前置探测。
 - `next.config.ts` 的 `serverExternalPackages: ["tesseract.js"]` 确实只服务旧服务端
@@ -100,7 +101,7 @@ disposeOcrWorker(): Promise<void>
 
 ## 5. 能力页与验收口径
 
-`app/ocr`：本地 OCR 能力页。
+`app/(main)/ocr`：本地 OCR 能力页（URL 仍为 `/ocr`，布局由 `app/(main)/layout.tsx` 承载）。
 
 1. **内置自检**：页面用 canvas 渲染已知中文文本（刻意不含标点与数字，规避 OCR 对
    标点/数字的歧义噪声）生成 PNG → 调用 `ocrRecognize` → 与期望文本做规范化比对，
