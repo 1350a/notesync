@@ -137,11 +137,15 @@ export type DiagnoseState =
   | 'reject' // 非数学题：固定话术 + 能力说明
   | 'done';
 
+/** 学科标识；v1 仅数学，多学科时在此扩联合（wip-product-vision.md §2 非目标） */
+export type DiagnoseSubject = 'math';
+
 /**
  * 状态机上下文。服务端无会话，历史由前端全量上送，
  * 本结构由客户端持久（随 ChatMsg 存）并在每次请求时携带，服务端严格校验。
  */
 export interface DiagnoseContext {
+  subject: DiagnoseSubject;
   state: DiagnoseState;
   /** 已消耗追问轮次（初始补问与置信度不足回炉同计），达预算强制收敛（wip-agent-workflow.md §4.1） */
   clarifyUsed: number;
@@ -155,8 +159,12 @@ export type DiagnoseEvent =
   | { type: 'intake_done'; hasProblem: boolean; isMath: boolean }
   /** clarify 一轮结束：是否拿到作答 / 用户是否明确拒绝补充 */
   | { type: 'clarify_done'; hasAnswer: boolean; refused: boolean }
-  /** diagnose 完成：置信度是否达标（达标进 explain，不达标回 clarify 或低置信输出） */
-  | { type: 'diagnosis_done'; confident: boolean }
+  /**
+   * diagnose 完成，三态出口：
+   * confident 达标进 explain；low_confidence 预算有余回 clarify 一次、耗尽走低置信输出；
+   * guard_failed 作答引用判据两试不过，降级 L1（wip-diagnosis-model.md §7.3）
+   */
+  | { type: 'diagnosis_done'; outcome: 'confident' | 'low_confidence' | 'guard_failed' }
   /** explain：用户点「继续」或「还不懂」→ 降一级 */
   | { type: 'hint_descend' }
   /** explain：用户点「明白了」→ done */
