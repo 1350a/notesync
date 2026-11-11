@@ -33,8 +33,6 @@
   ],
   "exclude": [
     "node_modules",
-    "components/ChatInput.tsx",
-    "components/ChatMessage.tsx",
     "components/Sidebar.tsx",
     "components/ThemeSwitcher.tsx",
     "lib/agent/loop.ts",
