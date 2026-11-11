@@ -69,10 +69,21 @@
 
 - `p-8` → `px-4 py-6 md:p-8`（diagnose / local / ocr）；diagnose 标题区 `mb-10` → `mb-6 md:mb-10`。
 - UploadArea 拖放区 `p-6 md:p-12`。
+- 顶栏 `AppHeader` 窄屏收口（360px 视口零横向溢出）：
+  - `<md` 隐藏已禁用的搜索占位按钮（`search` 尚未接入），左侧品牌区允许收缩（容器 `min-w-0`、Logo 文本 `truncate`）；
+  - 右侧操作组 `shrink-0`，44px 触控热区不被压缩（§4）；`≥md` 尺寸与位置完全不变。
+  - 判定口径：`document.documentElement.scrollWidth ≤ clientWidth`；修复前右侧组右边缘 368 > 360（溢出 8px），
+    `/ocr` 等带 `overflow-hidden` 祖先的页面会被裁掉这 8px。
 - SettingsModal：`<md` 铺满视口成全屏 sheet（`max-md:h-dvh max-md:rounded-none`），桌面维持 `h-[560px] max-h-[85dvh]`。
-  - `<md` 导航由左侧竖栏改为顶部横向标签页（可横向滚动，标题与关闭按钮独立成栏）；`≥md` 保留左侧 `w-44` 竖栏与内容区右上角关闭按钮。
+  - `<md` 导航由左侧竖栏改为顶部横向标签页；五项标签按 5 等分网格排布（`grid-cols-5`，图标在上、文字在下、`text-xs`），
+    首屏五项全部可见可点，不再需要横滑（修复前 `scrollWidth` 590 > 视口，「数据管理」「服务协议」初始不可见）；
+    `≥md` 保留左侧 `w-44` 竖栏与内容区右上角关闭按钮。
+  - 标题与关闭按钮独立成栏（仅 `<md`）。
   - `<md` 设置行纵向堆叠（标签在上、控件在下并允许换行）；控件不再使用固定宽度（`w-24` 等在 `<md` 改为 `flex-1` 或铺满），避免横向溢出。
   - 「本地能力」分区按四行落地（图片处理（OCR）/ 知识检索（RAG）/ 本地引擎 / 本地对话），四行在 `<md` 一律走上述纵向堆叠与去固定宽度契约，OCR 行的 自动 / 优先本地OCR 双按钮与其余开关同等处理（`flex-1` 平分，不溢出）。
+- 设置弹窗宿主：`(main)` 内页由 `AppLayout` 承载 `SettingsModal`；首页 `app/page.tsx` 自带 `AppHeader` 但不属 `(main)`，
+  需自行挂载 `components/settings/SettingsModalHost.tsx`，否则顶栏 ⚙️ 的 `setSettingsOpen` 无消费方、点击无响应
+  （AGENTS.md §8：未接线控件不得以可用形态呈现）。全站口径统一为「一次点击即打开」。
 
 ## 8. 实装状态
 
