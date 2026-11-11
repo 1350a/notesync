@@ -1,9 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
 import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
-import { CLIENT_ID_HEADER, getClientId } from '@/lib/client-id';
+import { CLIENT_ID_HEADER, getClientId, getUserId } from '@/lib/client-id';
 import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/lib/diagnose/types';
 import { searchKnowledge } from '@/lib/local/rag/store';
+import {
+  CONTENT_BLOCKED_MESSAGE,
+  HARD_BLOCK_MESSAGE,
+  PSYCH_SUPPORT_MESSAGE,
+} from '@/lib/safety/messages';
+import { checkInputSafety, loadWordlist } from '@/lib/safety/wordlist';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
@@ -96,6 +102,20 @@ export function useChat(selectedModel: string) {
     async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
+      // 输入侧本地前置过滤（wip-safety-protocol.md §4，客户端优先：命中数据不出端）。
+      // 只判纯文本输入；附件/OCR 产物不在词表范围（§4 语义判定交上游 + 形态归一）。
+      // 命中即在本机挂提示气泡，不建立请求、不留待回答状态。
+      const safety = checkInputSafety(text, loadWordlist());
+      if (safety.level) {
+        const notice: ChatMsg = {
+          role: 'assistant',
+          content: safety.level === 'psych' ? PSYCH_SUPPORT_MESSAGE : HARD_BLOCK_MESSAGE,
+          localOnly: true,
+        };
+        setMessages((prev) => [...prev, { role: 'user', content: text }, notice]);
+        return;
+      }
+
       abortControllerRef.current = new AbortController();
 
       // 上一条 assistant 还有待回答的 ask_user 时先回填其工具轨迹：
@@ -172,19 +192,23 @@ export function useChat(selectedModel: string) {
             model: selectedModel,
             // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）；
             // OCR 模式消息只上行 imageTexts，图片本体不再出浏览器（省带宽且符合隐私语义）
-            messages: history.map((m) => ({
-              role: m.role,
-              content: m.content,
-              // 混合档：OCR 文本与原图同上行；全本地：仅 imageTexts（图片仅本地展示）；
-              // 直传：仅原图（doc/browser-local-ocr.md §6.2）
-              images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
-              imageTexts: m.ocrTexts,
-              files: m.files,
-            })),
+            messages: history
+              .filter((m) => !m.localOnly && !m.blocked)
+              .map((m) => ({
+                role: m.role,
+                content: m.content,
+                // 混合档：OCR 文本与原图同上行；全本地：仅 imageTexts（图片仅本地展示）；
+                // 直传：仅原图（doc/browser-local-ocr.md §6.2）
+                images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
+                imageTexts: m.ocrTexts,
+                files: m.files,
+              })),
             // 本地检索命中片段（可能为 undefined：开关关闭/引擎未就绪/未命中）
             ragContexts,
             // 诊断负载（可能为 undefined：无会话且未开诊断模式即普通聊天）
             diagnose,
+            // 上游终端用户标识（纯随机 UUID，doc/user-settings.md §4.1）
+            user: getUserId() || undefined,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -263,10 +287,20 @@ export function useChat(selectedModel: string) {
               finished = true;
               break;
             } else if (parsed.event === 'error') {
-              appendAssistant((m) => ({
-                ...m,
-                content: m.content + `[错误] ${parsed.data.error}`,
-              }));
+              if (parsed.data.code === 'content_blocked') {
+                // 上游拦截（§2/§3.1）：丢弃已流出片段，展示固定说明并标记 blocked——
+                // 本条消息不进入下一轮上行历史（客户端侧回滚）
+                appendAssistant((m) => ({
+                  ...m,
+                  content: CONTENT_BLOCKED_MESSAGE,
+                  blocked: true,
+                }));
+              } else {
+                appendAssistant((m) => ({
+                  ...m,
+                  content: m.content + `[错误] ${parsed.data.error}`,
+                }));
+              }
               finished = true;
               break;
             }
