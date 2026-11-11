@@ -6,6 +6,7 @@
  */
 import type { ProviderMessage } from '../provider/types.ts';
 import type { AskUserQuestion } from '../tools/types.ts';
+import type { DiagnosisResult } from '../diagnose/types.ts';
 import { formatOcrBlock } from '../ocr/image-handling.ts';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
@@ -50,6 +51,12 @@ export interface ChatMsg {
    * 服务端拼成文本块；气泡上以"已本地OCR"标注透出（doc/browser-local-ocr.md §6.2）
    */
   ocrTexts?: string[];
+  /**
+   * OCR 产物的发送形态：local-only 全本地（images 仅本地展示不上行）；
+   * mixed 混合档（OCR 文本 + 原图都上行，需多模态模型）。缺省沿用旧口径
+   * （有 ocrTexts 即全本地），由发送时的三档选择写入
+   */
+  imageSendMode?: 'local-only' | 'mixed';
   /** 用户随消息上传的纯文本文件 */
   files?: ChatTextFile[];
   /** assistant 消息：本轮工具调用轨迹 */
@@ -60,6 +67,8 @@ export interface ChatMsg {
    * 用户回答消息文本自带（"1. 【label】question：answer"）。仅存内存，无持久化。
    */
   awaitingQuestions?: AskUserQuestion[];
+  /** assistant 消息：诊断模式结构化结果（SSE diagnosis 事件落地，DiagnosisCard 渲染） */
+  diagnosis?: DiagnosisResult;
 }
 
 /** 请求体里与消息相关的字段 */
@@ -132,13 +141,7 @@ export function buildUserContent(
   images: unknown,
   imageTexts?: unknown
 ): ProviderMessage['content'] {
-  // OCR 模式：图片本体不进请求，识别文本以固定格式块拼进正文，任何模型可安全消费
   const ocrTexts = parseImageTexts(imageTexts);
-  if (ocrTexts.length > 0) {
-    return [text.trim(), ...ocrTexts.map((t) => formatOcrBlock(t))]
-      .filter(Boolean)
-      .join('\n\n');
-  }
   const urls = Array.isArray(images)
     ? images.filter(
         (item): item is string =>
@@ -147,6 +150,23 @@ export function buildUserContent(
           item.length <= MAX_DATA_URL
       )
     : [];
+  // 混合档（doc/browser-local-ocr.md §6.2）：OCR 文本块打底 + 原图补充，
+  // 仅在客户端同时上行两者时触发（全本地模式客户端不上行图片本体）
+  if (ocrTexts.length > 0 && urls.length > 0) {
+    return [
+      {
+        type: 'text' as const,
+        text: [text.trim(), ...ocrTexts.map((t) => formatOcrBlock(t))].filter(Boolean).join('\n\n'),
+      },
+      ...urls.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
+    ];
+  }
+  // 全本地 OCR 模式：图片本体不进请求，识别文本以固定格式块拼进正文，任何模型可安全消费
+  if (ocrTexts.length > 0) {
+    return [text.trim(), ...ocrTexts.map((t) => formatOcrBlock(t))]
+      .filter(Boolean)
+      .join('\n\n');
+  }
   if (urls.length === 0) return text;
   return [
     ...(text.trim() ? [{ type: 'text' as const, text }] : []),
@@ -263,10 +283,9 @@ export function buildProviderMessages(
   for (let i = body.messages.length - 1; i >= 0; i -= 1) {
     const msg = body.messages[i];
     if (msg.role !== 'user') continue;
-    // OCR 模式消息（带有效 imageTexts）按纯文本消息对待：不占用图片保留配额
-    const isOcrTextMessage = parseImageTexts(msg.imageTexts).length > 0;
+    // 图片配额按「该消息是否带 images 本体」判定：混合档（imageTexts+images 同带）占用配额，
+    // 全本地 OCR 消息（仅 imageTexts）不带本体、不占用（doc/browser-local-ocr.md §6.2）
     if (
-      !isOcrTextMessage &&
       keepImages.size < MAX_IMAGE_MESSAGES &&
       Array.isArray(msg.images) &&
       msg.images.length > 0
@@ -309,13 +328,17 @@ export function buildProviderMessages(
     }
 
     let content: ProviderMessage['content'] = text;
-    if (isOcrTextMessage) {
-      content = buildUserContent(text, undefined, ocrTexts);
-    } else if (hasImages && keepImages.has(index)) {
-      content = allowImages
-        ? buildUserContent(text, m.images)
+    if (isOcrTextMessage || (hasImages && keepImages.has(index))) {
+      if (allowImages && hasImages && keepImages.has(index)) {
+        // 直传或混合档（imageTexts+images 同带时 buildUserContent 自动按混合组装）
+        content = buildUserContent(text, m.images, ocrTexts);
+      } else if (isOcrTextMessage) {
+        // 全本地：识别文本拼块，图片本体不进请求；纯文本模型同样安全
+        content = buildUserContent(text, undefined, ocrTexts);
+      } else {
         // 能力降级不静默：留一行占位让模型知道该条消息带过图（与文件省略提示同款式）
-        : [text, '[该条消息附带的图片已省略]'].filter(Boolean).join('\n\n');
+        content = [text, '[该条消息附带的图片已省略]'].filter(Boolean).join('\n\n');
+      }
     }
 
     return {
