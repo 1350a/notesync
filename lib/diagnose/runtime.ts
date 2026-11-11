@@ -8,7 +8,9 @@
  * - 上下文由客户端持久回传（服务端无会话），解析从严——脏数据一律回落初始 intake，不抛错；
  * - 事件白名单：只有「模型调用前就能确定」的事件允许客户端上报（clarify_done/hint_descend/mastered/user_stop），
  *   intake_done/diagnosis_done/output_done 由服务端在响应后自行推导，客户端不得伪造；
- * - completeness 以服务端从附件推导的结果为准，模型提交里的同名内容一律丢弃。
+ * - completeness 分两套链路（不做 OR 合并）：请求带 attachments（/diagnose 页）以服务端附件推导为准——
+ *   附件是机器可验证的硬证据；无 attachments（聊天页贴图/打字）以模型在 intake 提交的判定为准，
+ *   服务端严格校验后采纳——模型是此时唯一看得到材料的证据来源。
  */
 import type { ProviderMessage } from '../provider/types.ts';
 import { deriveCompleteness } from './completeness.ts';
@@ -116,6 +118,8 @@ export interface ParsedSubmission {
   secondaryErrorCause?: ErrorCauseRef;
   hints: HintStep[];
   notes?: string;
+  /** 完整度判定（聊天链路的推进依据）；缺省表示模型未提供（回落实测基线） */
+  completeness?: DiagnosisCompleteness;
 }
 
 export type SubmissionParseResult = { ok: true; value: ParsedSubmission } | { ok: false; reason: string };
@@ -187,14 +191,49 @@ export function parseSubmission(raw: unknown): SubmissionParseResult {
   const notes = typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim().slice(0, MAX_FIELD_CHARS) : undefined;
   const isMath = record.isMath === false ? false : true; // 缺省按数学处理；reject 靠 intake 阶段显式传 false
 
+  // completeness 可选：缺省=模型未提供（调用方回落实测基线）；给了就必须四布尔齐全，脏数据整体拒绝
+  let completeness: DiagnosisCompleteness | undefined;
+  if (record.completeness != null) {
+    const c = record.completeness as Record<string, unknown>;
+    const isBool = (v: unknown) => typeof v === 'boolean';
+    if (
+      !c ||
+      !isBool(c.hasProblem) ||
+      !isBool(c.hasStudentAnswer) ||
+      !isBool(c.hasCorrectAnswer) ||
+      !isBool(c.hasAnalysis)
+    ) {
+      return { ok: false, reason: 'completeness 必须含四个布尔字段（hasProblem/hasStudentAnswer/hasCorrectAnswer/hasAnalysis）' };
+    }
+    completeness = {
+      hasProblem: c.hasProblem,
+      hasStudentAnswer: c.hasStudentAnswer,
+      hasCorrectAnswer: c.hasCorrectAnswer,
+      hasAnalysis: c.hasAnalysis,
+    };
+  }
+
   return {
     ok: true,
-    value: { isMath, level, knowledgePoints, errorCause, secondaryErrorCause, hints, notes },
+    value: { isMath, level, knowledgePoints, errorCause, secondaryErrorCause, hints, notes, completeness },
   };
 }
 
 /**
- * 组装最终 DiagnosisResult：completeness 用服务端推导值，策略卡按 code 直查注入（模型不产卡）。
+ * 完整度两套链路判别（见文件头设计口径）：
+ * 附件链路（/diagnose 页）以服务端附件推导为准；聊天链路采纳模型判定，缺省回落实测基线。
+ */
+function resolveCompleteness(
+  attachments: DiagnoseAttachment[],
+  parsed: ParsedSubmission,
+  baseline: DiagnosisCompleteness,
+): DiagnosisCompleteness {
+  if (attachments.length > 0) return baseline;
+  return parsed.completeness ?? baseline;
+}
+
+/**
+ * 组装最终 DiagnosisResult：completeness 由调用方按链路判别后传入，策略卡按 code 直查注入（模型不产卡）。
  */
 export function buildDiagnosisResult(parsed: ParsedSubmission, completeness: DiagnosisCompleteness): DiagnosisResult {
   return {
@@ -370,7 +409,7 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
     return { context, diagnosis: null, guardPassed, retried };
   }
 
-  diagnosis = buildDiagnosisResult(parsed.value, session.completeness);
+  diagnosis = buildDiagnosisResult(parsed.value, resolveCompleteness(attachments, parsed.value, session.completeness));
 
   // ② guard：diagnose 态的 L2 必须引用作答原文（§7.3，重试一次不耗追问预算）
   if (context.state === 'diagnose' && parsed.value.level === 'L2') {
@@ -389,7 +428,9 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
         const reparsed = resubmission ? parseSubmission(resubmission) : null;
         if (reparsed?.ok) {
           guardPassed = checkAnswerQuote({ output: outputText, studentSources: sources }).quoted;
-          if (guardPassed) diagnosis = buildDiagnosisResult(reparsed.value, session.completeness);
+          if (guardPassed) {
+            diagnosis = buildDiagnosisResult(reparsed.value, resolveCompleteness(attachments, reparsed.value, session.completeness));
+          }
         } else {
           guardPassed = false;
         }
@@ -404,7 +445,7 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
   const outcome = resolveOutcome(parsed.value, guardPassed);
   context = advanceAfterResponse({
     context,
-    completeness: session.completeness,
+    completeness: resolveCompleteness(attachments, parsed.value, session.completeness),
     submission: parsed.value,
     outcome,
   });
