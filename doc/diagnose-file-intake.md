@@ -117,6 +117,8 @@ interface DiagnoseAttachment {
 | `unconfigured` | 归属 Provider 的 KEY / BASE_URL 缺失 |
 | `no_content` | 附件全部无效，无可发送内容 |
 | `provider_error` | 上游返回错误 |
+| `parse_error` | 工具调用解析兜底失败（doc/tool-protocol.md §5.3） |
+| `content_blocked` | 上游安全策略拒绝（输入或生成中）。**不可重试**（重试只会再被拦一次）；UI 展示拦截说明，不展示已流出片段；被拒内容不进入下一轮历史（wip-safety-protocol.md §2/§3.1） |
 
 ## 8. 调试开关（MOCK）
 
