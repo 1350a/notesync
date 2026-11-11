@@ -51,7 +51,7 @@ function intakePrompt(): string {
     '任务：',
     '1. 通读学生上传/输入的材料，判定是否数学题。',
     '2. 若不是数学题：调用 submit_diagnosis，level 填 L1，knowledgePoints 填 []，notes 逐字填「非数学题，仅支持数学诊断」。除这一句外不要展开。',
-    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 与 strategy 填 null）。completeness 四布尔按材料实际具备情况如实填写。',
+    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 与 strategy 填 null）。completeness 四布尔按材料实际具备情况如实填写：没有分类标签的聊天输入（贴图、打字）也算数——图里是题目就 hasProblem=true，文字/图里看得出学生作答就 hasStudentAnswer=true。',
     '学生已提供作答时，画像里要引用其作答内容；尚未提供时，画像末尾自然过渡到「常见错法」问句，为下一轮补问做铺垫。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,
