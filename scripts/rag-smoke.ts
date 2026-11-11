@@ -69,7 +69,8 @@ const chunks: KnowledgeChunk[] = [
 const vecA = [1, 0, 0];
 const vecB = [0.5, 0.5, 0];
 const vecC = [0, 0, 1];
-// 基线 rankChunks 签名要求查询向量也是 Float32Array（上游后续放宽，本分支未含）
+// 入参类型口径：cosineSimilarity 已放宽为 Float32Array | number[]（可直接吃 number[]），
+// 而 rankChunks 的 queryVector 与 vectors 仍是 Float32Array / Float32Array[]，故此处显式转换。
 const vecQ = Float32Array.from([1, 0, 0]);
 const vectors = [vecA, vecB, vecC].map((v) => Float32Array.from(v));
 
