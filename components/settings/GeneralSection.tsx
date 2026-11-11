@@ -22,7 +22,7 @@ export default function GeneralSection() {
   return (
     <div>
       <SettingsRow label="主题" hint="跟随系统时随系统深浅色实时切换">
-        <div className="flex gap-2">
+        <div className="flex w-full gap-2">
           {THEME_OPTIONS.map((option) => {
             const active = theme === option.value;
             return (
@@ -30,7 +30,7 @@ export default function GeneralSection() {
                 key={option.value}
                 type="button"
                 onClick={() => updateSettings({ theme: option.value })}
-                className={`flex w-24 flex-col items-center gap-1 rounded-xl border px-2 py-3 text-xs transition-colors ${
+                className={`flex w-24 flex-col items-center gap-1 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
                   active
                     ? 'border-foreground/50 bg-muted font-medium'
                     : 'border-border hover:bg-muted/50'
@@ -52,7 +52,7 @@ export default function GeneralSection() {
           value={defaultModel}
           onChange={(e) => updateSettings({ defaultModel: e.target.value })}
           disabled={loading && models.length === 0}
-          className="max-w-56 cursor-pointer truncate rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="max-w-56 cursor-pointer truncate rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:max-w-full"
         >
           <option value="">跟随后端推荐</option>
           {models.map((model) => (
@@ -69,11 +69,11 @@ export default function GeneralSection() {
         label="图片处理"
         hint="优先本地OCR：图片先在浏览器内转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
       >
-        <div className="flex gap-2">
+        <div className="flex w-full gap-2">
           <button
             type="button"
             onClick={() => updateSettings({ ocr: { preferLocal: false } })}
-            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors ${
+            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
               !preferLocalOcr
                 ? 'border-foreground/50 bg-muted font-medium'
                 : 'border-border hover:bg-muted/50'
@@ -84,7 +84,7 @@ export default function GeneralSection() {
           <button
             type="button"
             onClick={() => updateSettings({ ocr: { preferLocal: true } })}
-            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors ${
+            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
               preferLocalOcr
                 ? 'border-foreground/50 bg-muted font-medium'
                 : 'border-border hover:bg-muted/50'
