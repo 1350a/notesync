@@ -22,7 +22,7 @@ function describeEngineStatus(status: LocalEngineStatus): string {
 }
 
 const TOGGLE_CLASS =
-  'w-24 rounded-xl border px-2 py-3 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60';
+  'w-24 rounded-xl border px-2 py-3 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60 max-md:min-w-0 max-md:flex-1';
 
 /**
  * 「本地能力」分区（doc/browser-local-inference.md §7）。
@@ -57,7 +57,7 @@ export default function LocalCapabilitySection() {
           <p className="mt-2 text-muted-foreground">
             缺少以下资产（模型与 ONNX Runtime 全部自托管，不会回退到 CDN）：
           </p>
-          <ul className="mt-2 list-disc pl-5 text-muted-foreground">
+          <ul className="mt-2 list-disc break-all pl-5 text-muted-foreground">
             {assets.missing.map((url) => (
               <li key={url}>{url}</li>
             ))}
@@ -74,7 +74,7 @@ export default function LocalCapabilitySection() {
         label="知识检索（RAG）"
         hint="开启后发送前在浏览器内检索内置知识卡，命中片段随消息提交；引擎未就绪时静默跳过"
       >
-        <div className="flex gap-2">
+        <div className="flex w-full gap-2">
           <button
             type="button"
             onClick={() => updateSettings({ rag: { enabled: false } })}
@@ -111,10 +111,10 @@ export default function LocalCapabilitySection() {
               : '资产缺失，请先执行 npm run local:assets'
         }
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span
             role="status"
-            className={`text-xs ${
+            className={`min-w-0 break-words text-xs ${
               engine.state === 'error' ? 'text-destructive' : 'text-muted-foreground'
             }`}
           >
