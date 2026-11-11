@@ -1,0 +1,59 @@
+/**
+ * submit_diagnosis 工具（诊断模式结构化提交）
+ *
+ * 以工厂而非注册表单例提供：提交存储是逐请求的（store 由 route 创建、finalize 消费），
+ * 注册表单例的全局存储在并发请求下会互相覆盖。因此不经 registerBuiltinTools 注册，
+ * 由诊断模式的 route 按请求组装（见 app/api/chat/route.ts）。
+ * 真正的提交校验在 lib/diagnose/runtime.ts parseSubmission，工具层只收件。
+ */
+import type { ToolDefinition } from '../types.ts';
+
+/** 逐请求提交存储：最后一次 submit 生效 */
+export interface SubmissionStore {
+  args: Record<string, unknown> | null;
+}
+
+export function createSubmissionStore(): SubmissionStore {
+  return { args: null };
+}
+
+export function createSubmitDiagnosisTool(store: SubmissionStore): ToolDefinition {
+  return {
+    name: 'submit_diagnosis',
+    description:
+      '提交结构化诊断结果，诊断模式每个阶段结束时必须调用一次。' +
+      '参数：isMath（是否数学题，intake 判学科时必填）、level（L1 题目画像 / L2 错因归因）、' +
+      'knowledgePoints（1~3 条考点）、errorCause（主错因 {code, confidence}，code 必须取自错因枚举表，L2 必填、L1 必须 null）、' +
+      'secondaryErrorCause（可选次错因）、hints（提示阶梯 [{level: 1|2|3, content}]）、notes（如「未提供作答，本次不做错因归因」）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        isMath: { type: 'boolean', description: '是否数学题；非数学题传 false' },
+        level: { type: 'string', enum: ['L1', 'L2'], description: '诊断级别' },
+        knowledgePoints: {
+          type: 'array',
+          items: { type: 'string' },
+          maxLength: 3,
+          description: '考点清单，1~3 条',
+        },
+        errorCause: {
+          type: 'object',
+          description: '主错因 {code, confidence}；code 取错因枚举表，confidence 为 0~1',
+        },
+        secondaryErrorCause: { type: 'object', description: '可选次错因 {code, confidence}' },
+        hints: {
+          type: 'array',
+          items: { type: 'object' },
+          description: '提示阶梯 [{level: 1|2|3, content}]',
+        },
+        notes: { type: 'string', description: '声明性备注，如降级原因' },
+      },
+      required: ['level', 'knowledgePoints'],
+    },
+    handler: async (args) => {
+      // 只收件不校验：校验统一在 parseSubmission，校验失败的纠正提示由 finalize 编排
+      store.args = args;
+      return { kind: 'result', data: { ok: true }, summary: '已收到结构化诊断提交' };
+    },
+  };
+}
