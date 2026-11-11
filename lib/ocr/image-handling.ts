@@ -5,7 +5,7 @@
  * 纯文本模型因此能消费图片内容而不报错。本模块同时被客户端组件与服务端
  * （lib/chat/messages.ts 的 OCR 文本块格式化）引用，除 ocrRecognize 外保持纯函数。
  */
-import { ocrRecognize } from "./local";
+import { ocrRecognize } from "./local.ts";
 
 /** 图片发送模式：原图直传 | 本地 OCR 转文字 */
 export type ImageSendMode = "direct" | "local-ocr";
