@@ -70,6 +70,8 @@
 - `p-8` → `px-4 py-6 md:p-8`（diagnose / local / ocr）；diagnose 标题区 `mb-10` → `mb-6 md:mb-10`。
 - UploadArea 拖放区 `p-6 md:p-12`。
 - SettingsModal：`<md` 铺满视口成全屏 sheet（`max-md:h-dvh max-md:rounded-none`），桌面维持 `h-[560px] max-h-[85dvh]`。
+  - `<md` 导航由左侧竖栏改为顶部横向标签页（可横向滚动，标题与关闭按钮独立成栏）；`≥md` 保留左侧 `w-44` 竖栏与内容区右上角关闭按钮。
+  - `<md` 设置行纵向堆叠（标签在上、控件在下并允许换行）；控件不再使用固定宽度（`w-24` 等在 `<md` 改为 `flex-1` 或铺满），避免横向溢出。
 
 ## 8. 实装状态
 
