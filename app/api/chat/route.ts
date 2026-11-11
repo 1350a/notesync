@@ -44,6 +44,7 @@ import {
 } from '@/lib/chat/messages';
 import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
 import { buildDiagnoseSystemPrompt } from '@/lib/diagnose/prompts';
+import { parseAttachments } from '@/lib/diagnose/parse-attachments';
 import { findStrategyCard, STRATEGY_VERSION } from '@/lib/diagnose/strategies';
 import { transition } from '@/lib/diagnose/state-machine';
 import {
@@ -56,7 +57,6 @@ import type {
   DiagnoseAttachment,
   DiagnoseContext,
   DiagnosisResult,
-  ReviseCategory,
 } from '@/lib/diagnose/types';
 import type { AskUserQuestion } from '@/lib/tools/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
@@ -95,57 +95,6 @@ function errorStream(data: {
   available?: string[];
 }): Response {
   return new Response(sse("error", data), { headers: SSE_HEADERS });
-}
-
-const CATEGORIES = new Set<ReviseCategory>(["origin", "wrong", "correct", "analysis"]);
-
-/** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
-const MAX_DATA_URL = 12 * 1024 * 1024;
-
-/**
- * 校验前端上传的 attachments。
- * 非法项一律丢弃（附 console.warn 便于排查），不因一条脏数据让整批诊断失败。
- */
-function parseAttachments(raw: unknown): DiagnoseAttachment[] {
-  if (!Array.isArray(raw)) return [];
-  const out: DiagnoseAttachment[] = [];
-
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue;
-    const record = item as Record<string, unknown>;
-    const name = typeof record.name === "string" ? record.name.trim() : "";
-    const category = record.category;
-    if (!name || typeof category !== "string" || !CATEGORIES.has(category as ReviseCategory)) {
-      console.warn("[diagnose] 丢弃非法附件：缺少文件名或分类不属于四类标签");
-      continue;
-    }
-
-    const rawUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
-    const dataUrl = rawUrl.startsWith("data:image/") ? rawUrl : undefined;
-    if (rawUrl && !dataUrl) {
-      console.warn(`[diagnose] ${name}：dataUrl 不是图片数据，已忽略`);
-    }
-    if (dataUrl && dataUrl.length > MAX_DATA_URL) {
-      console.warn(`[diagnose] ${name}：图片超过 ${MAX_DATA_URL} 字符上限，已忽略`);
-      continue;
-    }
-
-    const text = typeof record.text === "string" ? record.text : undefined;
-    if (!dataUrl && !text?.trim()) {
-      console.warn(`[diagnose] ${name}：既无图片也无文字内容，已忽略`);
-      continue;
-    }
-
-    out.push({
-      name,
-      category: category as ReviseCategory,
-      dataUrl,
-      text,
-      warning: typeof record.warning === "string" ? record.warning : undefined,
-    });
-  }
-
-  return out;
 }
 
 /** 把组装结果渲染成可读摘要（MOCK 专用，不回显 base64 本体） */
