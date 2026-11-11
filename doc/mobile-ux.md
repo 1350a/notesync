@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_9577c2ebdd9f11f1997d52540024e231
+    ReservedCode1: BgGMkj79cuAJ2T1/X8zdgPx+lIVqNbh8sUHe1kxMz0WuHET+ZFDKBi/UvzOkqN4V+oBn/WhOz8NeJlRf/Q+oBkGdIBIGxtYQ0GIwL0isB4X3WQtlTjEPMI6w620Af3y2fzpvVXNFnCrsCoaTAD+ccrNKZM6zixWj/7hGEJtBbCyK1my0BjRFba3kvzs=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_9577c2ebdd9f11f1997d52540024e231
+    ReservedCode2: BgGMkj79cuAJ2T1/X8zdgPx+lIVqNbh8sUHe1kxMz0WuHET+ZFDKBi/UvzOkqN4V+oBn/WhOz8NeJlRf/Q+oBkGdIBIGxtYQ0GIwL0isB4X3WQtlTjEPMI6w620Af3y2fzpvVXNFnCrsCoaTAD+ccrNKZM6zixWj/7hGEJtBbCyK1my0BjRFba3kvzs=
+---
+
 # 移动端体验（Mobile UX）协议
 
 状态：实施中。基线分支 `feat/mobile-ux`（基于 `beta/browser-ocr` 与 `feat/local-page-on-planb` 的共同祖先 e46268a）。
@@ -95,3 +106,4 @@
 | §5 渲染契约 | 已实装 |
 | §6 视口契约 | 已实装 |
 | §7 页面适配 | 已实装 |
+*（内容由AI生成，仅供参考）*
