@@ -6,7 +6,9 @@ import ModelSelect from '@/components/ModelSelect';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
-import type { DiagnoseKind, ReviseCategory } from '@/lib/diagnose/types';
+import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
+import { getUserId } from '@/lib/client-id';
+import PaperResultPanel, { type PaperViewState } from './PaperResultPanel';
 import {
   convertImagesToTexts,
   mergeOcrText,
@@ -78,6 +80,9 @@ export default function UploadArea() {
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
+  /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，wip-agent-workflow.md §5） */
+  const [mode, setMode] = useState<'single' | 'paper'>('single');
+  const [paperView, setPaperView] = useState<PaperViewState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 模型清单与聊天页同源（GET /api/models），不再由服务端隐式取首个模型
@@ -181,13 +186,15 @@ export default function UploadArea() {
   const readyRows = rows.filter((row) => row.supported && (row.dataUrl || row.text));
   const blockedCount = rows.length - readyRows.length;
 
-  /** 提交：把提取结果按四类标签发给 /api/chat，服务端负责组装成模型消息。
+  /** 提交：把提取结果按四类标签发给诊断端点，服务端负责组装成模型消息。
+   *  single → /api/chat（单题对话式）；paper → /api/diagnose-paper（四步整卷流程）。
    *  OCR 模式下图片行先在浏览器本地转文字，再以纯文本附件上行（原图不出设备） */
   const handleSubmit = async () => {
     if (readyRows.length === 0 || isSending || !selectedModel || ocrProgress) return;
     setIsSending(true);
     setResult('');
     setError('');
+    setPaperView(null);
 
     try {
       let prepared = readyRows;
@@ -219,19 +226,60 @@ export default function UploadArea() {
         });
       }
 
+      const payload = {
+        model: selectedModel,
+        attachments: prepared.map((row) => ({
+          name: row.name,
+          category: row.category,
+          dataUrl: row.dataUrl,
+          text: row.text,
+          warning: row.warning,
+        })),
+        user: getUserId() || undefined,
+      };
+
+      if (mode === 'paper') {
+        const view: PaperViewState = { steps: [], results: [], summary: '' };
+        const res = await fetch('/api/diagnose-paper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`请求失败（HTTP ${res.status}）`);
+        await consumeSse(res, (event, data) => {
+          const p = data as {
+            step?: string;
+            current?: number;
+            total?: number;
+            result?: DiagnosisResult;
+            questionNumbers?: string[];
+            groupCode?: string;
+            delta?: string;
+            error?: string;
+          };
+          if (event === 'paper_step' && p.step) {
+            view.steps = [...view.steps, { text: p.step, current: p.current, total: p.total }];
+            setPaperView({ ...view });
+          } else if (event === 'diagnosis' && p.result) {
+            view.results = [
+              ...view.results,
+              { result: p.result, questionNumbers: p.questionNumbers ?? [], groupCode: p.groupCode ?? '' },
+            ];
+            setPaperView({ ...view });
+          } else if (event === 'content' && p.delta) {
+            view.summary += p.delta;
+            setPaperView({ ...view });
+          } else if (event === 'error') {
+            setError(p.error ?? '整卷诊断失败');
+          }
+        });
+        return;
+      }
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: selectedModel,
-          attachments: prepared.map((row) => ({
-            name: row.name,
-            category: row.category,
-            dataUrl: row.dataUrl,
-            text: row.text,
-            warning: row.warning,
-          })),
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`请求失败（HTTP ${res.status}）`);
 
@@ -253,6 +301,36 @@ export default function UploadArea() {
 
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
+      {/* 诊断模式：单题对话式 / 整卷四步流程（wip-agent-workflow.md §5） */}
+      <div
+        className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white text-sm shadow-sm w-fit"
+        role="group"
+        aria-label="诊断模式"
+      >
+        <button
+          type="button"
+          disabled={isSending}
+          onClick={() => setMode('single')}
+          className={`px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:px-5 touch:py-2.5 ${
+            mode === 'single' ? 'bg-blue-600 font-medium text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+          title="单题：逐题对话式诊断，支持追问与分级提示"
+        >
+          单题诊断
+        </button>
+        <button
+          type="button"
+          disabled={isSending}
+          onClick={() => setMode('paper')}
+          className={`px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:px-5 touch:py-2.5 ${
+            mode === 'paper' ? 'bg-blue-600 font-medium text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+          title="整卷：切题 → 分类 → 同类共享诊断 → 汇总（同类题只诊断一次，省 token）"
+        >
+          整卷诊断
+        </button>
+      </div>
+
       {/* 诊断模型：真实清单来自 GET /api/models，选中值随请求上行 */}
       <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200">
         <span className="text-sm font-medium text-slate-700">诊断模型</span>
@@ -415,8 +493,12 @@ export default function UploadArea() {
             {ocrProgress
               ? `本地OCR识别中 ${ocrProgress.done}/${ocrProgress.total}…`
               : isSending
-                ? '正在诊断…'
-                : `开始诊断（${readyRows.length} 个文件）`}
+                ? mode === 'paper'
+                  ? '整卷处理中…'
+                  : '正在诊断…'
+                : mode === 'paper'
+                  ? `开始整卷诊断（${readyRows.length} 个文件）`
+                  : `开始诊断（${readyRows.length} 个文件）`}
           </button>
           {readyRows.length === 0 && (
             <p className="text-xs text-slate-500">至少需要 1 个已成功提取内容的文件才能开始诊断</p>
@@ -430,14 +512,18 @@ export default function UploadArea() {
         </div>
       )}
 
-      {(result || error) && (
+      {error && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
+        </div>
+      )}
+
+      {paperView && paperView.steps.length > 0 && <PaperResultPanel view={paperView} />}
+
+      {!paperView && result && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <h3 className="font-semibold text-slate-800 mb-3">诊断结果</h3>
-          {error ? (
-            <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
-          ) : (
-            <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{result}</pre>
-          )}
+          <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{result}</pre>
         </div>
       )}
     </div>
