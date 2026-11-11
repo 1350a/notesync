@@ -75,6 +75,8 @@ export interface ChatRequestBody {
   }>;
   content?: string;
   attachments?: unknown;
+  /** 诊断模式负载（context + event，结构见 lib/diagnose/types.ts DiagnoseRequestPayload；缺省即普通聊天） */
+  diagnose?: unknown;
   /** 本地检索命中片段（浏览器端 RAG 产物，doc/browser-local-inference.md §6.2） */
   ragContexts?: unknown;
 }
