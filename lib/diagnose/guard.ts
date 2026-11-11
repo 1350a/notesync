@@ -13,9 +13,6 @@ export const QUOTE_MIN_RUN_CHARS = 6;
 /** bigram 兜底通过线：作答片段的字符二元组被输出覆盖的比例（A 级，实测调参） */
 export const QUOTE_BIGRAM_THRESHOLD = 0.6;
 
-/** 归一化后低于此长度的来源直接忽略：两三个字的匹配无区分度，纯噪声 */
-export const QUOTE_MIN_SOURCE_CHARS = 4;
-
 /**
  * 引用匹配归一：NFKC 收全半角、小写、去空白与文字标点。
  * 比较符（<>=≤≥≠）与数学符号必须保留——「>0」改「≥0」是对错关键，不能在归一化里抹平。
@@ -75,7 +72,8 @@ export interface QuoteCheckResult {
 
 /**
  * 判定输出是否引用了至少一处作答原文。
- * 每个学生来源独立判定：先试连续原文窗口（最强证据），不过且片段够长再试整段 bigram 覆盖。
+ * 每个学生来源独立判定：先试连续原文窗口（短于窗口长度的来源退化为整段子串——数值答案如
+ * "x=2" 本就只有三五个字符，整段出现即是引用），不过且片段够长再试整段 bigram 覆盖。
  */
 export function checkAnswerQuote({ output, studentSources }: QuoteCheckInput): QuoteCheckResult {
   const normalizedOutput = normalizeForQuote(output);
@@ -84,7 +82,7 @@ export function checkAnswerQuote({ output, studentSources }: QuoteCheckInput): Q
   let best: QuoteCheckResult['best'] = null;
   studentSources.forEach((source, sourceIndex) => {
     const fragment = normalizeForQuote(source);
-    if (fragment.length < QUOTE_MIN_SOURCE_CHARS) return;
+    if (!fragment) return;
 
     if (hasRunInOutput(fragment, normalizedOutput)) {
       if (!best) best = { sourceIndex, via: 'run', score: 1 };
