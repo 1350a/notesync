@@ -78,6 +78,16 @@ interface SettingsStorage {
 - **服务端仅打日志**（`[chat] client=<id>`），不落盘、不参与路由——服务端保持逐请求无状态，少量并发天然安全。
 - 为将来会话存储（/api/sessions）、按客户端配额预留钩子。
 
+### 4.1 上游终端用户标识（请求体 user 字段）
+
+与 `X-Client-Id` 是两回事，不得混用（wip-safety-protocol.md §6）：
+
+- 字段位置：`/api/chat` 请求体顶层 `user` 字段（OpenAI 兼容规范），随 Provider 请求体转发；
+- 取值：纯随机 UUID v4，localStorage key `notesync-user-id`，绝不含设备名/主机名/用户名（该值会到达上游厂商侧）；
+- 稳定性：同设备多次请求保持一致；隐私模式退化同 `getClientId`；
+- 可重置：设置页「数据」分区提供「重置设备标识」入口（合规可撤销要求），重置后下次请求生效；
+- 携带开关：环境变量 `USER_FIELD_ENABLED`（默认开启，置 `0` 关闭）——部分自定义 OpenAI 兼容端点对未知字段严格校验，关掉即不随 Provider 请求上行。
+
 ## 5. UI 分区与实装状态（`components/settings/`）
 
 弹窗为左侧固定导航 + 右侧内容区（参考系统设置通用布局），全站共用，挂载于 `AppLayout`。
