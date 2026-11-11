@@ -11,6 +11,34 @@ import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
 import DiagnosisCard from './DiagnosisCard';
 import ToolTrace from './ToolTrace';
 
+/**
+ * 复制按钮：复制消息的原始 markdown 源文本——渲染后 DOM 复制会把 KaTeX/表格拷成碎片，
+ * 源文本才是可再用的形态。触屏常显（hover-only 在触屏不可见，doc/mobile-ux.md §4）。
+ */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 剪贴板不可用（非安全上下文等）时静默失败：复制是纯增益，不弹错误打断对话
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      className="mt-2 rounded-md px-2 py-1 text-[11px] transition-colors touch:h-9 touch:px-3"
+      style={{ border: '1px solid var(--border)', color: copied ? 'var(--accent)' : 'var(--text-muted)' }}
+      title="复制 Markdown 源文本"
+    >
+      {copied ? '✓ 已复制' : '复制'}
+    </button>
+  );
+}
+
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -107,6 +135,7 @@ export default function ChatList({
                     {m.content || '…'}
                   </ReactMarkdown>
                 </div>
+                {m.content ? <CopyButton text={m.content} /> : null}
                 {m.diagnosis ? <DiagnosisCard result={m.diagnosis} onAction={onDiagnoseAction} /> : null}
               </>
             )
