@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
 import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
 import { CLIENT_ID_HEADER, getClientId } from '@/lib/client-id';
+import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/lib/diagnose/types';
 import { searchKnowledge } from '@/lib/local/rag/store';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
@@ -22,9 +23,52 @@ function parseSseEvent(chunk: string) {
   }
 }
 
+/** done.diagnose.context 的轻量校验：字段全对才收，脏数据一律丢弃（诊断态不可信客户端伪造，这里只防展示崩坏） */
+function parseDiagnoseContext(raw: unknown): DiagnoseContext | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (record.subject !== 'math') return null;
+  if (
+    typeof record.state !== 'string' ||
+    typeof record.clarifyUsed !== 'number' ||
+    (record.hintLevel !== 1 && record.hintLevel !== 2 && record.hintLevel !== 3)
+  ) {
+    return null;
+  }
+  return {
+    subject: 'math',
+    state: record.state as DiagnoseContext['state'],
+    clarifyUsed: record.clarifyUsed,
+    hintLevel: record.hintLevel,
+  };
+}
+
+/** diagnosis 事件的轻量校验：结构完整才挂上气泡，防脏数据渲染崩坏 */
+function parseDiagnosisResult(raw: unknown): DiagnosisResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if ((record.level !== 'L1' && record.level !== 'L2') || !Array.isArray(record.knowledgePoints)) return null;
+  return record as unknown as DiagnosisResult;
+}
+
+export interface SendOptions {
+  /** 开启诊断模式：无进行中会话时以 intake 重新开题（空 payload） */
+  startDiagnosis?: boolean;
+  /** 诊断回路事件（明白了/还不懂/继续/结束），随本次消息一并上行 */
+  diagnoseEvent?: DiagnoseRequestEvent;
+  /**
+   * 本条消息 OCR 产物的发送形态（doc/browser-local-ocr.md §6.2）：
+   * local-only 全本地（图片仅本地展示）；mixed 混合档（OCR 文本+原图都上行）。
+   * 缺省沿用旧口径（有 ocrTexts 即全本地）
+   */
+  imageSendMode?: 'local-only' | 'mixed';
+}
+
 export function useChat(selectedModel: string) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(false);
+  /** 诊断会话上下文（服务端经 done.diagnose.context 回传，客户端仅持久不推导；null 即普通聊天） */
+  const [diagnoseContext, setDiagnoseContext] = useState<DiagnoseContext | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
@@ -37,7 +81,7 @@ export function useChat(selectedModel: string) {
     setLoading(false);
   }, []);
 
-  /** 新建对话：中断进行中的生成并清空消息 */
+  /** 新建对话：中断进行中的生成并清空消息（诊断会话一并作废） */
   const clearMessages = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -45,15 +89,11 @@ export function useChat(selectedModel: string) {
     }
     setLoading(false);
     setMessages([]);
+    setDiagnoseContext(null);
   }, []);
 
   const sendMessage = useCallback(
-    async (
-      text: string,
-      images: string[],
-      files: ChatTextFile[] = [],
-      ocrTexts?: string[]
-    ) => {
+    async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
       abortControllerRef.current = new AbortController();
@@ -84,10 +124,24 @@ export function useChat(selectedModel: string) {
         images,
         files,
         ...(ocrTexts && ocrTexts.length > 0 ? { ocrTexts } : {}),
+        ...(ocrTexts && ocrTexts.length > 0 && options?.imageSendMode
+          ? { imageSendMode: options.imageSendMode }
+          : {}),
       };
       const history = [...messages, userMsg];
       setMessages(history);
       setLoading(true);
+
+      // 诊断负载组装：回路事件优先；无会话但用户开启诊断模式则以空 payload 开新题；
+      // 会话已 done 视为结束，开启着开关就自动开下一题（省一次手动重开）
+      let diagnose: Record<string, unknown> | undefined;
+      if (options?.diagnoseEvent) {
+        diagnose = { ...(diagnoseContext ? { context: diagnoseContext } : {}), event: options.diagnoseEvent };
+      } else if (options?.startDiagnosis) {
+        diagnose = diagnoseContext && diagnoseContext.state !== 'done' ? { context: diagnoseContext } : {};
+      } else if (diagnoseContext && diagnoseContext.state !== 'done') {
+        diagnose = { context: diagnoseContext };
+      }
 
       // 本地检索（doc/browser-local-inference.md §6.1）：开关打开且引擎就绪时，
       // 发送前在浏览器内检索种子知识库，命中片段随请求上行。引擎未就绪/嵌入失败
@@ -121,12 +175,16 @@ export function useChat(selectedModel: string) {
             messages: history.map((m) => ({
               role: m.role,
               content: m.content,
-              images: m.ocrTexts?.length ? undefined : m.images,
+              // 混合档：OCR 文本与原图同上行；全本地：仅 imageTexts（图片仅本地展示）；
+              // 直传：仅原图（doc/browser-local-ocr.md §6.2）
+              images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
               imageTexts: m.ocrTexts,
               files: m.files,
             })),
             // 本地检索命中片段（可能为 undefined：开关关闭/引擎未就绪/未命中）
             ragContexts,
+            // 诊断负载（可能为 undefined：无会话且未开诊断模式即普通聊天）
+            diagnose,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -192,7 +250,16 @@ export function useChat(selectedModel: string) {
               if (questions.length > 0) {
                 appendAssistant((m) => ({ ...m, awaitingQuestions: questions }));
               }
+            } else if (parsed.event === 'diagnosis') {
+              // 诊断模式结构化结果：挂上本条 assistant 消息交 DiagnosisCard 渲染
+              const result = parseDiagnosisResult(parsed.data.result);
+              if (result) {
+                appendAssistant((m) => ({ ...m, diagnosis: result }));
+              }
             } else if (parsed.event === 'done') {
+              // 服务端推进后的最新诊断上下文；无该字段（普通聊天）保持原状
+              const nextContext = parseDiagnoseContext(parsed.data.diagnose?.context);
+              if (nextContext) setDiagnoseContext(nextContext);
               finished = true;
               break;
             } else if (parsed.event === 'error') {
@@ -227,8 +294,8 @@ export function useChat(selectedModel: string) {
         abortControllerRef.current = null;
       }
     },
-    [messages, loading, selectedModel, ragEnabled]
+    [messages, loading, selectedModel, ragEnabled, diagnoseContext]
   );
 
-  return { messages, loading, sendMessage, stopGeneration, clearMessages };
+  return { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext };
 }
