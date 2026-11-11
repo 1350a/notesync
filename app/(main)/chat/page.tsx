@@ -7,6 +7,7 @@ import { useChat } from '@/hooks/useChat';
 import { useModels } from '@/hooks/useModels';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 /** 距底 ≤ 80px 视为"在底部"，跟随新内容（doc/mobile-ux.md §3） */
@@ -38,8 +39,13 @@ export default function ChatPage() {
     updateSettings({ defaultModel: model });
   };
 
-  const { messages, loading, sendMessage, stopGeneration, clearMessages } =
+  const { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext } =
     useChat(selectedModel);
+
+  /** 掌握度回路（明白了/还不懂/继续）：作为带事件的诊断消息发送，按钮文案即用户气泡内容 */
+  const handleDiagnoseAction = (event: DiagnoseRequestEvent, label: string) => {
+    void sendMessage(label, [], [], undefined, { diagnoseEvent: event });
+  };
 
   // --- 条件式吸底（doc/mobile-ux.md §3）：用户操作优先，仅"未打断 ∧ 贴近底部"才跟随 ---
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -109,7 +115,7 @@ export default function ChatPage() {
         onScroll={syncFollowUi}
         className="flex-1 overflow-y-auto px-4 py-6"
       >
-        <ChatList messages={messages} loading={loading} />
+        <ChatList messages={messages} loading={loading} onDiagnoseAction={handleDiagnoseAction} />
       </div>
 
       {notice && (
@@ -154,6 +160,7 @@ export default function ChatPage() {
             modelsLoading={modelsLoading}
             modelsMessage={notice}
             preferLocalOcr={preferLocalOcr}
+            diagnosisActive={diagnoseContext !== null && diagnoseContext.state !== 'done'}
           />
         )}
       </div>
