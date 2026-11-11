@@ -27,7 +27,7 @@ const TOGGLE_CLASS =
 /**
  * 「本地能力」分区（doc/browser-local-inference.md §7）。
  * 诚实接线（AGENTS.md §8）：资产未就绪时开关一律置灰并给出修复命令，
- * 不渲染任何假可用控件；引擎状态与下载进度经 useLocalEngine 与 app/local
+ * 不渲染任何假可用控件；引擎状态与下载进度经 useLocalEngine 与 app/(main)/local
  * 能力页同源（引擎单例 800ms 轮询，分区条件挂载即停表）。
  */
 export default function LocalCapabilitySection() {
