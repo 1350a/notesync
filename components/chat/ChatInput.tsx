@@ -3,6 +3,7 @@
 import ModelSelect from '@/components/ModelSelect';
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import type { SendOptions } from '@/hooks/useChat';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
 import {
   convertImagesToTexts,
@@ -36,8 +37,14 @@ function isTextFile(file: File): boolean {
 }
 
 export interface ChatInputProps {
-  /** ocrTexts：OCR 转文字模式下与 images 一一对应的识别文本；直传模式不传 */
-  onSend: (text: string, images: string[], files: ChatTextFile[], ocrTexts?: string[]) => void;
+  /** ocrTexts：OCR 产物（经回显确认后的最终文本）；options 见 SendOptions */
+  onSend: (
+    text: string,
+    images: string[],
+    files: ChatTextFile[],
+    ocrTexts?: string[],
+    options?: SendOptions
+  ) => void;
   onStop: () => void;
   loading: boolean;
   /** 真实可用模型列表（来自 GET /api/models，非硬编码） */
@@ -53,6 +60,17 @@ export interface ChatInputProps {
   modelsMessage?: string;
   /** 设置页"优先本地OCR"偏好（ocr.preferLocal）：true 时图片一律先转文字 */
   preferLocalOcr: boolean;
+  /** 诊断会话进行中（useChat 上下文非 done）：开关只负责开启新会话，会话内展示状态 */
+  diagnosisActive?: boolean;
+}
+
+/** OCR 低置信线（0~100，tesseract 口径；A 级假设实测可调）：低于此值确认面板强制标红 */
+const OCR_LOW_CONFIDENCE = 60;
+
+/** OCR 回显确认草稿：识别文本可编辑，确认后才随消息上行（wip-diagnosis-model.md §1.3） */
+interface OcrDraft {
+  texts: string[];
+  confidences: (number | null)[];
 }
 
 export default function ChatInput({
@@ -66,6 +84,7 @@ export default function ChatInput({
   modelsLoading = false,
   modelsMessage,
   preferLocalOcr,
+  diagnosisActive = false,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -80,6 +99,10 @@ export default function ChatInput({
   const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
   /** 本地 OCR 进行中进度；非 null 时阻断重复发送 */
   const [ocrBusy, setOcrBusy] = useState<{ done: number; total: number } | null>(null);
+  /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，wip-product-vision.md §3.3） */
+  const [diagnosisMode, setDiagnosisMode] = useState(false);
+  /** OCR 回显确认草稿：非 null 时输入区上方出现确认面板，阻断直接发送 */
+  const [ocrDraft, setOcrDraft] = useState<OcrDraft | null>(null);
 
   useEffect(() => {
     return () => {
@@ -178,34 +201,66 @@ export default function ChatInput({
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
-  const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
+  // P4 约束②：多模态能力未知/不支持时，全本地是唯一路径——多模态与混合两档不渲染
+  const canDirect = currentModel?.acceptsImages === true;
+  const derivedMode = resolveImageSendMode(currentModel, preferLocalOcr);
+  const imageMode: ImageSendMode = ocrOverride ?? (derivedMode === 'direct' && canDirect ? 'direct' : 'local-ocr');
   const hasPayload = input.trim().length > 0 || images.length > 0 || files.length > 0;
 
-  const handleSend = async () => {
-    if (!hasPayload || loading || ocrBusy) return;
-    let ocrTexts: string[] | undefined;
-    if (images.length > 0 && imageMode === 'local-ocr') {
-      setOcrBusy({ done: 0, total: images.length });
-      const result = await convertImagesToTexts(images, (done, total) =>
-        setOcrBusy({ done, total })
+  /** OCR 完成后进入回显确认，而不是直接发送（识别结果必须先经学生确认，§1.3 规则①②） */
+  const runOcrThenConfirm = async (): Promise<boolean> => {
+    setOcrBusy({ done: 0, total: images.length });
+    const result = await convertImagesToTexts(images, (done, total) =>
+      setOcrBusy({ done, total })
+    );
+    setOcrBusy(null);
+    if (result.failures.length > 0) {
+      // 失败阻断发送：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
+      const index = result.failures.map((f) => f.index + 1).join('、');
+      pushHint(
+        `第 ${index} 张图本地OCR失败：${result.failures[0].reason}。可移除该图或改用「直传」。`
       );
-      setOcrBusy(null);
-      if (result.failures.length > 0) {
-        // 失败阻断发送：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
-        const index = result.failures.map((f) => f.index + 1).join('、');
-        pushHint(
-          `第 ${index} 张图本地OCR失败：${result.failures[0].reason}。可移除该图或改用「直传原图」。`
-        );
-        return;
-      }
-      ocrTexts = result.texts as string[];
+      return false;
     }
-    onSend(input.trim(), images, files, ocrTexts);
+    setOcrDraft({ texts: result.texts as string[], confidences: result.confidences });
+    return true;
+  };
+
+  const handleSend = async () => {
+    if (!hasPayload || loading || ocrBusy || ocrDraft) return;
+    // 全本地 / 混合：先 OCR → 回显确认；确认面板的发送按钮负责真正的上行
+    if (images.length > 0 && (imageMode === 'local-ocr' || imageMode === 'mixed')) {
+      const ok = await runOcrThenConfirm();
+      if (!ok) return;
+      return; // 等待回显确认，不在此处发送
+    }
+    doSend(undefined);
+  };
+
+  /** 确认面板「确认发送」/ 纯文本与直传路径的实际发送 */
+  const doSend = (ocrTexts: string[] | undefined) => {
+    const options: SendOptions | undefined = diagnosisMode ? { startDiagnosis: true } : undefined;
+    onSend(input.trim(), images, files, ocrTexts, {
+      ...options,
+      // OCR 产物形态随三档走：混合档原图与文本同上行（doc/browser-local-ocr.md §6.2）
+      ...(ocrTexts ? { imageSendMode: imageMode === 'mixed' ? ('mixed' as const) : ('local-only' as const) } : {}),
+    });
     setInput('');
     setImages([]);
     setFiles([]);
     setHint('');
     setOcrOverride(null);
+    setOcrDraft(null);
+  };
+
+  /** 确认面板编辑某张图的识别文本 */
+  const updateDraftText = (index: number, text: string) => {
+    setOcrDraft((prev) => {
+      if (!prev) return prev;
+      const texts = [...prev.texts];
+      texts[index] = text;
+      return { ...prev, texts };
+    });
   };
 
   return (
@@ -263,6 +318,59 @@ export default function ChatInput({
         </div>
       )}
 
+      {/* OCR 回显确认面板（wip-diagnosis-model.md §1.3）：识别文本先经学生确认/修正才上行，
+          低置信项标红强制核对；触屏可编辑（touch 16px） */}
+      {ocrDraft && (
+        <div className="mx-1 rounded-xl border border-border bg-muted/30 p-3">
+          <p className="mb-1 text-xs font-medium text-foreground">
+            请核对本地识别结果（图片未离开设备）
+          </p>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            识别可能有误，低置信已标红；可直接改正后发送。
+          </p>
+          {ocrDraft.texts.map((text, i) => {
+            const conf = ocrDraft.confidences[i];
+            const low = conf !== null && conf < OCR_LOW_CONFIDENCE;
+            return (
+              <div key={i} className="mb-2">
+                <p
+                  className={`mb-1 text-[11px] ${
+                    low ? 'font-medium text-red-500' : 'text-muted-foreground'
+                  }`}
+                >
+                  第 {i + 1} 张
+                  {conf !== null ? `（置信度 ${Math.round(conf)}%）` : ''}
+                  {low ? ' · 低置信，请重点核对' : ''}
+                </p>
+                <textarea
+                  value={text}
+                  onChange={(e) => updateDraftText(i, e.target.value)}
+                  rows={Math.min(6, Math.max(2, Math.ceil(text.length / 40)))}
+                  className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none touch:text-base"
+                />
+              </div>
+            );
+          })}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setOcrDraft(null)}
+              disabled={loading}
+              className="h-8 px-3 text-xs touch:h-11 touch:px-4"
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => doSend(ocrDraft.texts)}
+              disabled={loading}
+              className="h-8 px-4 text-xs touch:h-11 touch:px-5 bg-foreground text-background hover:bg-foreground/90"
+            >
+              确认发送
+            </Button>
+          </div>
+        </div>
+      )}
+
       {(hint || ocrBusy) && (
         <div className="px-2 text-[11px] text-amber-600">
           {ocrBusy && (
@@ -297,15 +405,24 @@ export default function ChatInput({
               {modelsMessage}
             </span>
           )}
-          {/* 模式下拉：后端尚无对应参数，禁用而非假装可用（接入后再放开） */}
-          <select
-            disabled
-            title="解题过程模式 / 对话模式尚未接入后端，当前不生效"
-            className="text-xs bg-muted/50 rounded-md px-2 py-1 outline-none border-none text-muted-foreground font-medium cursor-not-allowed opacity-60"
+          {/* 诊断模式开关（对话模式主线，wip-product-vision.md §3.3）：
+              开启后发送即开启/延续诊断会话（错因归因，不给答案开场） */}
+          <button
+            type="button"
+            onClick={() => setDiagnosisMode((v) => !v)}
+            disabled={loading}
+            className={`rounded-md px-2 py-1 text-xs transition-colors touch:px-3 touch:py-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+              diagnosisMode || diagnosisActive
+                ? 'bg-foreground/10 font-medium text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+            title="诊断模式：先定位你为什么错，再按需给分级提示（答案须主动索取）"
           >
-            <option>解题过程模式</option>
-            <option>对话模式</option>
-          </select>
+            🩺 {diagnosisMode || diagnosisActive ? '诊断中' : '诊断模式'}
+          </button>
+          {diagnosisActive && (
+            <span className="hidden text-[10px] text-muted-foreground sm:inline">会话进行中</span>
+          )}
         </div>
 
         {/* 中间：透明无边框的输入区 */}
@@ -367,39 +484,76 @@ export default function ChatInput({
                 />
               </svg>
             </Button>
-            {/* 图片发送方式：有图时才出现；默认值按模型能力与设置派生，可当次切换 */}
+            {/* 三档选择（wip-product-vision.md P4）：全本地 / 多模态 / 混合。
+                P4 约束②：多模态能力未知或不支持时只呈现全本地一档，不得表现存在选择 */}
             {images.length > 0 && (
-              <div
-                className="flex items-center overflow-hidden rounded-md border border-border text-[11px]"
-                role="group"
-                aria-label="图片发送方式"
-              >
-                <button
-                  type="button"
-                  disabled={loading || ocrBusy !== null}
-                  onClick={() => setOcrOverride('direct')}
-                  className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    imageMode === 'direct'
-                      ? 'bg-foreground/10 font-medium text-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                  title="图片原图随消息直传（需所选模型支持多模态，否则会被服务端降级为文字占位）"
+              <div className="flex flex-col gap-1">
+                <div
+                  className="flex items-center overflow-hidden rounded-md border border-border text-[11px]"
+                  role="group"
+                  aria-label="图片发送方式"
                 >
-                  直传原图
-                </button>
-                <button
-                  type="button"
-                  disabled={loading || ocrBusy !== null}
-                  onClick={() => setOcrOverride('local-ocr')}
-                  className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    imageMode === 'local-ocr'
-                      ? 'bg-foreground/10 font-medium text-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                  title="图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）"
-                >
-                  OCR转文字
-                </button>
+                  <button
+                    type="button"
+                    disabled={loading || ocrBusy !== null || ocrDraft !== null}
+                    onClick={() => setOcrOverride('local-ocr')}
+                    className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      imageMode === 'local-ocr'
+                        ? 'bg-foreground/10 font-medium text-foreground'
+                        : 'text-muted-foreground hover:bg-muted'
+                    }`}
+                    title="全本地：图片在浏览器内转文字后发送，原图不出设备（隐私、省流量）"
+                  >
+                    全本地
+                  </button>
+                  {canDirect && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={loading || ocrBusy !== null || ocrDraft !== null}
+                        onClick={() => setOcrOverride('direct')}
+                        className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          imageMode === 'direct'
+                            ? 'bg-foreground/10 font-medium text-foreground'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                        title="多模态：原图直传，图片会上传至模型服务商"
+                      >
+                        多模态
+                      </button>
+                      <button
+                        type="button"
+                        disabled={loading || ocrBusy !== null || ocrDraft !== null}
+                        onClick={() => setOcrOverride('mixed')}
+                        className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          imageMode === 'mixed'
+                            ? 'bg-foreground/10 font-medium text-foreground'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                        title="混合：本地识别打底 + 原图上传至模型服务商（外发最多，质量最好）"
+                      >
+                        混合
+                      </button>
+                    </>
+                  )}
+                </div>
+                {/* P4 约束①：代价必须写在选择处，不靠 hover 提示（触屏无 hover）；
+                    §7 图片上传明示：外发档当次明示图片将离开设备 */}
+                {imageMode === 'local-ocr' && (
+                  <span className="text-[10px] text-muted-foreground">
+                    全本地：原图不出设备；识别可能有误，发送前需确认
+                  </span>
+                )}
+                {imageMode === 'direct' && (
+                  <span className="text-[10px] text-amber-600">
+                    多模态：图片将上传至模型服务商
+                  </span>
+                )}
+                {imageMode === 'mixed' && (
+                  <span className="text-[10px] text-amber-600">
+                    混合：原图将上传至模型服务商（另有本地识别打底）
+                  </span>
+                )}
               </div>
             )}
           </div>
