@@ -82,6 +82,8 @@ export interface CompleteOptions {
   json?: boolean;
   /** 外部取消/超时信号 */
   signal?: AbortSignal;
+  /** 上游终端用户标识（OpenAI 兼容 user 字段；随机 UUID，见 doc/user-settings.md §4.1） */
+  user?: string;
   /** 工具定义（native 模式）；不传则本次请求无工具调用能力 */
   tools?: NativeToolDef[];
   /** 工具选择策略（默认 "auto"；P1 仅类型预留，P4 接线） */
@@ -103,6 +105,11 @@ export interface CompleteDetailedResult {
 export interface StreamDelta {
   content?: string;
   reasoning?: string;
+  /**
+   * 流终止原因（随流透传，以最后一次出现的为准）。
+   * content_filter 等异常值是上游拦截判定路径之一（wip-safety-protocol.md §3）。
+   */
+  finishReason?: string;
   /**
    * native 模式下的工具调用增量片段（P1 仅类型，P4 实现）。
    * 同一次 tool_call 的 arguments 会切成多个 delta 下发，
