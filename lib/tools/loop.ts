@@ -65,10 +65,18 @@ export interface RunToolLoopOptions {
   tools: ToolDefinition[];
   maxRounds?: number;
   signal?: AbortSignal;
+  /**
+   * 上游拦截检测（wip-safety-protocol.md §3，两条路径任一命中即 true）。
+   * 命中后循环丢弃本轮 assistant 消息（不 appendResults）并终止——
+   * 被拒内容回传上游会再拦一次甚至触发用户级冷却（§3.1 硬项）。
+   */
+  blockedDetector?: (round: { text: string; finishReason?: string }) => boolean;
+  /** 上游终端用户标识（随请求透传到 Provider 请求体 user 字段，doc/user-settings.md §4.1） */
+  user?: string;
 }
 
 export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<ToolLoopEvent> {
-  const { model, provider, adapter, tools, signal } = options;
+  const { model, provider, adapter, tools, signal, blockedDetector, user } = options;
   const maxRounds = options.maxRounds ?? 3;
   const currentMessages = [...options.messages];
 
@@ -81,7 +89,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
   while (usedRounds < maxRounds) {
     usedRounds++;
-    const req = adapter.buildRequest(model, currentMessages, tools);
+    const req = adapter.buildRequest(model, currentMessages, tools, user);
     req.signal = signal;
 
     const queue = new AsyncQueue<ToolLoopEvent>();
@@ -116,6 +124,17 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         type: 'error',
         code: 'provider_error',
         message: err instanceof Error ? err.message : String(err),
+      };
+      return;
+    }
+
+    // 拦截检测（两条路径任一命中）：先于 parseError——被拒内容不该参与解析重试，
+    // 且本轮 assistant 消息不回填历史（§3.1：丢弃，而不是照常 appendResults）
+    if (blockedDetector?.({ text: callsData.raw, finishReason: callsData.finishReason })) {
+      yield {
+        type: 'blocked',
+        signal: callsData.finishReason ? 'finish_reason' : 'content',
+        finishReason: callsData.finishReason,
       };
       return;
     }
@@ -192,7 +211,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         content: '工具调用轮数已达上限，请不要再调用任何工具，直接回答用户最新的问题。',
       },
     ];
-    const req = adapter.buildRequest(model, convergeMessages, []);
+    const req = adapter.buildRequest(model, convergeMessages, [], user);
     req.signal = signal;
 
     try {
@@ -201,9 +220,24 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
       }
       const stream = provider.streamDetailed(req);
       // 收敛请求是纯文本补全：直接消费增量，不走适配器（无工具语义，忽略 toolCall 分片）
+      let convergeText = '';
+      let convergeFinish: string | undefined;
       for await (const delta of stream) {
+        if (delta.finishReason) convergeFinish = delta.finishReason;
         if (delta.reasoning) yield { type: 'reasoning', delta: delta.reasoning };
-        if (delta.content) yield { type: 'content', delta: delta.content };
+        if (delta.content) {
+          convergeText += delta.content;
+          yield { type: 'content', delta: delta.content };
+        }
+      }
+      // 收敛请求同样过拦截检测：命中即终止，不发 done
+      if (blockedDetector?.({ text: convergeText, finishReason: convergeFinish })) {
+        yield {
+          type: 'blocked',
+          signal: convergeFinish ? 'finish_reason' : 'content',
+          finishReason: convergeFinish,
+        };
+        return;
       }
     } catch (err) {
       yield {
