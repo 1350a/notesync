@@ -22,8 +22,7 @@ const eslintConfig = defineConfig([
     "public/models/**",
     // 整文件注释停用的空壳文件（非活跃代码）：仅移出 lint 检查范围，
     // 文件本身原样保留在仓库中，便于按需 git checkout 恢复
-    "components/ChatInput.tsx",
-    "components/ChatMessage.tsx",
+    // （ChatInput / ChatMessage 已在 dev 侧直接删除，此处不再保留失效忽略项）
     "components/Sidebar.tsx",
     "components/ThemeSwitcher.tsx",
     "lib/agent/loop.ts",
