@@ -173,3 +173,19 @@ export type DiagnoseEvent =
   | { type: 'user_stop' }
   /** L1_only / reject 输出完成 */
   | { type: 'output_done' };
+
+/**
+ * 诊断模式请求负载（/api/chat 请求体 diagnose 字段，服务端经 runtime.parseDiagnosePayload 严格校验）。
+ * context 由客户端持久并回传；event 仅限「模型调用前就能确定」的白名单——
+ * intake_done / diagnosis_done / output_done 由服务端在响应后自行推导，客户端不得伪造。
+ */
+export type DiagnoseRequestEvent =
+  | { type: 'clarify_done'; hasAnswer: boolean; refused: boolean }
+  | { type: 'hint_descend' }
+  | { type: 'mastered' }
+  | { type: 'user_stop' };
+
+export interface DiagnoseRequestPayload {
+  context?: DiagnoseContext;
+  event?: DiagnoseRequestEvent;
+}
