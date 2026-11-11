@@ -408,6 +408,10 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
     console.warn(`[diagnose] 提交校验失败：${parsed.reason}`);
     return { context, diagnosis: null, guardPassed, retried };
   }
+  // 成功路径也留痕：与失败日志配对，服务端日志即可判定 submit_diagnosis 是否真的被调用
+  console.log(
+    `[diagnose] 已收到结构化提交 level=${parsed.value.level} errorCause=${parsed.value.errorCause?.code ?? 'null'} retried=${retried ?? 'no'}`,
+  );
 
   diagnosis = buildDiagnosisResult(parsed.value, resolveCompleteness(attachments, parsed.value, session.completeness));
 
