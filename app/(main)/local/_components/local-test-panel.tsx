@@ -13,57 +13,17 @@
  */
 import { useCallback, useState } from 'react';
 
+import {
+  SELF_TEST_IDLE,
+  SelfTestSection,
+  type SelfTestState,
+} from '@/components/ui/self-test';
 import { useLocalEngine } from '@/hooks/useLocalEngine';
 import { embedTexts, EMBED_DIM } from '@/lib/local/embedding';
 import { searchKnowledge } from '@/lib/local/rag/store';
 import { SEED_KNOWLEDGE } from '@/lib/local/rag/seed';
 
-interface SectionState {
-  phase: 'idle' | 'running' | 'pass' | 'fail';
-  detail?: string;
-}
-
-const IDLE: SectionState = { phase: 'idle' };
-
-function VerdictBadge({ phase }: { phase: SectionState['phase'] }) {
-  if (phase === 'idle') return <span className="text-xs text-muted-foreground">待检测</span>;
-  if (phase === 'running') return <span className="text-xs text-blue-600">检测中…</span>;
-  if (phase === 'pass') {
-    return (
-      <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-        PASS
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-md bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-      FAIL
-    </span>
-  );
-}
-
-function Section({
-  title,
-  state,
-  children,
-}: {
-  title: string;
-  state: SectionState;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <VerdictBadge phase={state.phase} />
-      </div>
-      {state.detail && (
-        <p className="mt-2 break-all text-xs text-muted-foreground">{state.detail}</p>
-      )}
-      {children}
-    </div>
-  );
-}
+const IDLE = SELF_TEST_IDLE;
 
 /** 存储用量摘要（尽力而为：estimate 不可用或失败时返回空串，不影响自检） */
 async function storageNote(): Promise<string> {
@@ -81,9 +41,9 @@ async function storageNote(): Promise<string> {
 export default function LocalTestPanel() {
   // assets 不取：自检段①每次 fresh 全量探测，挂载期缓存对判定无意义
   const { status, init } = useLocalEngine();
-  const [assetState, setAssetState] = useState<SectionState>(IDLE);
-  const [embedState, setEmbedState] = useState<SectionState>(IDLE);
-  const [searchState, setSearchState] = useState<SectionState>(IDLE);
+  const [assetState, setAssetState] = useState<SelfTestState>(IDLE);
+  const [embedState, setEmbedState] = useState<SelfTestState>(IDLE);
+  const [searchState, setSearchState] = useState<SelfTestState>(IDLE);
   const [running, setRunning] = useState(false);
 
   const runAll = useCallback(async () => {
@@ -184,12 +144,18 @@ export default function LocalTestPanel() {
 
       <p className="text-xs text-muted-foreground">引擎：{engineLabel}</p>
 
-      <Section title="① 模型资产（public/models/）" state={assetState} />
-      <Section
+      <SelfTestSection
+        title="① 模型资产（public/models/）"
+        state={assetState}
+      />
+      <SelfTestSection
         title="② 嵌入引擎（WebGPU/WASM 自动选择）"
         state={embedState}
       />
-      <Section title="③ 检索链路（IndexedDB + 混合评分）" state={searchState} />
+      <SelfTestSection
+        title="③ 检索链路（IndexedDB + 混合评分）"
+        state={searchState}
+      />
 
       <p className="text-center text-xs text-muted-foreground">
         资产缺失时运行 <code className="rounded bg-muted px-1">npm run local:assets</code>
