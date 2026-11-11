@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "smoke:tools": "node --experimental-strip-types scripts/tool-smoke.ts",
     "smoke:adapters": "node --experimental-strip-types scripts/tool-adapter-smoke.ts",
     "smoke:loop": "node --experimental-strip-types scripts/tool-loop-smoke.ts",
@@ -19,6 +21,10 @@
     "ocr:assets": "node scripts/copy-ocr-assets.mjs",
     "local:assets": "node scripts/copy-local-models.mjs"
   },
+  "overrides": {
+    "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
+    "onnxruntime-common": "1.31.0-dev.20260911-2a43ec07e"
+  },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@hugeicons/core-free-icons": "^4.4.0",
@@ -26,13 +32,12 @@
     "@huggingface/transformers": "^4.3.2",
     "@tesseract.js-data/chi_sim": "^1.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
-    "ai": "^7.0.159",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "framer-motion": "^14.9.0",
     "katex": "^0.19.1",
     "next": "16.4.3",
-    "onnxruntime-web": "^1.31.1",
+    "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
     "pdfjs-dist": "^5.6.205",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -57,6 +62,7 @@
     "eslint-config-next": "16.4.3",
     "prettier": "^3.9.10",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.12"
   }
 }

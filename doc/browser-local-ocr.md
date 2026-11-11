@@ -1,8 +1,20 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_e6c5d658dd0d11f1bc42525400638852
+    ReservedCode1: LYJ/CCIp39UdI5ywTJgWJwugo3L5YMVLyQJjwhO8yfcptbU9BdmEPGr4LW8xwMV7ZKs+AQEN3qS+9jbwEqXbeoxi4In53RkQjflirT+A223GhO1XOJIdG/tyhADZeAadFp9H5/FcWLTN+PODRz8LXyaBVMr7rjXY4K2np5a+U+TTDtJl6wodSp2fCtg=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_e6c5d658dd0d11f1bc42525400638852
+    ReservedCode2: LYJ/CCIp39UdI5ywTJgWJwugo3L5YMVLyQJjwhO8yfcptbU9BdmEPGr4LW8xwMV7ZKs+AQEN3qS+9jbwEqXbeoxi4In53RkQjflirT+A223GhO1XOJIdG/tyhADZeAadFp9H5/FcWLTN+PODRz8LXyaBVMr7rjXY4K2np5a+U+TTDtJl6wodSp2fCtg=
+---
+
 # 浏览器端本地 OCR 协议（browser-local-ocr）
 
 ## 1. 定位与范围
 
-本地能力底座（`feat/browser-ai-inference` 方向）的第一块拼图：**OCR 完全在浏览器内完成，
+本地能力底座（当前分支 `beta/browser-ocr-planb`；该方向早期命名为
+`feat/browser-ai-inference`，二者指同一条线）的第一块拼图：**OCR 完全在浏览器内完成，
 图片与识别文本均不经过服务器**。服务端只负责分发静态资产（模型/词库/wasm 文件），
 不参与推理、不接收图片。
 
@@ -48,6 +60,19 @@
 - 资产缺失属**可检测的未就绪状态**：调用方必须据此把能力标记为不可用并提示
   `npm run ocr:assets`，不得渲染假可用 UI（AGENTS.md §8）。
 
+代码侧核对（2026-11-10，按当前实现实查）：
+
+- `checkOcrAssets()` 当前**唯一调用方是 `/ocr` 自检面板**
+  （`app/(main)/ocr/_components/ocr-test-panel.tsx`，`HEAD` + `no-store` 逐项探测并逐条报 FAIL）。
+- 聊天/诊断链路**不做 OCR 资产前置门禁**：`ocr.preferLocal` 开关位于「通用设置」的
+  「图片处理」行（`components/settings/GeneralSection.tsx`），**不迁入**「本地能力」分区
+  （口径见 `browser-local-inference.md` §7：OCR 是独立能力域，开关只在一处出现），
+  资产缺失时不会在开关处禁用，而是在识别阶段失败 → 按 §6.4
+  阻断发送、逐张列明原因并提示 `npm run ocr:assets`。这是有意取舍：OCR 资产体积小、
+  失败原因可判读，不重复做前置探测。
+- `next.config.ts` 的 `serverExternalPackages: ["tesseract.js"]` 确实只服务旧服务端
+  实现，浏览器侧走自托管 worker/core，不受其影响。
+
 ## 4. 服务契约（`lib/ocr/local.ts`）
 
 ```ts
@@ -76,7 +101,7 @@ disposeOcrWorker(): Promise<void>
 
 ## 5. 能力页与验收口径
 
-`app/ocr`：本地 OCR 能力页。
+`app/(main)/ocr`：本地 OCR 能力页（URL 仍为 `/ocr`，布局由 `app/(main)/layout.tsx` 承载）。
 
 1. **内置自检**：页面用 canvas 渲染已知中文文本（刻意不含标点与数字，规避 OCR 对
    标点/数字的歧义噪声）生成 PNG → 调用 `ocrRecognize` → 与期望文本做规范化比对，
@@ -140,3 +165,4 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 - 云 OCR 选项（用户显式选择，走设备边界规则提示）。
 - 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7），
   云端档位待云 OCR 时一并落地。
+*（内容由AI生成，仅供参考）*

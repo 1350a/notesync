@@ -26,6 +26,10 @@ const ASSET_URLS = [
   "/models/ort/ort-wasm-simd-threaded.mjs",
   "/models/ort/ort-wasm-simd-threaded.jsep.wasm",
   "/models/ort/ort-wasm-simd-threaded.jsep.mjs",
+  // 非跨源隔离（缺 COOP/COEP，无 SharedArrayBuffer）时 ORT 单线程实际加载 asyncify 档，
+  // 缺失该档会在实例化阶段报 Failed to fetch dynamically imported module
+  "/models/ort/ort-wasm-simd-threaded.asyncify.wasm",
+  "/models/ort/ort-wasm-simd-threaded.asyncify.mjs",
 ];
 
 /**

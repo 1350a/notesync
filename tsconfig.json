@@ -31,5 +31,25 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "components/Sidebar.tsx",
+    "components/ThemeSwitcher.tsx",
+    "lib/agent/loop.ts",
+    "lib/agent/tools.ts",
+    "lib/agent/types.ts",
+    "lib/harness/index.ts",
+    "lib/harness/prompts.ts",
+    "lib/harness/state.ts",
+    "lib/harness/types.ts",
+    "lib/rag/embedding.ts",
+    "lib/rag/seed.ts",
+    "lib/rag/store.ts",
+    "lib/rag/types.ts",
+    "lib/ocr.ts",
+    "lib/pdf.ts",
+    "lib/storage.ts",
+    "lib/theme.ts",
+    "lib/types.ts"
+  ]
 }

@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react';
 const NAV_ITEMS = [
   { name: '单题对话', path: '/chat', icon: '💬' },
   { name: '批量诊断', path: '/diagnose', icon: '📁' },
+  { name: '本地能力', path: '/local', icon: '🧩' },
 ];
 
 /** 侧栏内部内容：桌面挤占式与移动抽屉共用同一份 markup */
