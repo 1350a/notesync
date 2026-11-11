@@ -37,6 +37,7 @@ import {
 import { deriveCompleteness } from '@/lib/diagnose/completeness';
 import type { DiagnosisResult } from '@/lib/diagnose/types';
 import { CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
+import { estimateCost, logCost } from '@/lib/chat/cost';
 
 const encoder = new TextEncoder();
 
@@ -295,6 +296,15 @@ export async function POST(request: Request) {
               stats: { questions: questions.length, groups: groups.length },
             }),
           ),
+        );
+        // 成本计量（总账 §9.1）：切题 1 + 组数 + 汇总 1
+        logCost(
+          estimateCost({
+            route: '/api/diagnose-paper',
+            clientId,
+            calls: groups.length + 2,
+            messages: [{ content: material }],
+          }),
         );
       } catch (err) {
         controller.enqueue(
