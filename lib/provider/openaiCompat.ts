@@ -408,6 +408,10 @@ export class OpenAICompatProvider implements LLMProvider {
       stream,
     };
     if (options.json) body.response_format = { type: 'json_object' };
+    // 上游终端用户标识（wip-safety-protocol §6）：请求体 user 字段，开关控制携带
+    if (options.user && process.env.USER_FIELD_ENABLED !== '0') {
+      body.user = options.user;
+    }
     if (options.tools) {
       body.tools = options.tools;
       if (options.toolChoice) body.tool_choice = options.toolChoice;
@@ -551,9 +555,15 @@ export class OpenAICompatProvider implements LLMProvider {
                   function?: { name?: string; arguments?: string };
                 }>;
               };
+              finish_reason?: string;
             }[];
           };
-          const delta = chunk.choices?.[0]?.delta;
+          const choice = chunk.choices?.[0];
+          // finish_reason 随流透传（wip-safety-protocol §3：拦截判定需要它；最后一次出现的为准）
+          if (choice?.finish_reason) {
+            yield { finishReason: choice.finish_reason };
+          }
+          const delta = choice?.delta;
           if (!delta) continue;
           if (typeof delta.content === 'string' && delta.content.length > 0) {
             yield { content: delta.content };
