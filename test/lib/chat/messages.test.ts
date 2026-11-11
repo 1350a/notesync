@@ -13,6 +13,7 @@ import {
   buildProviderMessages,
   formatRagBlock,
   parseRagContexts,
+  buildUserContent,
   type RagContext,
 } from '@/lib/chat/messages';
 import type { ProviderMessage } from '@/lib/provider/types';
@@ -165,5 +166,41 @@ describe('buildProviderMessages 的检索注入', () => {
       ragContexts: [okContext({ score: 2 })],
     });
     expect(textOf(messages[0].content)).toBe('你好');
+  });
+});
+
+describe('混合档组装（doc/browser-local-ocr.md §6.2）', () => {
+  const IMG = 'data:image/png;base64,xxx';
+
+  it('imageTexts + images 同带：OCR 文本块打底 + 原图补充', () => {
+    const content = buildUserContent('看这道题', [IMG], ['识别出的题干']);
+    expect(Array.isArray(content)).toBe(true);
+    const parts = content as NonNullable<typeof content> & object[];
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toMatchObject({ type: 'text' });
+    expect(JSON.stringify(parts[0])).toContain('【图片OCR】');
+    expect(parts[1]).toMatchObject({ type: 'image_url' });
+  });
+
+  it('仅 imageTexts（全本地）：不含图片本体', () => {
+    const content = buildUserContent('看这道题', undefined, ['识别出的题干']);
+    expect(typeof content).toBe('string');
+    expect(content as string).toContain('【图片OCR】');
+  });
+
+  it('混合档消息占用图片配额，全本地消息不占用', () => {
+    const { messages } = buildProviderMessages({
+      messages: [
+        { role: 'user', content: '全本地', imageTexts: ['旧识别文本'] },
+        { role: 'user', content: '混合', imageTexts: ['新识别文本'], images: [IMG] },
+      ],
+    });
+    const local = messages[0];
+    const mixed = messages[1];
+    // 全本地：纯文本块
+    expect(typeof local.content).toBe('string');
+    expect(local.content as string).toContain('【图片OCR】');
+    // 混合：文本 + 原图
+    expect(Array.isArray(mixed.content)).toBe(true);
   });
 });
