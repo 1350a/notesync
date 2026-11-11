@@ -1,7 +1,7 @@
 'use client';
 
 /*
- * 本地推理引擎状态 hook（app/local 能力页与设置分区 LocalCapabilitySection 共用，
+ * 本地推理引擎状态 hook（app/(main)/local 能力页与设置分区 LocalCapabilitySection 共用，
  * hooks/ 多组件复用约定）。
  *
  * 引擎是模块级单例、无 React 订阅机制，这里用挂载期轮询读取状态：
