@@ -66,3 +66,102 @@ export interface AssembleResult {
   stats: AssembleStats;
   warnings: string[];
 }
+
+// ---------------------------------------------------------------------------
+// 诊断核心契约（wip-diagnosis-model.md §4.1/§6 + wip-agent-workflow.md §2）
+// 接口形状为硬项：字段变更须同批更新对应文档。
+// ---------------------------------------------------------------------------
+
+import type { ErrorCode } from './error-causes.ts';
+
+/** 策略卡：错因 → 干预策略，直查不检索（wip-diagnosis-model.md §4.1） */
+export interface StrategyCard {
+  /** 对应错因表的 code（§3） */
+  errorCode: ErrorCode;
+  /** 稳定标识，供前端与统计引用；不含版本号，版本由 version 字段独立表达 */
+  id: string;
+  /** 3~5 条可执行动作 */
+  steps: string[];
+  subject: 'math';
+  /** 结构变更时递增，历史结论需可比 */
+  version: number;
+}
+
+/** 完整度四要素（wip-diagnosis-model.md §1.1：仅 hasProblem 必需；hasAnalysis 只留痕，不参与门槛判定） */
+export interface DiagnosisCompleteness {
+  hasProblem: boolean;
+  hasStudentAnswer: boolean;
+  hasCorrectAnswer: boolean;
+  hasAnalysis: boolean;
+}
+
+/** 单次归因引用：主错因 1 个必带置信度，最多再加 1 个次错因（§3.1） */
+export interface ErrorCauseRef {
+  code: ErrorCode;
+  /** 0~1，模型自评；判定依据待实测（§8 待办） */
+  confidence: number;
+}
+
+/** 提示阶梯单级（§5）；「完整解」不在枚举内——仅用户明确索取时输出，不进结构 */
+export interface HintStep {
+  level: 1 | 2 | 3;
+  content: string;
+}
+
+/** 诊断输出结构（wip-diagnosis-model.md §6）；对话模式与整卷模式共用，差别只在渲染层 */
+export interface DiagnosisResult {
+  subject: 'math';
+  level: 'L1' | 'L2';
+  completeness: DiagnosisCompleteness;
+  /** 考点，1~3 条 */
+  knowledgePoints: string[];
+  /** L1 时为 null，不硬编错因 */
+  errorCause: ErrorCauseRef | null;
+  secondaryErrorCause?: ErrorCauseRef;
+  /** L2 才有；服务端按 errorCause.code 从策略卡常量表直查注入，模型不产卡 */
+  strategy: StrategyCard | null;
+  hints: HintStep[];
+  /** 如「未提供作答，本次不做错因归因」 */
+  notes?: string;
+  /** 与策略卡表 STRATEGY_VERSION 对齐 */
+  strategyVersion: number;
+}
+
+/** 诊断状态机七状态（wip-agent-workflow.md §2 裁剪：strategize 并入 diagnose——策略卡按错因直查，独立状态不产生新输入） */
+export type DiagnoseState =
+  | 'intake' // 收题：判定有无原题、是否数学
+  | 'clarify' // 补问：作答缺失或置信度不足时追问（有预算）
+  | 'diagnose' // L2 归因，策略卡组装并入此状态
+  | 'explain' // 提示阶梯输出与掌握度回路
+  | 'L1_only' // 拒绝补充/预算耗尽：只出题目画像 + 声明
+  | 'reject' // 非数学题：固定话术 + 能力说明
+  | 'done';
+
+/**
+ * 状态机上下文。服务端无会话，历史由前端全量上送，
+ * 本结构由客户端持久（随 ChatMsg 存）并在每次请求时携带，服务端严格校验。
+ */
+export interface DiagnoseContext {
+  state: DiagnoseState;
+  /** 已消耗追问轮次（初始补问与置信度不足回炉同计），达预算强制收敛（wip-agent-workflow.md §4.1） */
+  clarifyUsed: number;
+  /** explain 当前所处提示阶梯层级，逐级下降用 */
+  hintLevel: 1 | 2 | 3;
+}
+
+/** 状态机输入事件；实现为纯函数，迁移语义见 wip-agent-workflow.md §2 迁移表 */
+export type DiagnoseEvent =
+  /** intake 完成：有无原题、是否数学题 */
+  | { type: 'intake_done'; hasProblem: boolean; isMath: boolean }
+  /** clarify 一轮结束：是否拿到作答 / 用户是否明确拒绝补充 */
+  | { type: 'clarify_done'; hasAnswer: boolean; refused: boolean }
+  /** diagnose 完成：置信度是否达标（达标进 explain，不达标回 clarify 或低置信输出） */
+  | { type: 'diagnosis_done'; confident: boolean }
+  /** explain：用户点「继续」或「还不懂」→ 降一级 */
+  | { type: 'hint_descend' }
+  /** explain：用户点「明白了」→ done */
+  | { type: 'mastered' }
+  /** 用户明确终止或转换话题：任何状态都放行到 done，不纠缠 */
+  | { type: 'user_stop' }
+  /** L1_only / reject 输出完成 */
+  | { type: 'output_done' };
