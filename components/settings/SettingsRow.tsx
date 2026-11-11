@@ -11,7 +11,8 @@ export function NotWiredBadge() {
   );
 }
 
-/** 设置行：左侧标签（可带说明与标注），右侧控件；行间细分隔线与参考稿一致 */
+/** 设置行：左侧标签（可带说明与标注），右侧控件；行间细分隔线与参考稿一致。
+ *  窄屏纵向堆叠（标签在上、控件在下并允许换行），≥md 恢复左右两端对齐。 */
 export default function SettingsRow({
   label,
   hint,
@@ -24,15 +25,19 @@ export default function SettingsRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/60 py-4 last:border-b-0">
+    <div className="flex flex-col gap-2 border-b border-border/60 py-4 last:border-b-0 md:flex-row md:items-center md:justify-between md:gap-4">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium text-foreground">{label}</p>
           {badge}
         </div>
-        {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+        {hint && (
+          <p className="mt-0.5 break-words text-xs text-muted-foreground">{hint}</p>
+        )}
       </div>
-      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+      {children && (
+        <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:shrink-0">{children}</div>
+      )}
     </div>
   );
 }
