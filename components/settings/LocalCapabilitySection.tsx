@@ -1,5 +1,16 @@
 'use client';
 
+/*
+ * 设置 - 本地能力分区（doc/browser-local-inference.md §7）
+ *
+ * 四行结构：图片处理（OCR）/ 知识检索（RAG）/ 本地引擎 / 本地对话。
+ * - 图片处理行自通用设置迁入（合并时取 browser-ocr 侧），全站唯一开关，
+ *   通用设置不再保留同名条目；
+ * - 知识检索与本地引擎两行取 dev 侧实现（资产就绪门禁 + 引擎状态机），
+ *   预加载入口收敛到「本地引擎」行唯一一处；
+ * - 本地对话为 v2 占位（诚实接线，AGENTS.md §8）。
+ */
+
 import { useCallback, useState } from 'react';
 
 import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
@@ -31,6 +42,7 @@ const TOGGLE_CLASS =
  * 能力页同源（引擎单例 800ms 轮询，分区条件挂载即停表）。
  */
 export default function LocalCapabilitySection() {
+  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   const updateSettings = useSettingsStore((s) => s.update);
 
@@ -69,6 +81,38 @@ export default function LocalCapabilitySection() {
           </p>
         </div>
       )}
+
+      {/* 图片处理（自通用设置迁入，语义 doc/browser-local-ocr.md §6.1 不变）：
+          输入区贴图后仍可当次切换，此处为持久默认 */}
+      <SettingsRow
+        label="图片处理（OCR）"
+        hint="优先本地OCR：图片先在浏览器内转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
+      >
+        <div className="flex w-full gap-2">
+          <button
+            type="button"
+            onClick={() => updateSettings({ ocr: { preferLocal: false } })}
+            className={`${TOGGLE_CLASS} ${
+              !preferLocalOcr
+                ? 'border-foreground/50 bg-muted font-medium'
+                : 'border-border hover:bg-muted/50'
+            }`}
+          >
+            自动
+          </button>
+          <button
+            type="button"
+            onClick={() => updateSettings({ ocr: { preferLocal: true } })}
+            className={`${TOGGLE_CLASS} ${
+              preferLocalOcr
+                ? 'border-foreground/50 bg-muted font-medium'
+                : 'border-border hover:bg-muted/50'
+            }`}
+          >
+            优先本地OCR
+          </button>
+        </div>
+      </SettingsRow>
 
       <SettingsRow
         label="知识检索（RAG）"

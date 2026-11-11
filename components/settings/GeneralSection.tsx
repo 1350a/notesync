@@ -14,7 +14,6 @@ const THEME_OPTIONS: { value: ThemePreference; icon: string; label: string }[] =
 export default function GeneralSection() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
-  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
   const updateSettings = useSettingsStore((s) => s.update);
   // 分区挂载时才拉模型列表（弹窗关闭时本组件不渲染，不产生请求）
   const { models, loading } = useModels();
@@ -63,39 +62,8 @@ export default function GeneralSection() {
         </select>
       </SettingsRow>
 
-      {/* 图片处理（ocr.preferLocal 已接线，语义 doc/browser-local-ocr.md §6.1）：
-          输入区贴图后仍可当次切换，此处为持久默认 */}
-      <SettingsRow
-        label="图片处理"
-        hint="优先本地OCR：图片先在浏览器内转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
-      >
-        <div className="flex w-full gap-2">
-          <button
-            type="button"
-            onClick={() => updateSettings({ ocr: { preferLocal: false } })}
-            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
-              !preferLocalOcr
-                ? 'border-foreground/50 bg-muted font-medium'
-                : 'border-border hover:bg-muted/50'
-            }`}
-          >
-            自动
-          </button>
-          <button
-            type="button"
-            onClick={() => updateSettings({ ocr: { preferLocal: true } })}
-            className={`w-24 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
-              preferLocalOcr
-                ? 'border-foreground/50 bg-muted font-medium'
-                : 'border-border hover:bg-muted/50'
-            }`}
-          >
-            优先本地OCR
-          </button>
-        </div>
-      </SettingsRow>
-
-      {/* 未实装占位：仅展示不可交互（诚实接线，协议 doc/user-settings.md §5/§6） */}
+      {/* 未实装占位：仅展示不可交互（诚实接线，协议 doc/user-settings.md §5/§6）。
+          图片处理行已迁入「本地能力」分区（doc/browser-local-inference.md §7） */}
       <SettingsRow label="语言" badge={<NotWiredBadge />} hint="多语言界面尚未接入">
         <select disabled className={DISABLED_SELECT_CLASS}>
           <option>跟随系统</option>

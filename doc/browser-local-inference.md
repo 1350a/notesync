@@ -208,19 +208,22 @@ type RagContext = { title: string; snippet: string; score: number };
 
 ## 7. 设置协议（user-settings.md 联动）
 
-设置页新增「本地能力」分区（`SettingsSection` 扩展），按任务三行（路由绝对权在使用者）：
+设置页「本地能力」分区（`components/settings/LocalCapabilitySection.tsx`）按任务
+**四行**（路由绝对权在使用者）：
 
 | 行 | 状态 | 内容 |
 | --- | --- | --- |
+| 图片处理（OCR） | **实装** | 开关写 `ocr.preferLocal`（自动 / 优先本地OCR），自通用设置迁入本分区，全站唯一开关 |
 | 知识检索（RAG） | **实装** | 开关写 `rag.enabled`（默认 false）+ 命中口径说明；资产未就绪时「开启」置灰并给修复命令 |
 | 本地引擎 | **实装** | 引擎状态 + 预加载入口（bge-small-zh-v1.5，WebGPU 优先、不可用时回退 WASM），下载进度经单例轮询回显 |
 | 本地对话 | 占位 | v1 仅云端；本地选项禁用 + “未实装”标注（AGENTS.md §8） |
 
-**「图片处理（OCR）」不在本分区**：`ocr.preferLocal` 开关保留在「通用设置」的
-「图片处理」行（`components/settings/GeneralSection.tsx`），语义见
-`browser-local-ocr.md` §6——OCR 是独立能力域，其资产探测（`checkOcrAssets`）、
-失败语义与验收口径自成一套（见 `browser-local-ocr.md` §3 / §5 / §6.4），
-不并入「本地推理」分区，避免同一开关在两处设置里重复出现。
+**「图片处理（OCR）」行位于本分区，通用设置不再保留同名条目**（2026-11-11 合并
+`beta/browser-ocr` 时归并）：`ocr.preferLocal` 的语义与验收口径仍以
+`browser-local-ocr.md` §6 为准，其资产探测（`checkOcrAssets`）、失败语义自成一套
+（见 `browser-local-ocr.md` §3 / §5 / §6.4）；迁移只为消除同一开关在「通用设置」与
+「本地能力」两处重复出现，两个分区各自保留唯一职责边界。预加载入口同样收敛到
+「本地引擎」行一处，RAG 行不再重复提供预载按钮。
 
 `UserSettings` 新增：
 
@@ -289,7 +292,15 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 严格 `script-src` 的两条非 nonce 路线已于 2026-11-11 在生产构建 + 无头浏览器实测排除：
 hash 白名单下 Next/Turbopack 注入的内联脚本全部被拒（全站 54 条 `script-src` 违规，
 反闪烁脚本之外的框架脚本哈希随构建漂移不可白名单化）；实验性 `experimental.sri` 只给
-外链资源加 integrity 属性，对内联脚本无帮助（违规数不变）。剩余唯一官方路线是 proxy
-每请求发 nonce + `'strict-dynamic'`，但文档明确 PPR/`cacheComponents` 与 nonce 不兼容
-（本项目已开启），需放弃静态渲染架构才能落地——挂账待架构决策。
+外链资源加 integrity 属性，对内联脚本无帮助（违规数不变）。
+
+> 口径校准（2026-11-11 合并 `beta/browser-ocr`）：该分支曾把 hash 白名单
+> （`script-src 'self' 'sha256-…' 'wasm-unsafe-eval'`，dev 才放开 `'unsafe-inline'`）
+> 连同 `ANTI_FLASH_SCRIPT_HASH` 常量一并带进 `next.config.ts`，本次归并**已丢弃该路线**，
+> 保留 `'unsafe-inline'`（即上表口径），原因同上：生产构建实测 54 条 `script-src` 违规、
+> 浏览器水合失败。今后不得再以 hash 白名单重试该方向。
+
+nonce 路线受 `cacheComponents` 静态壳与 Next 16.4 `turbopackSharedRuntime` 内联
+bootstrap 限制暂不可行（proxy 每请求发 nonce + `'strict-dynamic'` 与 PPR/静态预渲染
+互斥，需放弃静态渲染架构才能落地），继续挂账待上游修复或架构决策。
 *（内容由AI生成，仅供参考）*
