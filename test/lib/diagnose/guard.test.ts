@@ -4,7 +4,6 @@ import {
   normalizeForQuote,
   QUOTE_BIGRAM_THRESHOLD,
   QUOTE_MIN_RUN_CHARS,
-  QUOTE_MIN_SOURCE_CHARS,
 } from '../../../lib/diagnose/guard.ts';
 
 describe('normalizeForQuote', () => {
@@ -78,10 +77,9 @@ describe('checkAnswerQuote（wip-diagnosis-model.md §7.3）', () => {
     expect(r.best?.sourceIndex).toBe(1);
   });
 
-  it('过短来源直接忽略：两三个字的匹配无区分度', () => {
-    const r = checkAnswerQuote({ output: '答案的方向反了。', studentSources: ['方向'] });
-    expect(r.quoted).toBe(false);
-    expect(QUOTE_MIN_SOURCE_CHARS).toBeGreaterThan('方向'.length);
+  it('短来源（数值答案）整段出现即命中，未出现不命中', () => {
+    expect(checkAnswerQuote({ output: '你写到 x=2 就停了，另一个根呢？', studentSources: ['x=2'] }).quoted).toBe(true);
+    expect(checkAnswerQuote({ output: '这道题考一元二次方程的解法。', studentSources: ['x=2'] }).quoted).toBe(false);
   });
 
   it('空白来源忽略', () => {
