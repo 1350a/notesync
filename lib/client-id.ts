@@ -8,6 +8,9 @@
 export const CLIENT_ID_STORAGE_KEY = 'notesync-client-id';
 export const CLIENT_ID_HEADER = 'X-Client-Id';
 
+/** 上游终端用户标识（请求体 user 字段）：与客户端 ID 是两回事，见 doc/user-settings.md §4.1 */
+export const USER_ID_STORAGE_KEY = 'notesync-user-id';
+
 /** 生成 UUID v4：非 secure context（如局域网 http 访问）没有 crypto.randomUUID，用 getRandomValues 手工拼接 */
 function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -36,4 +39,34 @@ export function getClientId(): string {
     console.warn('[client-id] 客户端标识读写失败，本次使用临时 ID', err);
     return generateId();
   }
+}
+
+/**
+ * 读取或首次生成上游终端用户标识（doc/user-settings.md §4.1）。
+ * 纯随机 UUID，绝不含任何可识别信息——该值会到达上游厂商侧。
+ */
+export function getUserId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const existing = window.localStorage.getItem(USER_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = generateId();
+    window.localStorage.setItem(USER_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch (err) {
+    console.warn('[client-id] 用户标识读写失败，本次使用临时 ID', err);
+    return generateId();
+  }
+}
+
+/** 重置用户标识（设置页入口，合规可撤销要求）；返回新值便于 UI 确认 */
+export function resetUserId(): string {
+  if (typeof window === 'undefined') return '';
+  const generated = generateId();
+  try {
+    window.localStorage.setItem(USER_ID_STORAGE_KEY, generated);
+  } catch (err) {
+    console.warn('[client-id] 用户标识重置失败，本次使用临时 ID', err);
+  }
+  return generated;
 }
