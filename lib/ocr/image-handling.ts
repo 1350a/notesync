@@ -7,8 +7,8 @@
  */
 import { ocrRecognize } from "./local.ts";
 
-/** 图片发送模式：原图直传 | 本地 OCR 转文字 */
-export type ImageSendMode = "direct" | "local-ocr";
+/** 图片发送模式：原图直传 | 本地 OCR 转文字（全本地） | 混合（OCR 打底 + 原图补充） */
+export type ImageSendMode = "direct" | "local-ocr" | "mixed";
 
 /** 模型图片能力来源：/api/models 透传的 acceptsImages（undefined=能力未知） */
 export interface ImageCapability {
@@ -49,6 +49,11 @@ export interface ImageOcrFailure {
 export interface ImageConversionResult {
   /** 与入参 images 一一对应；失败项为 null（调用方必须显式处理，不得静默丢弃） */
   texts: (string | null)[];
+  /**
+   * 与 texts 一一对应的整体置信度（0~100，tesseract 口径）；失败项为 null。
+   * 供回显确认面板标注低置信项（wip-diagnosis-model.md §1.3 规则②，阈值由调用方定）
+   */
+  confidences: (number | null)[];
   failures: ImageOcrFailure[];
   elapsedMs: number;
 }
@@ -64,15 +69,17 @@ export async function convertImagesToTexts(
 ): Promise<ImageConversionResult> {
   const started = performance.now();
   const texts: (string | null)[] = new Array(images.length).fill(null);
+  const confidences: (number | null)[] = new Array(images.length).fill(null);
   const failures: ImageOcrFailure[] = [];
   let done = 0;
 
   for (let i = 0; i < images.length; i += 1) {
     try {
-      const { text } = await ocrRecognize(images[i]);
+      const { text, confidence } = await ocrRecognize(images[i]);
       // 空结果按失败处理：图片无字与识别崩溃对用户而言都需要显式决策
       if (text.trim()) {
         texts[i] = text;
+        confidences[i] = confidence;
       } else {
         failures.push({ index: i, reason: "未识别到文字（图片中可能没有文本）" });
       }
@@ -86,5 +93,5 @@ export async function convertImagesToTexts(
     onProgress?.(done, images.length);
   }
 
-  return { texts, failures, elapsedMs: Math.round(performance.now() - started) };
+  return { texts, confidences, failures, elapsedMs: Math.round(performance.now() - started) };
 }
