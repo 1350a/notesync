@@ -137,13 +137,19 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 { role, content, images?: string[], imageTexts?: string[], files? }
 ```
 
-- `images`：直传模式的图片 dataUrl（原语义不变）。
+- `images`：直传 / 混合模式的图片 dataUrl（原语义不变）。
 - `imageTexts`：OCR 模式产物，与该消息图片一一对应的识别文本（仅非空文本）。
-  **服务端收到非空 imageTexts 即忽略 images 本体**，按
-  `【图片 N OCR】…【/图片 OCR】` 文本块（`formatOcrBlock`）拼进正文，
-  任何模型都可安全消费；此类消息不占用 MAX_IMAGE_MESSAGES 图片配额。
+  **服务端组装规则按「是否同时携带 images」区分**：
+  - 仅 `imageTexts`（全本地）：忽略 images 本体，按
+    `【图片 N OCR】…【/图片 OCR】` 文本块（`formatOcrBlock`）拼进正文，
+    任何模型都可安全消费；此类消息不占用 MAX_IMAGE_MESSAGES 图片配额。
+  - `imageTexts` + `images` 同时存在（**混合档**，wip-product-vision.md P4）：
+    OCR 文本块打底 + 原图 image_url 补充，一并组装；此类消息**占用**图片保留配额，
+    且仅当所选模型支持多模态才按混合组装，否则降级为纯 OCR 文本（与直传降级同口径）。
 - 直传路径完全不变；诊断附件无 imageTexts——OCR 模式下客户端直接把识别文本
   写入附件 `text` 字段并不再上行 dataUrl（走既有纯文本附件通道）。
+- 三档（全本地 / 多模态 / 混合）的呈现约束见 `wip-product-vision.md` P4：
+  未配置多模态模型时界面不得表现存在选择项；全本地的代价必须写在选择处。
 
 ### 6.3 Provider 能力默认值（本轮修正）
 
