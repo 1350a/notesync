@@ -19,10 +19,11 @@ export class TextAdapter implements ToolAdapter {
   buildRequest(
     model: string,
     messages: ProviderMessage[],
-    tools: ToolDefinition[]
+    tools: ToolDefinition[],
+    user?: string
   ): CompleteOptions {
     if (tools.length === 0) {
-      return { model, messages };
+      return { model, messages, user };
     }
 
     // 注入工具说明到 system prompt 末尾。
@@ -46,7 +47,7 @@ export class TextAdapter implements ToolAdapter {
       });
     }
 
-    return { model, messages: nextMessages };
+    return { model, messages: nextMessages, user };
   }
 
   async processStream(
