@@ -1,4 +1,5 @@
 import AppHeader from '@/components/layout/AppHeader';
+import SettingsModalHost from '@/components/settings/SettingsModalHost';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -7,6 +8,8 @@ export default function Home() {
   return (
     <div className="min-h-dvh flex flex-col">
       <AppHeader />
+      {/* 首页不经过 AppLayout，需自带设置弹窗宿主，顶栏 ⚙️ 才能一次点击打开（doc/mobile-ux.md §7） */}
+      <SettingsModalHost />
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-12 space-y-8">
         {/* 顶部欢迎语 */}
