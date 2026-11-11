@@ -69,6 +69,13 @@ export interface ChatMsg {
   awaitingQuestions?: AskUserQuestion[];
   /** assistant 消息：诊断模式结构化结果（SSE diagnosis 事件落地，DiagnosisCard 渲染） */
   diagnosis?: DiagnosisResult;
+  /**
+   * 本机生成的提示气泡（词表硬拦截/关怀话术，未发生任何网络请求）：
+   * 仅本地展示，不进入上行历史
+   */
+  localOnly?: boolean;
+  /** assistant 消息：被上游拦截（content_blocked）——展示固定说明且不进入上行历史（§3.1 回滚） */
+  blocked?: boolean;
 }
 
 /** 请求体里与消息相关的字段 */
@@ -86,6 +93,8 @@ export interface ChatRequestBody {
   attachments?: unknown;
   /** 诊断模式负载（context + event，结构见 lib/diagnose/types.ts DiagnoseRequestPayload；缺省即普通聊天） */
   diagnose?: unknown;
+  /** 上游终端用户标识（纯随机 UUID，doc/user-settings.md §4.1；服务端经 runToolLoop 透传） */
+  user?: unknown;
   /** 本地检索命中片段（浏览器端 RAG 产物，doc/browser-local-inference.md §6.2） */
   ragContexts?: unknown;
 }
