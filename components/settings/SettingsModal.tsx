@@ -50,8 +50,8 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* 导航：窄屏为顶部横向 tab（可横向滚动），桌面端恢复左侧固定竖栏 */}
-        <aside className="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 px-3 py-2 md:w-44 md:flex-col md:overflow-x-visible md:border-b-0 md:border-r md:border-border/60 md:px-4 md:py-4">
+        {/* 导航：窄屏为五项等分网格（图标在上、文字在下，首屏全可见免横滑），桌面端恢复左侧固定竖栏 */}
+        <aside className="grid shrink-0 grid-cols-5 gap-1 border-b border-border/60 px-2 py-2 md:flex md:w-44 md:flex-col md:gap-1 md:border-b-0 md:border-r md:border-border/60 md:px-4 md:py-4">
           <h2 className="mb-3 hidden px-2 text-lg font-bold text-foreground md:block">系统设置</h2>
           {NAV_ITEMS.map((item) => {
             const active = section === item.key;
@@ -60,7 +60,7 @@ export default function SettingsModal({
                 key={item.key}
                 type="button"
                 onClick={() => setSection(item.key)}
-                className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-lg px-1 py-1.5 text-xs transition-colors md:flex-row md:items-center md:justify-start md:gap-2 md:px-3 md:py-2 md:text-sm ${
                   active
                     ? 'bg-muted font-medium text-foreground'
                     : 'text-muted-foreground hover:bg-muted/60'
