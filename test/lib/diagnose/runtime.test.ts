@@ -349,3 +349,102 @@ describe('finalizeDiagnosis 编排', () => {
     expect(fin.context.state).toBe('intake');
   });
 });
+
+describe('完整度两套链路（附件权威 / 聊天模型判定）', () => {
+  const baseMessages = [{ role: 'system' as const, content: '诊断提示词' }, { role: 'user' as const, content: '题面' }];
+  const doneRun = (outputText: string): LoopRunResult => ({
+    outputText,
+    done: { usedRounds: 1, finishReason: 'stop' },
+    awaitingUser: false,
+    failed: false,
+  });
+  const submitWith = (completeness: unknown): Record<string, unknown> => ({
+    level: 'L1',
+    knowledgePoints: ['长方形周长'],
+    isMath: true,
+    ...(completeness !== undefined ? { completeness } : {}),
+  });
+
+  it('parseSubmission：四布尔齐全通过；缺省可选；任一非布尔拒绝', () => {
+    const good = parseSubmission(submitWith({ hasProblem: true, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false }));
+    expect(good.ok).toBe(true);
+    const absent = parseSubmission(submitWith(undefined));
+    expect(absent.ok).toBe(true);
+    const dirty = parseSubmission(submitWith({ hasProblem: 'yes', hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false }));
+    expect(dirty.ok).toBe(false);
+    const partial = parseSubmission(submitWith({ hasProblem: true }));
+    expect(partial.ok).toBe(false);
+  });
+
+  it('聊天链路：无附件时模型判定推进状态机', async () => {
+    const attachments: DiagnoseAttachment[] = [];
+    // 有题无作答 → intake 推进到 clarify（预扣 1）
+    const storeA = {
+      args: submitWith({ hasProblem: true, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false }),
+    };
+    const toClarify = await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: { hasProblem: false, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false } },
+      baseMessages,
+      mainRun: doneRun('画像正文'),
+      attachments,
+      submissionStore: storeA,
+      lastUserText: '',
+      runLoop: async () => doneRun(''),
+    });
+    expect(toClarify.context.state).toBe('clarify');
+    expect(toClarify.context.clarifyUsed).toBe(1);
+    expect(toClarify.diagnosis?.completeness.hasProblem).toBe(true);
+
+    // 有题有作答 → 快进 diagnose
+    const storeB = {
+      args: submitWith({ hasProblem: true, hasStudentAnswer: true, hasCorrectAnswer: false, hasAnalysis: false }),
+    };
+    const toDiagnose = await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: { hasProblem: false, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false } },
+      baseMessages,
+      mainRun: doneRun('画像正文'),
+      attachments,
+      submissionStore: storeB,
+      lastUserText: '',
+      runLoop: async () => doneRun(''),
+    });
+    expect(toDiagnose.context.state).toBe('diagnose');
+
+    // 模型没提供 completeness → 回落实测基线（全 false），留在 intake 引导
+    const storeC = { args: submitWith(undefined) };
+    const stuck = await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: { hasProblem: false, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false } },
+      baseMessages,
+      mainRun: doneRun('画像正文'),
+      attachments,
+      submissionStore: storeC,
+      lastUserText: '',
+      runLoop: async () => doneRun(''),
+    });
+    expect(stuck.context.state).toBe('intake');
+  });
+
+  it('附件链路防回归：模型提交的 completeness 与附件矛盾时仍以附件为准', async () => {
+    const attachments: DiagnoseAttachment[] = [{ name: '题.txt', category: 'origin', text: '题目正文' }];
+    const store = {
+      args: submitWith({ hasProblem: false, hasStudentAnswer: true, hasCorrectAnswer: true, hasAnalysis: true }),
+    };
+    const fin = await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: { hasProblem: true, hasStudentAnswer: false, hasCorrectAnswer: false, hasAnalysis: false } },
+      baseMessages,
+      mainRun: doneRun('画像正文'),
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async () => doneRun(''),
+    });
+    // 附件只有 origin：hasProblem=true / hasStudentAnswer=false → clarify，不被模型的 hasStudentAnswer=true 快进
+    expect(fin.context.state).toBe('clarify');
+    expect(fin.diagnosis?.completeness).toEqual({
+      hasProblem: true,
+      hasStudentAnswer: false,
+      hasCorrectAnswer: false,
+      hasAnalysis: false,
+    });
+  });
+});
