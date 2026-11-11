@@ -29,6 +29,8 @@ function toMathNotation(text: string): string {
   return text
     .replace(/²/g, '^2')
     .replace(/³/g, '^3')
+    // ± 展开为两个值（"x=±2" 即 "x=2 或 x=-2"），交给 splitValues 按分隔符拆开
+    .replace(/±\s*([\p{L}\p{N}.]+)/gu, '$1 或 -$1')
     .normalize('NFKC')
     .replace(/\s+/g, '')
     .replace(/√\(([^()]+)\)/g, 'sqrt($1)')
