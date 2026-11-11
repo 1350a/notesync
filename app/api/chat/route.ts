@@ -61,6 +61,8 @@ import type {
 import type { AskUserQuestion } from '@/lib/tools/types';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
+import { estimateCost, logCost } from '@/lib/chat/cost';
+import { trimMessages } from '@/lib/chat/trim';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
 import { CHAT_BASE_SYSTEM_PROMPT, CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
 import { createAdapter } from '@/lib/tools/adapters';
@@ -74,6 +76,12 @@ const encoder = new TextEncoder();
 
 // 确保内置工具注册
 registerBuiltinTools();
+
+/** 裁剪预算标签（日志用；trim.ts 的 resolveTrimBudget 是运行时值，这里只做展示） */
+function resolveTrimBudgetLabel(): string {
+  const parsed = parseInt(process.env.TRIM_BUDGET_CHARS || '', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : '24000(默认)';
+}
 
 /** 封装一条 SSE 事件为字节流 */
 function sse(event: string, data: unknown): string {
@@ -527,6 +535,13 @@ export async function POST(request: Request) {
   // 清洗历史（如将上轮的 ask_user 调用痕迹转为普通文本）
   providerMessages = adapter.preprocessMessages(providerMessages);
 
+  // 长会话上下文裁剪（总账 §9.1：不设硬边界，超预算从最旧一侧收口，最新一条用户消息永不裁）
+  const trimResult = trimMessages(providerMessages);
+  if (trimResult.trimmed) {
+    console.warn(`[chat] 会话超预算，裁剪 ${trimResult.dropped} 条早期消息（预算 ${resolveTrimBudgetLabel()} 字符）`);
+    providerMessages = trimResult.messages;
+  }
+
   // guard 判据的学生文字来源之一：本轮最新一条用户消息正文（作答也可能打在对话里）
   const lastUserText = (() => {
     if (typeof body.content === 'string' && body.content.trim()) return body.content;
@@ -542,7 +557,9 @@ export async function POST(request: Request) {
       /**
        * 跑一次工具循环并转发流：done 持有不发（诊断后处理可能追加 diagnosis 事件，
        * done 必须保持终止符语义），正文累计供 guard 引用判据比对。
+       * totalCalls 累计全部 pump 的循环轮数（含 finalize 重试），供成本计量。
        */
+      let totalCalls = 0;
       const pump = async (messages: ProviderMessage[]): Promise<LoopRunResult> => {
         let outputText = '';
         let done: LoopRunResult['done'] = null;
@@ -592,6 +609,7 @@ export async function POST(request: Request) {
             );
           } else if (ev.type === 'done') {
             done = { usedRounds: ev.usedRounds, finishReason: ev.finishReason };
+            totalCalls += ev.usedRounds;
           } else if (ev.type === 'error') {
             failed = true;
             controller.enqueue(
@@ -656,6 +674,15 @@ export async function POST(request: Request) {
                 ...(diagnose ? { diagnose: { context: diagnose.context } } : {}),
               })
             )
+          );
+          // 成本计量（总账 §9.1）：调用次数精确（含 finalize 重试的循环轮数），token 走字符估算区间
+          logCost(
+            estimateCost({
+              route: '/api/chat',
+              clientId,
+              calls: totalCalls,
+              messages: providerMessages,
+            }),
           );
         }
       } catch (err) {
