@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { resetUserId, USER_ID_STORAGE_KEY } from '@/lib/client-id';
+import { downloadTraces, loadTraces } from '@/lib/chat/trace';
 import SettingsRow from './SettingsRow';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -13,6 +14,8 @@ export default function DataSection() {
   const reset = useSettingsStore((s) => s.reset);
   // 重置后的新标识只展示尾段，完整值不出设置页（避免被整段复制外传）
   const [newUserId, setNewUserId] = useState('');
+  // trace 条数只在点开设置时读取一次（纯调试信息，不必响应式）
+  const [traceCount] = useState(() => loadTraces().length);
 
   /** 重置上游终端用户标识（doc/user-settings.md §4.1，合规可撤销要求） */
   const resetDeviceId = () => {
@@ -61,6 +64,14 @@ export default function DataSection() {
             重置
           </Button>
         </div>
+      </SettingsRow>
+      <SettingsRow
+        label="导出调试日志"
+        hint={`最近 ${traceCount} 次请求的 SSE 事件时间线（本地 trace），排障用`}
+      >
+        <Button variant="outline" size="sm" onClick={downloadTraces} disabled={traceCount === 0}>
+          导出 JSON
+        </Button>
       </SettingsRow>
       <SettingsRow
         label="清除全部本地数据"
