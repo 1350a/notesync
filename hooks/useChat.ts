@@ -10,6 +10,7 @@ import {
   PSYCH_SUPPORT_MESSAGE,
 } from '@/lib/safety/messages';
 import { checkInputSafety, loadWordlist } from '@/lib/safety/wordlist';
+import { finalizeTrace, recordEvent, startTrace } from '@/lib/chat/trace';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
@@ -184,7 +185,10 @@ export function useChat(selectedModel: string) {
 
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
 
+      // trace 落盘（P3）：本次请求的 SSE 事件流带时间戳留本地，设置页可导出供调试看时间线
+      let trace: ReturnType<typeof startTrace> | null = null;
       try {
+        trace = startTrace('/api/chat', selectedModel);
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', [CLIENT_ID_HEADER]: getClientId() },
@@ -229,6 +233,7 @@ export function useChat(selectedModel: string) {
           for (const evt of events) {
             const parsed = parseSseEvent(evt);
             if (!parsed) continue;
+            recordEvent(trace, parsed.event, parsed.data);
             const appendAssistant = (updater: (m: ChatMsg) => ChatMsg) => {
               setMessages((prev) => {
                 const next = [...prev];
@@ -324,6 +329,7 @@ export function useChat(selectedModel: string) {
           });
         }
       } finally {
+        if (trace) finalizeTrace(trace);
         setLoading(false);
         abortControllerRef.current = null;
       }
