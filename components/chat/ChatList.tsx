@@ -7,6 +7,8 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import type { ChatMsg } from '@/lib/chat/messages';
 import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
+import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
+import DiagnosisCard from './DiagnosisCard';
 import ToolTrace from './ToolTrace';
 
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
@@ -36,7 +38,16 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
   );
 }
 
-export default function ChatList({ messages, loading }: { messages: ChatMsg[]; loading: boolean }) {
+export default function ChatList({
+  messages,
+  loading,
+  onDiagnoseAction,
+}: {
+  messages: ChatMsg[];
+  loading: boolean;
+  /** 掌握度回路回调（明白了/还不懂/继续），由页面层接 useChat；缺省不渲染回路按钮 */
+  onDiagnoseAction?: (event: DiagnoseRequestEvent, label: string) => void;
+}) {
   // 滚动跟随收口在页面层（app/chat/page.tsx）：用户操作优先的条件式吸底（doc/mobile-ux.md §3）
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-4">
@@ -87,14 +98,17 @@ export default function ChatList({ messages, loading }: { messages: ChatMsg[]; l
             // ask_user 待回答的问题由输入区问题面板（AskUserPanel）承载，不再渲染气泡卡片；
             // 正文只渲染模型前导文本，前导为空时不渲染空泡
             m.awaitingQuestions && !m.content ? null : (
-              <div className="markdown-body text-sm">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
-                >
-                  {m.content || '…'}
-                </ReactMarkdown>
-              </div>
+              <>
+                <div className="markdown-body text-sm">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
+                  >
+                    {m.content || '…'}
+                  </ReactMarkdown>
+                </div>
+                {m.diagnosis ? <DiagnosisCard result={m.diagnosis} onAction={onDiagnoseAction} /> : null}
+              </>
             )
           ) : (
             <>
