@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { resetUserId, USER_ID_STORAGE_KEY } from '@/lib/client-id';
 import { downloadTraces, loadTraces } from '@/lib/chat/trace';
+import { getHistoryStorage } from '@/lib/history/storage';
 import SettingsRow from './SettingsRow';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -26,9 +27,13 @@ export default function DataSection() {
     setNewUserId(generated.slice(-8));
   };
 
-  /** 清除本浏览器内全部 notesync 本地数据后刷新（客户端标识一并重置，不可撤销） */
-  const clearAll = () => {
-    if (!window.confirm('将清除本浏览器的全部本地数据（设置与客户端标识），并刷新页面。继续？')) {
+  /** 清除本浏览器内全部 notesync 本地数据（设置、客户端标识、对话历史）后刷新，不可撤销 */
+  const clearAll = async () => {
+    if (
+      !window.confirm(
+        '将清除本浏览器的全部本地数据（设置、客户端标识与对话历史），并刷新页面。继续？'
+      )
+    ) {
       return;
     }
     try {
@@ -38,6 +43,8 @@ export default function DataSection() {
         if (key?.startsWith(LOCAL_PREFIX)) keys.push(key);
       }
       keys.forEach((key) => window.localStorage.removeItem(key));
+      // 对话历史存在 IndexedDB，清 localStorage 清不到；降级实现下是空操作，不抛错
+      await getHistoryStorage().clearAll();
     } catch (err) {
       console.warn('[settings] 清除本地数据失败', err);
       return;
@@ -75,12 +82,12 @@ export default function DataSection() {
       </SettingsRow>
       <SettingsRow
         label="清除全部本地数据"
-        hint="删除本浏览器内的设置与客户端标识，操作不可撤销"
+        hint="删除本浏览器内的设置、客户端标识与对话历史，操作不可撤销"
       >
         <Button
           variant="outline"
           size="sm"
-          onClick={clearAll}
+          onClick={() => void clearAll()}
           className="text-red-600 hover:text-red-700"
         >
           清除并刷新
