@@ -33,7 +33,7 @@ import type {
   StreamDelta,
   ThinkingEffort,
 } from './types.ts';
-import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '../safety/redact.ts';
+import { MAX_ERROR_LOG_CHARS, extractUpstreamMessage, redactUpstreamText } from '../safety/redact.ts';
 
 /**
  * 思考强度 → Provider 请求体参数映射（doc/user-settings.md §2.1，协议预留的两个参数名）。
@@ -479,10 +479,11 @@ export class OpenAICompatProvider implements LLMProvider {
    *
    * 原文（errText）此前被整段拼进文案，随 error 事件下发到浏览器，里面有
    * request_id、账号信息与内部字段名。现在改为：原文只进服务端日志，
-   * 响应侧给「模板化提示 + 脱敏截断的上游摘要」。
+   * 响应侧给「模板化提示 + 脱敏截断的上游 message」。
    *
-   * 之所以不把原文彻底丢掉：explainProviderError 依赖上游英文关键词判断
-   * 「模型不接受图片输入」这类定向提示，摘要必须留下语义。
+   * 之所以不把上游语义彻底丢掉：explainProviderError 依赖上游英文关键词判断
+   * 「模型不接受图片输入」这类定向提示，摘要必须留下语义。但只取 message 原文，
+   * 不贴整段 JSON——上游的 type / param / code 字段既无用又与本地 error.code 混淆。
    */
   private errorMessage(status: number, errText: string): string {
     const raw = (errText || '').trim();
@@ -501,7 +502,7 @@ export class OpenAICompatProvider implements LLMProvider {
               : status >= 500
                 ? '上游服务异常，请稍后重试。'
                 : '请求被上游拒绝，请检查 API Key、余额与模型配置。';
-    const summary = redactUpstreamText(raw);
+    const summary = redactUpstreamText(extractUpstreamMessage(raw));
     return `${this.displayName} 返回错误（HTTP ${status}）：${hint}${
       summary ? `（上游摘要：${summary}）` : ''
     }`;
