@@ -31,10 +31,9 @@ export default function AskUserPanel({
 
   const setDraft = (v: string) => setDrafts((prev) => prev.map((d, i) => (i === idx ? v : d)));
 
-  /** 标记当前题跳过并推进到下一题（最后一题则停留，由提交按钮收口） */
-  const skip = () => {
-    setSkipped((prev) => prev.map((s, i) => (i === idx ? true : s)));
-    setIdx((v) => Math.min(v + 1, total - 1));
+  /** 跳过/撤销跳过当前题（单问题场景也要有即时反馈，故做成可见的可切换状态） */
+  const toggleSkip = () => {
+    setSkipped((prev) => prev.map((s, i) => (i === idx ? !s : s)));
   };
 
   const submit = () => {
@@ -113,13 +112,21 @@ export default function AskUserPanel({
         </div>
       )}
 
+      {/* 跳过状态即时可见：单问题场景下点「跳过」不再看起来没反应（提交时记"已跳过"） */}
+      {skipped[idx] && (
+        <p className="px-1 text-xs text-muted-foreground" aria-live="polite">
+          已跳过此题——点「撤销跳过」可重新作答
+        </p>
+      )}
+
       {/* 自由输入：touch 16px 防 iOS 聚焦强制放大（doc/mobile-ux.md §4） */}
       <input
         value={drafts[idx] ?? ''}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="输入你的答案…"
-        className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 touch:text-base"
+        placeholder={skipped[idx] ? '此题已跳过' : '输入你的答案…'}
+        disabled={skipped[idx]}
+        className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/30 touch:text-base disabled:cursor-not-allowed disabled:opacity-60"
       />
 
       {/* 底栏：翻页 + 跳过/下一题/提交 */}
@@ -148,8 +155,8 @@ export default function AskUserPanel({
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={skip}>
-            跳过
+          <Button variant="outline" size="sm" onClick={toggleSkip}>
+            {skipped[idx] ? '撤销跳过' : '跳过'}
           </Button>
           {isLast ? (
             <Button
