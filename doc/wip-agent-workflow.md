@@ -9,9 +9,12 @@ AIGC:
     ReservedCode2: xy41ionsI0d6OfbN6UA4hXUxZBiLoj4ntzs22dPBQyDaejAzjwUCJ31otylOjkBpTqjdJfrmCICh2CgR9m37yf8gqDAQ0C5edM+rfMVgsN+6uGr3QseKAlsZ/cyUhDkha2MNEcSzYUgQKJ2CQc/itLKAYsVmiaZtqtGOjnV7Zvk3VHG2kQdpjjXTWnM=
 ---
 
-# 诊断工作流（WIP · 未完成，待评审）
+# 诊断工作流（状态机 / 追问预算 / 整卷）
 
-> **状态：草稿 / 未定稿，尚未实装。**
+> **状态：已实装（显式状态机 / 追问预算 / 整卷四步），本文作为行为约定继续有效。**
+> 落点：`lib/diagnose/state-machine.ts`（纯函数迁移表）、`lib/diagnose/runtime.ts`（结构化判定与编排）、
+> `app/api/chat/route.ts`（SSE 事件推导）、`app/api/diagnose-paper/route.ts`（整卷，契约见 `doc/diagnose-paper.md`）。
+> 实装与本稿的差异：`strategize` 已合并进 `diagnose`（策略卡按 code 服务端组装，不再单独迁移）；`lookup_strategy` / `lookup_errorcause` 与切题一并内联进提示词，**未工具化**。
 > 依赖：`wip-diagnosis-model.md`（中间结构与错因表）。
 > 现存实现：`lib/tools/loop.ts` 的多轮工具循环 + `app/api/chat/route.ts` 的 SSE 编排。本文在其上加**状态机**与**终止条件**，不改动既有工具协议。
 >
@@ -30,7 +33,7 @@ AIGC:
 ## 2. 状态定义
 
 ```
-intake ──► clarify ──► diagnose ──► strategize ──► explain ──► done
+intake ──► clarify ──► diagnose ──► explain ──► done
   │           │            │
   │           └─(拒绝补充)─┴──► L1_only ──► done
   └─(非数学题)────────────────────────────► reject ──► done
@@ -40,8 +43,7 @@ intake ──► clarify ──► diagnose ──► strategize ──► expla
 |---|---|---|---|
 | `intake` | 用户消息/图片 | 原题文本、是否数学题 | 有原题 → `clarify`；非数学 → `reject` |
 | `clarify` | 原题 | 是否已有作答 | 有作答 → `diagnose`；无 → 用「常见错法清单」补问，一轮后仍无 → `L1_only` |
-| `diagnose` | 原题 + 作答 | `errorCause`（主 + 次）、置信度 | 置信度达标 → `strategize`；不达标 → 回 `clarify` 一次，仍未达标 → 低置信输出 |
-| `strategize` | `errorCause` | `StrategyCard` | 恒迁移到 `explain` |
+| `diagnose` | 原题 + 作答 | `errorCause`（主 + 次）、置信度、`StrategyCard` | 置信度达标 → `explain`；不达标 → 回 `clarify` 一次，仍未达标 → 低置信输出（仍进 `explain`） |
 | `explain` | 诊断结果 | 分级提示（L1 起） | 用户点「继续」→ 逐级下降；点「明白了」→ `done`；点「还不懂」→ 自环（降到下一级）；用户终止 → `done` |
 | `L1_only` | 原题 | L1 题目画像 + 声明 | 直接 `done` |
 | `reject` | — | 固定话术 + 能力说明 | 直接 `done` |
@@ -50,15 +52,15 @@ intake ──► clarify ──► diagnose ──► strategize ──► expla
 
 v1 只需三个工具（原生 Function Calling），沿用 `doc/tool-protocol.md` 的定义风格：
 
-| 工具 | 作用 | 备注 |
-|---|---|---|
-| `ask_user` | 补问（已实装） | 复用现有 `awaiting_user` 中断链路，不新造协议 |
-| `lookup_strategy` | 按错因 code 查策略卡 | **直查，不是检索** |
-| `lookup_errorcause` | 错因枚举表查询（供模型对齐 code） | 可合并进提示词，视上下文预算决定 |
+| 工具 | 作用 | 备注 | 实装决策 |
+|---|---|---|---|
+| `ask_user` | 补问（已实装） | 复用现有 `awaiting_user` 中断链路，不新造协议 | 保留 |
+| `lookup_strategy` | 按错因 code 查策略卡 | **直查，不是检索** | **未工具化**：策略卡按 code 在服务端注入提示词（`lib/diagnose/strategies.ts`），省一次往返 |
+| `lookup_errorcause` | 错因枚举表查询（供模型对齐 code） | 可合并进提示词，视上下文预算决定 | **未工具化**：14 条枚举直接内联（`lib/diagnose/error-causes.ts`） |
 
-整卷场景额外需要 `split_questions`（切题），见 §5。
+整卷场景额外需要 `split_questions`（切题），见 §5——同样**未工具化**，切题提示词内联在 `lib/diagnose/paper.ts`。
 
-> 注：`lookup_strategy` / `lookup_errorcause` 本质是本地常量查询，不走网络。若上下文预算允许，也可直接内联进 system 提示，省一次工具往返——**建议先内联，实测上下文占用后再决定是否工具化**。
+> 注：上述三者本质是本地常量查询，不走网络。实测未出现「内联后上下文超预算」的情况，故维持内联；若后续错因表扩张到影响上下文，再考虑工具化。
 
 ## 4. 追问预算与终止条件
 
@@ -135,10 +137,10 @@ v1 只需三个工具（原生 Function Calling），沿用 `doc/tool-protocol.m
 
 ## 7. 待办
 
-- [ ] 状态机落地位置：建议 `lib/diagnose/state-machine.ts`，纯函数，便于测试。
-- [ ] `DiagnosisResult` 与状态迁移的契约测试。
-- [ ] `lookup_strategy` 先内联还是工具化，实测后决定。
-- [ ] 整卷流程 ① 切题的结构化输出 schema 设计。
+- [x] 状态机落地位置：`lib/diagnose/state-machine.ts`，纯函数，便于测试。
+- [x] `DiagnosisResult` 与状态迁移的契约测试（`test/lib/diagnose/contract.test.ts`、`state-machine.test.ts`）。
+- [x] `lookup_strategy` 先内联还是工具化——已定为内联，见 §3。
+- [x] 整卷流程 ① 切题的结构化输出 schema 设计（`lib/diagnose/paper.ts`，契约见 `doc/diagnose-paper.md`）。
 - [ ] `supportsTools` 能力位（挂账，v1 不做）。
 - [ ] text 模式修复（挂账，v1 不做）。
 *（内容由AI生成，仅供参考）*
