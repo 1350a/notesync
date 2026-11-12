@@ -109,7 +109,7 @@ interface DiagnoseAttachment {
 | 档位 | 判定条件 | 组装行为 | 外发内容 |
 |---|---|---|---|
 | `multimodal` 直传 | 模型支持图片，附件只带 `dataUrl` | 按四类标签分组直发 `image_url`，超 4 张降级为文字占位 | 原图 |
-| `mixed` 混合 | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text`（客户端本地 OCR 文本） | 先发 `[文件 X · 本地OCR]` 文本块打底，再发原图；OCR 文本与其它文本一起均分字符预算 | 原图 + OCR 文本 |
+| `mixed` 混合 | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text`（客户端 OCR 文本；转写引擎为本地 tesseract 或云端 glm-ocr，见 doc/cloud-ocr.md） | 先发 `[文件 X · 本地OCR]` 文本块打底，再发原图；OCR 文本与其它文本一起均分字符预算 | 原图 + OCR 文本 |
 | `text-only` 降级 | 模型不支持图片输入 | 带 OCR 文本的项发文本块，无文本的项发文字占位；均不占图片配额 | 仅文本 |
 
 判定统一由 `lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode(attachments, allowImages)`
@@ -153,7 +153,8 @@ interface DiagnoseAttachment {
 ## 9. 已知未做
 
 - `.doc` / `.docx` 解析（本轮明确报不支持）。
-- 扫描件 PDF 的 OCR（旧 `lib/ocr.ts` 已停用，未接入本链路）。
+- 扫描件 PDF 的 OCR（旧 `lib/ocr.ts` 已停用，未接入本链路；图片的云端转写引擎已由
+  doc/cloud-ocr.md 接入，PDF 接入 glm-ocr 仍为单独挂账）。
 - 多模态能力按模型标注：智谱以 `ZHIPU_CATALOG` 元数据目录为唯一事实来源
   （vision / free 字段），DeepSeek / Custom 仍为 Provider 级 `acceptsImages`；
   未做逐模型的在线能力探测。智谱的 `/models` 枚举端点仅用于健康判定
