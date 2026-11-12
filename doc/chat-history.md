@@ -221,3 +221,45 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 ### 7.5 过期图片占位
 
 `ChatList` 对用户消息的 `images.map`：`src === ''` 且 `expiredImages.includes(idx)` → 渲染 `h-24 w-24` 灰底虚线块（文案「图片已过期」，`title` 说明"会话容量超限，此图已被清理"）；`src === ''` 且未登记 → 返回 `null` 跳过该槽位（不渲染破图）。其余情况照旧 `<img>`。
+
+---
+
+## 8. 会话与消息级操作（批次 3）
+
+### 8.1 会话重命名
+
+| 环节 | 口径 |
+| --- | --- |
+| 契约 | `storage.renameSession(id, title)`：`normalizeTitle` 规整（折叠空白 + 20 码点截断），空输入返回 `false` 表示拒绝；成功即置 `titleEdited = true` |
+| 排序 | **不更新 `updatedAt`**：改标题不是会话活动，不应把旧会话顶到列表首位 |
+| UI | 侧栏会话项双击标题进入内联输入；`Enter`/失焦提交，`Esc` 取消；提交值与原值相同或规整后为空 → 直接退出不写库 |
+| 内存同步 | 改的是当前会话时，`useChat` 的 `sessionMetaRef` 必须同步 `{ title, titleEdited: true }`，否则下次 `flushSession` 会用旧标题覆盖（`store` 以 `renameSignal` + `renamedSession` 广播，规则同 §7.1 的 signal 模式） |
+| 兜底 | 即便内存没同步到，`writeSession` 也以 `previousMeta.titleEdited` 优先取旧标题，避免"改完名又被自动派生覆盖" |
+
+### 8.2 导出会话
+
+- 纯函数 `buildSessionMarkdown(meta, messages)`：标题 + 创建/更新时间 + 消息数，逐条输出角色、正文、思考过程（折叠引用块）、工具调用摘要、诊断结果、附件清单；图片一律输出占位标记 `[图片]`，命中 `expiredImages` 的槽位输出 `[图片已过期]`，**不内联 dataURL**（导出物是给人读的文本，塞 base64 会让文件膨胀到不可用）。
+- 文件名 `buildSessionFileName(meta, now)` → `notesync-<标题>-<yyyyMMdd-HHmm>.md`；标题里的路径分隔符与空白一律替换为 `-`，避免落盘失败。
+- 导出内容取自**库内已落盘快照**（`storage.loadSession`），不读内存态：侧栏与聊天页不共享 `messages`，也不应为导出新增跨组件读取通道。若当前会话正在生成，导出物缺末尾未落盘部分——这属于已知取舍，UI 用 `title` 说明。
+- 触发入口：侧栏会话项悬停的第二枚图标（`↓`）。
+
+### 8.3 消息级操作
+
+| 操作 | 语义 | 实现要点 |
+| --- | --- | --- |
+| 重新生成 | 截断最后一条 user 消息之后的全部内容，重发该条 | 复用 `sendMessage`；上行历史改读 `messagesRef`（见下） |
+| 编辑重发 | 截断到目标 user 消息**之前**，用新正文重发，附件沿用原条 | 只改正文，`images`/`ocrTexts`/`imageSendMode` 原样带回 |
+| 删除单条 | 从 `messages` 移除该条 | 删空即等价"会话作废"：清内存态并 `deleteSession`，不留空壳条目 |
+
+**索引收缩契约（本节唯一新增的硬约束）**：`expiredImages` 的 `msg` 是消息下标，与 blobs 的 `sessionId:msgIndex:imgIndex` 严格对齐。任何改变消息数量的操作都必须同批处理坐标：
+
+- 删除下标 `removedAt`：`msg > removedAt` 一律减 1，`msg === removedAt` 丢弃（该条连同它的过期登记一起消失）。
+- 截断（重新生成 / 编辑重发）：只保留 `msg < keepLength` 的登记。
+
+对应纯函数 `shiftExpiredRefsOnDelete(refs, removedAt)` / `trimExpiredRefs(refs, keepLength)`（`lib/history/contract.ts`）。**不做这一步的后果**：错位的过期登记会落到别的消息上，渲染层把好图显示成「图片已过期」。附件本体无需手工迁移——`writeSession` 覆盖写前会 `delete(sessionKeyRange(id))` 清空本会话 blobs，再按新下标重建。
+
+**上行历史口径修正**：`sendMessage` 组装请求体时一律读 `messagesRef.current`，不再读 `messages` 闭包。重新生成/编辑重发要先剪枝内存态再调发送，闭包值此时仍是剪枝前的数组，会把本轮要丢弃的旧回答一起上行。
+
+**落盘与禁用**：三种操作都走 §7.3 的 700ms 合并落库；`loading` 期间全部禁用（生成中改历史会让流式 `appendAssistant` 写到最后一条错位的消息上）。
+
+**UI**：消息气泡悬停/聚焦显示操作条（`components/chat/MessageActions.tsx`）：user 消息给「编辑 / 删除」，assistant 消息给「复制 / 删除」，最后一条 assistant 额外给「重新生成」。触屏常显（同 `doc/mobile-ux.md` §4）。
