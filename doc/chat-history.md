@@ -173,8 +173,9 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | --- | --- | --- |
 | 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 已完成 |
 | 2 | `lib/history/` 工厂与搜索纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
+| 3 | §8 会话与消息级操作：会话重命名、导出 Markdown、消息级删除 / 重新生成 / 编辑重发 | ✅ 已完成 |
 
-**批次 2 未做项（挂账，不在界面出现入口 —— `AGENTS.md` §8）**：会话重命名 UI（`renameSession` 与 `titleEdited` 已在存储层就绪，无入口）、会话内消息级操作、导出会话、跨会话全文高亮跳转。
+**批次 3 未做项（挂账，不在界面出现入口 —— `AGENTS.md` §8）**：跨会话全文高亮跳转（搜到正文命中后跳到该会话并高亮定位）。
 
 ---
 
