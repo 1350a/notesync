@@ -80,6 +80,8 @@ export default function UploadArea() {
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
+  /** 中性提示（如混合档 OCR 失败但原图仍上行）：与 error 的红框区分，不阻断流程 */
+  const [notice, setNotice] = useState('');
   /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，agent-workflow.md §5） */
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
@@ -119,7 +121,13 @@ export default function UploadArea() {
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
-  const imageMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
+  /** 只有模型明确声明支持图片，直传与混合两档才成立（product-vision.md P4 约束②；
+   *  模型清单未返回能力字段时不渲染这两档，避免用户选了必定失败的档位） */
+  const canDirect = currentModel?.acceptsImages === true;
+  const requestedMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
+  // 覆盖项可能来自上一张图 / 上一个模型，能力不足时回落全本地，不留失配状态
+  const imageMode: ImageSendMode =
+    requestedMode !== 'local-ocr' && !canDirect ? 'local-ocr' : requestedMode;
 
   /** 加入文件：先判定类型，再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
@@ -194,35 +202,48 @@ export default function UploadArea() {
     setIsSending(true);
     setResult('');
     setError('');
+    setNotice('');
     setPaperView(null);
 
     try {
       let prepared = readyRows;
       const imageRows = readyRows.filter((row) => row.dataUrl);
-      if (imageMode === 'local-ocr' && imageRows.length > 0) {
+      // 全本地与混合两档都要先跑浏览器本地 OCR，差别只在原图是否随请求上行
+      if ((imageMode === 'local-ocr' || imageMode === 'mixed') && imageRows.length > 0) {
         setOcrProgress({ done: 0, total: imageRows.length });
-        const result = await convertImagesToTexts(
+        const ocrResult = await convertImagesToTexts(
           imageRows.map((row) => row.dataUrl!),
           (done, total) => setOcrProgress({ done, total })
         );
         setOcrProgress(null);
-        if (result.failures.length > 0) {
-          // 失败阻断提交：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
-          const names = result.failures.map((f) => imageRows[f.index].name).join('、');
-          setError(
-            `本地OCR未能识别：${names}（${result.failures[0].reason}）。可移除该文件或改用「直传原图」。`
+        if (ocrResult.failures.length > 0) {
+          const names = ocrResult.failures.map((f) => imageRows[f.index].name).join('、');
+          if (imageMode === 'local-ocr') {
+            // 全本地：识别文本是唯一通道，失败即无内容可发 → 阻断，由用户决策
+            // （doc/browser-local-ocr.md §6.4：绝不静默丢图片内容）
+            setError(
+              `本地OCR未能识别：${names}（${ocrResult.failures[0].reason}）。可移除该文件或改用「直传原图」。`
+            );
+            return;
+          }
+          // 混合：原图仍会随请求上行，内容没丢 → 不阻断，只提示该文件降级为纯原图
+          setNotice(
+            `本地OCR未能识别：${names}（${ocrResult.failures[0].reason}）。该文件本次只上传原图，不影响诊断。`
           );
-          return;
         }
         const textByRow = new Map(
-          imageRows.map((row, i) => [row.id, result.texts[i] as string] as const)
+          imageRows.map((row, i) => [row.id, ocrResult.texts[i] as string | null] as const)
         );
         prepared = readyRows.map((row) => {
           const ocrText = textByRow.get(row.id);
-          // OCR 成功的图片行：识别文本并入 text，不再上行 dataUrl（走纯文本附件通道）
-          return ocrText
-            ? { ...row, text: mergeOcrText(row.text, ocrText), dataUrl: undefined }
-            : row;
+          if (!ocrText) return row;
+          return {
+            ...row,
+            text: mergeOcrText(row.text, ocrText),
+            // 全本地：原图不上行（纯文本附件通道）；
+            // 混合：OCR 文本打底 + 原图同时上行，服务端按 mixed 组装（doc/diagnose-file-intake.md §6）
+            dataUrl: imageMode === 'mixed' ? row.dataUrl : undefined,
+          };
         });
       }
 
@@ -362,19 +383,23 @@ export default function UploadArea() {
               role="group"
               aria-label="图片发送方式"
             >
-              <button
-                type="button"
-                disabled={isSending || ocrProgress !== null}
-                onClick={() => setOcrOverride('direct')}
-                className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
-                  imageMode === 'direct'
-                    ? 'bg-slate-100 font-medium text-slate-800'
-                    : 'text-slate-500 hover:bg-slate-50'
-                }`}
-                title="图片原图随附件直传（需所选模型支持多模态）"
-              >
-                直传原图
-              </button>
+              {/* 三档：直传原图 / OCR转文字 / 混合。后两档中的直传与混合都依赖模型图片能力，
+                  能力不明时只留「OCR转文字」，避免摆出选了必定失败的选项（product-vision.md P4 约束②） */}
+              {canDirect && (
+                <button
+                  type="button"
+                  disabled={isSending || ocrProgress !== null}
+                  onClick={() => setOcrOverride('direct')}
+                  className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
+                    imageMode === 'direct'
+                      ? 'bg-slate-100 font-medium text-slate-800'
+                      : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                  title="图片原图随附件直传（需所选模型支持多模态）"
+                >
+                  直传原图
+                </button>
+              )}
               <button
                 type="button"
                 disabled={isSending || ocrProgress !== null}
@@ -388,6 +413,21 @@ export default function UploadArea() {
               >
                 OCR转文字
               </button>
+              {canDirect && (
+                <button
+                  type="button"
+                  disabled={isSending || ocrProgress !== null}
+                  onClick={() => setOcrOverride('mixed')}
+                  className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
+                    imageMode === 'mixed'
+                      ? 'bg-slate-100 font-medium text-slate-800'
+                      : 'text-slate-500 hover:bg-slate-50'
+                  }`}
+                  title="本地OCR文本打底 + 原图同传：识别不准时模型仍能看图，代价是原图也出设备"
+                >
+                  混合
+                </button>
+              )}
             </div>
             {/* P4 约束①：代价必须写在选择处（触屏无 hover）；
                 safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
@@ -398,7 +438,9 @@ export default function UploadArea() {
             >
               {imageMode === 'local-ocr'
                 ? '图片经浏览器本地识别转文字后发送（原图不出设备）；但用不到原图理解，图文混排 / 手写可能识别有误'
-                : '多模态：图片将上传至模型服务商；若该模型实际不吃图片，会返回明确的错误提示'}
+                : imageMode === 'mixed'
+                  ? '混合：本地识别打底 + 原图一并上传至模型服务商（外发最多，识别不准时仍能看图）；若该模型实际不吃图片，会返回明确的错误提示'
+                  : '多模态：图片将上传至模型服务商；若该模型实际不吃图片，会返回明确的错误提示'}
             </span>
           </div>
         )}
@@ -442,7 +484,9 @@ export default function UploadArea() {
                     ? row.dataUrl
                       ? imageMode === 'local-ocr'
                         ? '图片已就绪（发送时本地OCR转文字）'
-                        : '图片已就绪'
+                        : imageMode === 'mixed'
+                          ? '图片已就绪（发送时本地OCR打底 + 原图同传）'
+                          : '图片已就绪'
                       : `文字已提取（${row.text?.length ?? 0} 字符）`
                     : null;
               return (
@@ -521,6 +565,12 @@ export default function UploadArea() {
               ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL），或确认本地模型服务（如 Ollama）已启动后重启服务。
             </p>
           )}
+        </div>
+      )}
+
+      {notice && (
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-amber-200">
+          <p className="text-sm text-amber-700 whitespace-pre-wrap">{notice}</p>
         </div>
       )}
 

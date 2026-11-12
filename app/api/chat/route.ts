@@ -42,7 +42,7 @@ import {
   MAX_IMAGE_MESSAGES,
   type ChatRequestBody,
 } from '@/lib/chat/messages';
-import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
+import { assembleDiagnoseMessage, resolveAssembleImageMode } from '@/lib/diagnose/assemble';
 import { buildDiagnoseSystemPrompt } from '@/lib/diagnose/prompts';
 import { isThinkingEffort } from '@/lib/settings/types';
 import { parseAttachments } from '@/lib/diagnose/parse-attachments';
@@ -281,7 +281,10 @@ function mockDiagnosisScript(
 /** MOCK 响应流：不解析模型，直接回显组装摘要 */
 function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): Response {
   const assembled = assembleDiagnoseMessage(attachments, {
-    imageMode: process.env.MOCK_IMAGE_MODE === "text-only" ? "text-only" : "multimodal",
+    imageMode:
+      process.env.MOCK_IMAGE_MODE === "text-only"
+        ? "text-only"
+        : resolveAssembleImageMode(attachments, true),
   });
   const { messages: chatMessages } = buildProviderMessages(body);
   const hasChatContent = chatMessages.some((m) =>

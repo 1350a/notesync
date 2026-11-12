@@ -16,7 +16,7 @@
  * 单组诊断失败→跳过该组并在步骤里留痕，不阻断其他组。
  * MOCK_MODEL=1：固定剧本零 token 走通全流程（内容标注「MOCK 仿真」）。
  */
-import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
+import { assembleDiagnoseMessage, resolveAssembleImageMode } from '@/lib/diagnose/assemble';
 import { parseAttachments } from '@/lib/diagnose/parse-attachments';
 import {
   buildGroupDiagnosePrompt,
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
           : provider.acceptsImages !== false;
 
         const assembled = assembleDiagnoseMessage(attachments, {
-          imageMode: allowImages ? 'multimodal' : 'text-only',
+          imageMode: resolveAssembleImageMode(attachments, allowImages),
         });
         if (!assembled.message) {
           controller.enqueue(

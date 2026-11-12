@@ -6,9 +6,14 @@
  *
  * 文本预算按参与文件数均分（默认总量 8000 字符），避免一份长 PDF 吃掉全部额度、
  * 把其它文件挤成空段。图片上限默认 4 张，超出的明确降级为文字占位而不是静默丢弃。
+ *
+ * 图片投喂三档见 doc/diagnose-file-intake.md §6：直传（multimodal）/ 纯文本降级（text-only）/
+ * 混合（mixed，本地 OCR 文本打底 + 原图补充）。mixed 由附件形态与模型能力自动判定，
+ * 见 resolveAssembleImageMode——客户端不额外传档位字段。
  */
 import type { ProviderImagePart, ProviderTextPart } from '../provider/types.ts';
 import type {
+  AssembleImageMode,
   AssembleOptions,
   AssembleResult,
   DiagnoseAttachment,
@@ -42,6 +47,24 @@ function isTextItem(item: DiagnoseAttachment): boolean {
 }
 
 /**
+ * 由附件形态与模型图片能力推导投喂方式（三档口径见 doc/diagnose-file-intake.md §6）。
+ * - 模型不收图 → `text-only`；
+ * - 任一项同时带 OCR 文本与原图（客户端混合档产物）→ `mixed`；
+ * - 其余 → `multimodal`。
+ * 客户端不传档位字段：附件形态本身就表达了意图，避免多一处可失配的状态。
+ */
+export function resolveAssembleImageMode(
+  items: readonly DiagnoseAttachment[],
+  allowImages: boolean
+): AssembleImageMode {
+  if (!allowImages) return 'text-only';
+  const mixed = items.some(
+    (item) => Boolean(item.dataUrl?.trim()) && Boolean(item.text?.trim())
+  );
+  return mixed ? 'mixed' : 'multimodal';
+}
+
+/**
  * 组装诊断消息。
  * @returns message 为 null 表示没有任何可发送内容，调用方应据此拒绝请求
  */
@@ -64,8 +87,11 @@ export function assembleDiagnoseMessage(
     return { message: null, stats: { images, texts, chars }, warnings };
   }
 
-  // 预算按"真正走文本通道的文件数"均分，纯图片不占额度
-  const textCount = items.filter(isTextItem).length;
+  // 预算按"真正走文本通道的文件数"均分，纯图片不占额度；
+  // 混合档与纯文本降级档下，带 OCR 文本的图片项也吃文本额度（OCR 文本要拼进消息）
+  const textCount = items.filter((item) =>
+    imageMode === 'multimodal' ? isTextItem(item) : Boolean(item.text?.trim())
+  ).length;
   const perFile =
     textCount > 0 ? Math.max(minCharsPerFile, Math.floor(totalChars / textCount)) : 0;
 
@@ -83,13 +109,46 @@ export function assembleDiagnoseMessage(
 
       const dataUrl = item.dataUrl?.trim();
       if (dataUrl) {
-        if (imageMode === 'multimodal' && images < maxImages) {
+        const ocrBody = item.text?.trim();
+        const acceptsImages = imageMode !== 'text-only';
+        const hasRoom = acceptsImages && images < maxImages;
+        let ocrSent = false;
+
+        // 混合档：OCR 文本打底，先文本后图（模型先拿到可读内容，再看图校核）；
+        // text-only 且带 OCR 文本时同样投喂文本——模型不收图不等于该丢内容
+        // （与 doc/browser-local-ocr.md §6.2 「降级为纯 OCR 文本」同口径）
+        if (ocrBody && (imageMode === 'mixed' || !acceptsImages)) {
+          const clipped = ocrBody.slice(0, perFile);
+          const truncated = ocrBody.length > clipped.length;
+          parts.push({
+            type: 'text',
+            text: truncated
+              ? `[文件 ${item.name} · 本地OCR]\n${clipped}\n……（内容过长，已截断）`
+              : `[文件 ${item.name} · 本地OCR]\n${clipped}`,
+          });
+          texts += 1;
+          chars += clipped.length;
+          ocrSent = true;
+          if (truncated) {
+            warnings.push(`${item.name}：本地OCR文本超出单文件 ${perFile} 字符预算，已截断`);
+          }
+        } else if (ocrBody) {
+          // 直传档带了 OCR 文本：形态上本该走混合档，这里按直传处理但必须留痕
+          warnings.push(`${item.name}：直传档不投喂本地OCR文本，仅发送原图`);
+        }
+
+        if (hasRoom) {
           parts.push({ type: 'image_url', image_url: { url: dataUrl } });
           images += 1;
         } else {
-          const why = imageMode === 'multimodal' ? '超出图片数量上限' : '当前模型不支持图片输入';
-          parts.push({ type: 'text', text: `[图片 ${item.name}]（${why}，未发送图像本体）` });
-          warnings.push(`${item.name}：${why}，已降级为文字占位`);
+          const why = acceptsImages ? '超出图片数量上限' : '当前模型不支持图片输入';
+          // 已有 OCR 文本顶替时不再插重复占位，只留 warning 痕迹
+          if (!ocrSent) {
+            parts.push({ type: 'text', text: `[图片 ${item.name}]（${why}，未发送图像本体）` });
+          }
+          warnings.push(
+            `${item.name}：${why}，${ocrSent ? '已改用本地OCR文本' : '已降级为文字占位'}`
+          );
         }
         continue;
       }
