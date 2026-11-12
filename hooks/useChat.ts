@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
 import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
 import { CLIENT_ID_HEADER, getClientId, getUserId } from '@/lib/client-id';
 import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/lib/diagnose/types';
+import { acquireLocalEngine } from '@/lib/local/engine-lease';
 import { shouldRetrieve } from '@/lib/local/rag/gate';
 import { searchKnowledge } from '@/lib/local/rag/store';
 import {
@@ -82,6 +83,11 @@ export function useChat(selectedModel: string) {
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
   const thinkingEffort = useSettingsStore((s) => s.settings.generation.thinkingEffort);
+
+  // 本地引擎租约（总账 §3）：开 RAG 时检索链路会顺手初始化引擎（searchKnowledge →
+  // embedTexts → initLocalEngine），页面卸载要还；与能力页/设置分区共用同一份计数，
+  // 最后一个使用方退出才 terminate。关闭 RAG 时只是计数，不触发下载或编译。
+  useEffect(() => acquireLocalEngine(), []);
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
