@@ -60,7 +60,8 @@ AIGC:
 | 本地嵌入引擎（bge-small-zh-v1.5） | 已实装 | ✅ | `lib/local/engine.ts` |
 | 混合检索纯函数 | 已实装 | ✅ | `lib/local/rag/search.ts` |
 | 种子知识卡 | 27 条，数学单学科 | 🟡 | `lib/local/rag/seed.ts` |
-| RAG 触发条件（长语料才启用） | 现为全场景开关 | ❌ | `doc/browser-local-inference.md` |
+| RAG 触发条件（查询侧阈值） | 已实装：`shouldRetrieve()`，有效字符数 ≥ 8（去空白）才检索，短问候直接跳过 | ✅ | `lib/local/rag/gate.ts` |
+| RAG 触发条件（语料侧阈值） | 未实装：种子卡固定，语料规模阈值随「笔记语料索引化」落地时再定（协议 §5.4） | 🧊 | `doc/browser-local-inference.md` §5.4 |
 | 语义缓存 | 无 | 🧊 | — |
 | 错因聚类（复用嵌入） | 无 | 🧊 | — |
 | `chunkText` 调用方 | 纯函数已有，无调用方 | 🧊 | `lib/local/rag/search.ts` |
@@ -76,8 +77,8 @@ AIGC:
 | 拦截后本轮历史回滚 | 已实装：已流出片段丢弃，被拒内容不入下一轮历史 | ✅ | `hooks/useChat.ts`、`lib/chat/messages.ts` |
 | 输入侧本地词表过滤 | 机制已实装（结构规则默认启用）；**默认词表为空**，实际词表走配置注入 | 🟡 | `lib/safety/wordlist.ts` |
 | 三级处置话术 | 已实装：硬拦截 / 软引导（system prompt 承载）/ 关怀转介 | ✅ | `lib/safety/messages.ts` |
-| 设备标识 `user` 字段 | 仅有日志用 `X-Client-Id` | 🟡 | 同上 §6 |
-| 重置设备标识入口 | 无 | ❌ | 同上 §6.2 |
+| 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
+| 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
 | 图片上传明示 | 无 | ❌ | 同上 §7 |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
@@ -102,7 +103,7 @@ AIGC:
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
 | DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试已补：16 文件 / 184 用例，`npm test` 全过；CI 未接（无 `.github/`） | 🟡 | `test/`、`vitest.config.mts` |
+| 关键测试 + CI | 测试已补：17 文件 / 199 用例，`npm test` 全过；CI 未接（无 `.github/`） | 🟡 | `test/`、`vitest.config.mts` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 基本实装，发送吸底例外挂账 | 🟡 | `doc/mobile-ux.md` |
 
@@ -164,9 +165,9 @@ AIGC:
 
 ## 10. 待决策
 
-- [ ] 英语 v1 是否确认为「不做」，多学科仅作架构预留
-- [ ] RAG 触发阈值（建议按语料字数，如 > 3000 字）
-- [ ] 设备标识字段确认为请求体 `user`
-- [ ] `confidence` 判定依据（模型自评是否可信）
-- [ ] 演示主线是否包含整卷流程
+- [x] 英语 v1 是否确认为「不做」，多学科仅作架构预留 —— **已定（2026-11-12）：v1 不做英语，不排期；仅保留 `DiagnosisResult.subject: 'math'` 与 `DiagnoseSubject` 的架构预留，等剩余时间再议，不以任何形式进入本期 MVP**
+- [x] RAG 触发阈值（建议按语料字数，如 > 3000 字）—— **已定（2026-11-12）：查询侧阈值 `RAG_MIN_QUERY_CHARS = 8`（去空白后有效字符数），落点 `lib/local/rag/gate.ts`；语料侧 3000 字阈值仅适用于尚未落地的笔记语料索引化，本期不实现**
+- [x] 设备标识字段确认为请求体 `user` —— **已定（2026-11-12）：确认用请求体 `user`（OpenAI 兼容规范），不使用 HTTP header；与日志用 `X-Client-Id` 严格区分，代码已实装**
+- [x] `confidence` 判定依据（模型自评是否可信）—— **已定（2026-11-12）：采信模型自评，不引入外部校验层；置信度仅用于决定是否强制回显确认（协议 §1.3），不作为对外结论强度声明**
+- [ ] 演示主线是否包含整卷流程（`wip-product-vision.md` §3.3，纯演示取舍，不涉及代码）
 *（内容由AI生成，仅供参考）*
