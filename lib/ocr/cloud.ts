@@ -47,12 +47,12 @@ export function decodedByteLength(base64: string): number {
 
 /** 转写失败错误：code 与 /api/ocr 错误码表（doc/cloud-ocr.md §5）对齐 */
 export class CloudOcrError extends Error {
-  constructor(
-    readonly code: "parse_error" | "provider_error",
-    message: string,
-  ) {
+  readonly code: "parse_error" | "provider_error";
+
+  constructor(code: "parse_error" | "provider_error", message: string) {
     super(message);
     this.name = "CloudOcrError";
+    this.code = code;
   }
 }
 
