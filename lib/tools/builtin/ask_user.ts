@@ -17,6 +17,24 @@ export const MAX_ASK_QUESTIONS = 5;
 /** 单个问题的预设选项上限：选项过多时自由输入反而更快 */
 export const MAX_ASK_OPTIONS = 4;
 
+/** 选项常见对象形态的候选文本键（模型实测会传 {text}/{label}/{value} 等） */
+const OPTION_TEXT_KEYS = ['text', 'label', 'value', 'option', 'content', 'title', 'name'] as const;
+
+/**
+ * 选项收敛：字符串原样；对象则按常见键提取文本，取不到返回 null（调用方过滤）。
+ * 目标：schema 层放行、handler 层纠偏——模型的一次失手不再变成一次工具失败。
+ */
+export function coerceOption(raw: unknown): string | null {
+  if (typeof raw === 'string') return raw;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  for (const key of OPTION_TEXT_KEYS) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return null;
+}
+
 export const askUserTool: ToolDefinition = {
   name: 'ask_user',
   description:
@@ -46,9 +64,12 @@ export const askUserTool: ToolDefinition = {
             },
             options: {
               type: 'array',
-              description: '可选的预设选项，2~3 个为宜，至多 4 个；提供后用户仍可自由输入',
+              description:
+                '可选的预设选项，2~3 个为宜，至多 4 个；每项是纯字符串文本（不要传对象），提供后用户仍可自由输入',
               maxItems: 4,
-              items: { type: 'string', minLength: 1, maxLength: 200 },
+              // 放宽为任意项：模型常把选项传成对象（实测），schema 拒绝只换来一轮自纠重试；
+              // handler 里做对象→文本收敛，直接吃掉这个失败模式
+              items: {},
             },
           },
           required: ['question'],
@@ -79,6 +100,7 @@ export const askUserTool: ToolDefinition = {
       }
       if (Array.isArray(q.options)) {
         const options = q.options
+          .map(coerceOption)
           .filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
           .map((o) => o.trim().slice(0, 200))
           .slice(0, MAX_ASK_OPTIONS);
