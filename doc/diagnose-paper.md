@@ -4,7 +4,7 @@
 > 对应代码：`app/api/diagnose-paper/route.ts`（编排）、`lib/diagnose/paper.ts`（切题提示词与分类规则）、
 > `lib/diagnose/runtime.ts`（`parseSubmission` / `buildDiagnosisResult`，与单题链路共用）、
 > `lib/diagnose/completeness.ts`（完整度推导）、`lib/chat/cost.ts`（成本计量）
-> 上层协议：`wip-agent-workflow.md` §5（为什么不能串行逐题、四步划分、降级语义）
+> 上层协议：`agent-workflow.md` §5（为什么不能串行逐题、四步划分、降级语义）
 > 按 `AGENTS.md` §9，改本契约先于改代码。
 
 本文件定义整卷诊断的请求体、SSE 事件序列、四步流程与降级路径。单题诊断走
@@ -16,7 +16,7 @@
 |---|---|
 | 整卷请求体与校验 | 单题诊断（`/api/chat`） |
 | SSE 事件字段与顺序 | 前端卡片渲染细节 |
-| 四步流程的调用预算 | 错因表与策略卡内容（`wip-diagnosis-model.md`） |
+| 四步流程的调用预算 | 错因表与策略卡内容（`diagnosis-model.md`） |
 | 切题失败 / 单组失败的降级 | 聚类与语义缓存（挂账，v1 不做） |
 
 ## 2. 请求体
@@ -34,7 +34,9 @@ interface PaperRequest {
 
 - `attachments` 的单项结构与校验规则完全复用 `diagnose-file-intake.md` §5（`parseAttachments`）。
 - `attachments` 缺失或全部无效 → 直接发 `error: no_content`，不进入流程。
-- 请求头 `x-client-id` 只用于日志与成本归集，缺省 `anonymous`。
+- `user` 取自 `getUserId()`（localStorage `notesync-user-id`，纯随机 UUID，见 `user-settings.md` §4.1），
+  长度 > 64 时服务端丢弃该字段继续流程（不报错）；随 Provider 请求体转发，是否上行受 `USER_FIELD_ENABLED` 控制。
+- 请求头 `x-client-id` 只用于日志与成本归集，缺省 `anonymous`，与请求体 `user` 不得混用。
 
 ## 3. SSE 事件
 

@@ -181,6 +181,14 @@ notesync/
 | [doc/user-settings.md](./doc/user-settings.md) | 用户设置协议：`UserSettings` 结构、normalize 规则、存储接口、客户端标识、UI 分区与实装状态 |
 | [doc/tool-protocol.md](./doc/tool-protocol.md) | 工具调用协议：native / text 双模式、`ask_user` 中断语义、SSE 事件扩展、错误码、扩展点与实现状态 |
 | [doc/diagnose-file-intake.md](./doc/diagnose-file-intake.md) | 诊断模式文件接入契约：四类标签、判定与提取规则、请求体、组装产物、MOCK 调试开关 |
+| [doc/diagnose-paper.md](./doc/diagnose-paper.md) | 整卷诊断协议：请求体、SSE 事件序列、四步流程（识卷 → 逐题 → 汇总 → 报告）、`stats` 口径、MOCK 标注 |
+| [doc/product-vision.md](./doc/product-vision.md) | 产品理念：诊断 vs 解析的分界、三档路径（全本地 / 多模态 / 混合）、演示主线、非目标 |
+| [doc/diagnosis-model.md](./doc/diagnosis-model.md) | 诊断业务中间结构：错因表（14 条）、完整度四要素、策略卡、提示阶梯、输出纪律三条禁令 |
+| [doc/agent-workflow.md](./doc/agent-workflow.md) | 诊断工作流协议：七状态迁移表、追问预算、掌握度回路、整卷四步划分与降级语义 |
+| [doc/safety-protocol.md](./doc/safety-protocol.md) | 安全协议：三级处置、上游拦截归一、拦截后历史回滚、输入侧词表、设备标识 `user`、图片上传明示 |
+| [doc/implementation-status.md](./doc/implementation-status.md) | 实施状态总账：逐条 ✅ / 🟡 / ❌ / 🧊 与代码落点、文档同步清单、交付顺序、待决策 |
+| [doc/mobile-ux.md](./doc/mobile-ux.md) | 移动端适配协议：断点、触屏热区、键盘与安全区、发送区与滚动行为 |
+| [doc/wrong-answer-set-template.md](./doc/wrong-answer-set-template.md) | 错题集录入模板：字段定义与示例 |
 | [doc/TECHNICAL_DOC.old.md](./doc/TECHNICAL_DOC.old.md) | 已归档的旧版技术文档（对应"简易重构前"的实现，含本地 ollama 回退链路），仅作历史参考 |
 
 ## 11. 已知挂账

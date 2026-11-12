@@ -51,7 +51,7 @@ interface UserSettings {
   - **zhipu**：`thinking: { type: 'disabled' | 'enabled' }`——GLM 官方口径只有开/关粒度，low/medium/high 统一映射 enabled，选择「关闭」才能真正生效；
   - **deepseek**：`reasoning_effort: 'low' | 'medium' | 'high'`；`off` 不发送参数（关闭语义 = 选用非推理模型，由模型下拉承担）；
   - **custom**：**不发送**——自定义端点对未知字段可能严格校验（与 user 字段开关同口径），思考由端点自身的模型/参数控制。
-- 思维链（reasoning_content）是否出现由该档位决定：`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（wip-product-vision 理念：思维链是调试设施，不是产品功能）。
+- 思维链（reasoning_content）是否出现由该档位决定：`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（product-vision 理念：思维链是调试设施，不是产品功能）。
 
 ### normalize 规则（`lib/settings/types.ts` 纯函数，可冒烟）
 
@@ -91,7 +91,7 @@ interface SettingsStorage {
 
 ### 4.1 上游终端用户标识（请求体 user 字段）
 
-与 `X-Client-Id` 是两回事，不得混用（wip-safety-protocol.md §6）：
+与 `X-Client-Id` 是两回事，不得混用（safety-protocol.md §6）：
 
 - 字段位置：`/api/chat` 请求体顶层 `user` 字段（OpenAI 兼容规范），随 Provider 请求体转发；
 - 取值：纯随机 UUID v4，localStorage key `notesync-user-id`，绝不含设备名/主机名/用户名（该值会到达上游厂商侧）；
@@ -108,7 +108,7 @@ interface SettingsStorage {
 | 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
 | 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.preferLocal`，自通用设置迁入）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
-| 数据管理 | **实装** | 恢复默认设置（storage.clear）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
+| 数据管理 | **实装** | 恢复默认设置（storage.clear）；重置设备标识（`resetUserId()`，仅清 `notesync-user-id`，不动设置，见 §4.1）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
 | 服务协议 | 静态 | 本地存储声明、无遥测、密钥仅环境变量、数据由所配模型服务商处理 |
 
 > 口径变更（2026-11-11 合并 `beta/browser-ocr` 时归并）：原「图片处理」行已从通用设置
@@ -122,7 +122,7 @@ interface SettingsStorage {
 
 - generation / systemPrompt 服务端注入：扩展 `ChatRequestBody` + `/api/chat` 校验读取（参数经 `CompleteOptions` 透传 provider）。
 - OCR `preferLocal` 已接线（2026-11-10，语义见 doc/browser-local-ocr.md §6）；云 OCR 选项仍挂账（设备边界规则：数据跨出设备必须显式同意）。
-- RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；云端 embedding 与对话本地档位挂账（同文档 §8）。
+- RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；查询侧触发阈值 `RAG_MIN_QUERY_CHARS = 8` 已接线（2026-11-12，见同文档 §5.4）；云端 embedding 与对话本地档位挂账（同文档 §8）。
 - 语言（i18n）、朗读音色（TTS）实装。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
 - 会话持久化 /api/sessions（复用 X-Client-Id）。
