@@ -39,8 +39,17 @@ export default function ChatPage() {
     updateSettings({ defaultModel: model });
   };
 
-  const { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext } =
-    useChat(selectedModel);
+  const {
+    messages,
+    loading,
+    sendMessage,
+    stopGeneration,
+    clearMessages,
+    diagnoseContext,
+    deleteMessage,
+    regenerate,
+    editAndResend,
+  } = useChat(selectedModel);
 
   // --- 条件式吸底（doc/mobile-ux.md §3）：用户操作优先，仅"未打断 ∧ 贴近底部"才跟随 ---
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -134,7 +143,14 @@ export default function ChatPage() {
         onScroll={syncFollowUi}
         className="flex-1 overflow-y-auto px-4 py-6"
       >
-        <ChatList messages={messages} loading={loading} onDiagnoseAction={handleDiagnoseAction} />
+        <ChatList
+          messages={messages}
+          loading={loading}
+          onDiagnoseAction={handleDiagnoseAction}
+          onDeleteMessage={deleteMessage}
+          onRegenerate={() => void regenerate()}
+          onEditResend={(index, text) => void editAndResend(index, text)}
+        />
       </div>
 
       {notice && (
