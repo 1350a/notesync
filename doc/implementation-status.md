@@ -105,7 +105,7 @@ AIGC:
 | 动态 import / Suspense | 部分 | 🟡 | — |
 | 关键测试 + CI | 测试 19 文件 / 208 用例，`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
-| 移动端适配 | §2~§7 基本实装，发送吸底例外挂账 | 🟡 | `doc/mobile-ux.md` |
+| 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
 ## 7. MVP 范围（交差口径）
 
