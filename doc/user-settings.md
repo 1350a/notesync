@@ -116,7 +116,7 @@ interface SettingsStorage {
 > （`components/settings/LocalCapabilitySection.tsx`）。本表按**代码现状**记录，
 > 勿据旧表述判断 UI 位置。
 
-主题消费收口：`AppLayout` 负责水合 + 把 `theme` 应用到 `documentElement`（'system' 时订阅 matchMedia 变化实时联动）；顶栏按钮循环切换 浅色→深色→跟随系统。根布局另有防闪烁内联脚本（静态常量，见 `lib/settings/anti-flash.ts`）。
+主题消费收口：`AppLayout` 负责水合 + 把 `theme` 应用到 `documentElement`（'system' 时订阅 matchMedia 变化实时联动）；切换入口唯一，在设置「通用」分区的三档选择（浅色 / 深色 / 跟随系统），顶栏不再提供主题按钮。根布局另有防闪烁内联脚本（静态常量，见 `lib/settings/anti-flash.ts`）。
 
 ## 6. 待实现（挂账）
 
