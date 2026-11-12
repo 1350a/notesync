@@ -1,0 +1,83 @@
+name: CI
+
+# 门禁顺序与本地执行纪律一致：lint → tsc → test → build → 8 项 smoke
+# （见 doc/NEXT-TODO.md 批次 2、AGENTS.md §5 质量门禁）
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+# 同一 ref 的新运行取消旧运行：省额度，也避免旧提交的绿灯掩盖新提交的红
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: 质量门禁
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # 写明 CI=true：vitest 据此走非 watch。GitHub Actions 默认已注入，这里显式声明
+      # 是为了换 runner 或本地用 act 复现时行为一致
+      CI: true
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 不注入任何 API_* / MOCK_* 变量：lib/provider/* 与 app/api/* 的 process.env 读取
+      # 全部带 '' 兜底，缺变量只让模型列表为空，不阻断构建（AGENTS.md §7：密钥只在环境变量）
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund
+
+      # 说明：本 workflow 不执行 local:assets / ocr:assets。
+      # public/models 与 public/ocr 是派生产物（不入库），而 8 项 smoke 与 build 都只
+      # 依赖 lib/ 内纯函数与打包产物，不读取这些目录；加进来反而引入 HF 外网依赖。
+      # 若将来有 smoke 开始读派生资产，必须同步修改此处。
+      - name: Lint
+        run: npm run lint
+
+      - name: 类型检查
+        run: npx tsc --noEmit
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 生产构建
+        run: npm run build
+
+      # 8 项 smoke 拆成独立 step：任一项红时能在 Actions 界面直接定位
+      - name: 冒烟·工具注册与渲染
+        run: npm run smoke:tools
+
+      - name: 冒烟·工具适配器
+        run: npm run smoke:adapters
+
+      - name: 冒烟·工具循环
+        run: npm run smoke:loop
+
+      - name: 冒烟·诊断文件接入
+        run: npm run smoke:files
+
+      - name: 冒烟·聊天图片消息
+        run: npm run smoke:chat
+
+      - name: 冒烟·XSS 渲染净化
+        run: npm run smoke:xss
+
+      - name: 冒烟·用户设置
+        run: npm run smoke:settings
+
+      - name: 冒烟·RAG 检索
+        run: npm run smoke:rag
