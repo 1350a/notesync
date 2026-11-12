@@ -87,7 +87,7 @@ interface SettingsStorage {
 - `lib/client-id.ts`：UUID 存 localStorage key `notesync-client-id`，首次访问生成；非 secure context（如局域网 http）无 `crypto.randomUUID` 时用 `getRandomValues` 拼 UUID v4。
 - 所有 `/api/*` 请求带 `X-Client-Id` 请求头；SSR 环境取不到则不带该头。
 - **服务端仅打日志**（`[chat] client=<id>`），不落盘、不参与路由——服务端保持逐请求无状态，少量并发天然安全。
-- 为将来会话存储（/api/sessions）、按客户端配额预留钩子。
+- 为将来按客户端同步与配额预留钩子；会话历史本身不走服务端，落浏览器本地 IndexedDB（`doc/chat-history.md`）。
 
 ### 4.1 上游终端用户标识（请求体 user 字段）
 
@@ -125,7 +125,7 @@ interface SettingsStorage {
 - RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；查询侧触发阈值 `RAG_MIN_QUERY_CHARS = 8` 已接线（2026-11-12，见同文档 §5.4）；云端 embedding 与对话本地档位挂账（同文档 §8）。
 - 语言（i18n）、朗读音色（TTS）实装。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
-- 会话持久化 /api/sessions（复用 X-Client-Id）。
+- 会话历史的服务端方案 `/api/sessions`（复用 X-Client-Id）：当前 UI 已改为浏览器本地 IndexedDB 持久化（`doc/chat-history.md` §7），跨设备同步仍未做。
 - ~~CSP 响应头~~ **已落地（2026-11-10 复核移出挂账）**：基础版 CSP 由 `next.config.ts`
   的 `headers()` 全站下发，`scripts/xss-scan.ts` 的 `csp.missing` 不再触发；指令明细与
   剩余项（nonce/hash 严格 script-src、Trusted Types、上报端点）见
