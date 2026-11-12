@@ -331,9 +331,12 @@ export default function UploadArea() {
         </button>
       </div>
 
-      {/* 诊断模型：真实清单来自 GET /api/models，选中值随请求上行 */}
-      <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200">
-        <span className="text-sm font-medium text-slate-700">诊断模型</span>
+      {/* 诊断模型：真实清单来自 GET /api/models，选中值随请求上行。
+          窄屏（<md）纵向堆叠，标签 / 下拉 / 图片方式各占整行：
+          此前三者挤在同一弹性行里，图片方式的容器被压到 6~19px 宽，
+          长文案逐字竖排、按钮组被 overflow-hidden 裁掉（doc/mobile-ux.md §7）。 */}
+      <div className="flex flex-col gap-3 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200 md:flex-row md:flex-wrap md:items-center">
+        <span className="text-sm font-medium text-slate-700 md:shrink-0">诊断模型</span>
         <ModelSelect
           models={models}
           providers={providers}
@@ -342,17 +345,20 @@ export default function UploadArea() {
           loading={modelsLoading}
           disabled={isSending}
           emptyHint={modelsError ?? modelsMessage}
-          className="max-w-[280px] border border-slate-200"
+          className="w-full border border-slate-200 touch:min-h-11 touch:text-base md:w-auto md:max-w-[280px]"
         />
         {models.length === 0 ? (
-          <span className="min-w-0 flex-1 truncate text-xs text-red-500" title={modelsError ?? modelsMessage}>
+          <span
+            className="w-full break-words text-xs text-red-500 md:min-w-0 md:flex-1 md:truncate"
+            title={modelsError ?? modelsMessage}
+          >
             {modelsError ?? modelsMessage ?? '暂无可选模型'}
           </span>
         ) : (
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-0 md:flex-1 md:flex-row md:items-center">
             {/* 图片发送方式：默认按模型能力与设置派生，可当次切换（doc/browser-local-ocr.md §6.1） */}
             <div
-              className="flex items-center overflow-hidden rounded-md border border-slate-200 text-[11px]"
+              className="flex w-full items-center overflow-hidden rounded-md border border-slate-200 text-[11px] touch:text-xs md:w-auto md:shrink-0"
               role="group"
               aria-label="图片发送方式"
             >
@@ -360,7 +366,7 @@ export default function UploadArea() {
                 type="button"
                 disabled={isSending || ocrProgress !== null}
                 onClick={() => setOcrOverride('direct')}
-                className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
                   imageMode === 'direct'
                     ? 'bg-slate-100 font-medium text-slate-800'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -373,7 +379,7 @@ export default function UploadArea() {
                 type="button"
                 disabled={isSending || ocrProgress !== null}
                 onClick={() => setOcrOverride('local-ocr')}
-                className={`px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
                   imageMode === 'local-ocr'
                     ? 'bg-slate-100 font-medium text-slate-800'
                     : 'text-slate-500 hover:bg-slate-50'
@@ -386,7 +392,7 @@ export default function UploadArea() {
             {/* P4 约束①：代价必须写在选择处（触屏无 hover）；
                 safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
             <span
-              className={`min-w-0 flex-1 text-xs ${
+              className={`w-full break-words text-xs md:min-w-0 md:flex-1 ${
                 imageMode === 'local-ocr' ? 'text-slate-500' : 'text-amber-600'
               }`}
             >
