@@ -1,7 +1,7 @@
 # 会话历史（Chat History）本地持久化协议
 
-> 状态：批次 1（存储层 `lib/history/` 落地；UI 接线待批次 2）｜最后更新：2026-11-12
-> 对应代码：`lib/history/types.ts`、`title.ts`、`sanitize.ts`、`contract.ts`、`memory.ts`、`indexeddb.ts`
+> 状态：批次 1（存储层）、批次 2（UI 接线）均已落地｜最后更新：2026-11-12
+> 对应代码：`lib/history/types.ts`、`title.ts`、`sanitize.ts`、`contract.ts`、`memory.ts`、`indexeddb.ts`、`storage.ts`、`search.ts`
 
 本文件是会话历史的**唯一事实来源**。修改协议必须先改本文件，再改代码（`AGENTS.md` §9）。
 
@@ -9,12 +9,19 @@
 
 ## 1. 现状与范围
 
-**改动前**（供对照，批次 2 后失效）：
+**改动前**（历史对照，批次 2 后已失效）：
 
 - 消息纯内存：`hooks/useChat.ts` 的 `useState<ChatMsg[]>([])`，`clearMessages()` 直接置空，刷新即丢。
 - `startNewChat()` 只递增 `newChatSignal`，`app/(main)/chat/page.tsx` 监听后清空，旧会话不留痕。
 - 侧栏历史区占位「（对话历史将在后续接入）」，搜索框 `disabled`（`components/layout/AppSidebar.tsx`）。
 - 文档口径为服务端方案「会话持久化 `/api/sessions` 未做」（`doc/user-settings.md`、`README.md`）。
+
+**改动后**（批次 2 落地，当前口径）：
+
+- 消息由 `hooks/useChat.ts` 在生成结束/停止后 debounce 落 IndexedDB，切换或新建会话前先 flush。
+- 侧栏「最近记录」读 `meta` 表渲染会话列表，搜索框解禁走 §5 子串过滤；命中项点击即恢复该会话。
+- 打开历史会话时 `images[i] === ''` 的槽位按 §4.1 渲染「图片已过期」占位块。
+- 设置页「清除全部本地数据」追加 `storage.clearAll()`，与 `localStorage` 清理同批执行。
 
 **本协议改为本地持久化**，明确不做服务端会话 API：
 
@@ -141,6 +148,8 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 消息里 `images[i] === ''` 且 `{ msg, img }` 命中 `expiredImages` → 渲染灰底占位块「图片已过期」；`images[i] === ''` 但未登记过期 → 不渲染任何东西（属脏数据，不误导用户）。上行组装口径不变：`lib/chat/messages.ts` 只保留 `data:image/` 开头且不超限的项，空串天然被过滤，过期图片不会有任何一字节发到服务端。
 
+**渲染态字段**：`ChatMsg` 增加可选的 `expiredImages?: number[]`（本消息内已过期的图片下标）。它由 `useChat` 在 `loadSession` 后按 `SessionRecord.expiredImages` 折算写入，只供 `ChatList` 判断占位块，**纯展示态**：不落库（库里的真源是 `record.expiredImages` 的 `{msg,img}` 坐标）、不参与上行组装（`sendMessage` 的 messages map 不读该字段）。
+
 ---
 
 ## 5. 搜索口径
@@ -162,7 +171,53 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 | 批次 | 内容 | 状态 |
 | --- | --- | --- |
-| 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 本文件 |
-| 2 | `store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染 | 待开工 |
+| 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 已完成 |
+| 2 | `lib/history/` 工厂与搜索纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
 
-批次 1 的诚实边界：`lib/history/` 已可独立工作并被单测覆盖，但**尚无任何 UI 调用**；侧栏历史区与搜索框在批次 2 完成前保持现有禁用状态（`AGENTS.md` §8：未实装能力不出现可交互控件）。
+**批次 2 未做项（挂账，不在界面出现入口 —— `AGENTS.md` §8）**：会话重命名 UI（`renameSession` 与 `titleEdited` 已在存储层就绪，无入口）、会话内消息级操作、导出会话、跨会话全文高亮跳转。
+
+---
+
+## 7. UI 接线
+
+### 7.1 状态归属
+
+| 状态 | 归属 | 理由 |
+| --- | --- | --- |
+| `messages` / `loading` / `diagnoseContext` | `hooks/useChat.ts` 内部 `useState` | 会话内容只被聊天页消费；搬进 store 会让每次流式 token 都穿透全局订阅 |
+| `currentSessionId` | `useChat` 内 `useRef` | 它在落盘时序里必须"同步可读"（flush 后再改），不能依赖 setState 异步可见 |
+| `sessions`（列表）/ `historySupported` | `store/useChatStore.ts` | 侧栏与设置页共享；列表读 `meta` 表，不含消息体 |
+| `openSessionSignal` + `pendingSessionId` | `store/useChatStore.ts` | 跨组件触发"打开某个会话"，与既有 `newChatSignal` 同款模式 |
+
+**为什么用 signal 而不把 messages 搬进 store**：`useChat` 里的 `messages` 与流式 SSE 更新、abort、trace 生命周期强耦合，搬迁等于重写发送链路。signal + `pendingSessionId` 只新增两个 store 字段，chat 页 `useEffect` 消费后立即清空 `pendingSessionId`（避免重复打开）。
+
+### 7.2 会话切换时序
+
+1. 侧栏点击某会话 → `openSession(sessionId)`：置 `pendingSessionId` 并递增 `openSessionSignal`。
+2. chat 页 `useEffect` 观测到信号变化 → 调 `useChat` 暴露的 `loadSession(sessionId)`。
+3. `loadSession` 内：`abort` 进行中的生成 → **先 flush 当前会话** → `storage.loadSession(id)` → 命中则替换 `messages` 并更新 `currentSessionId`；未命中（记录损坏已被 `sanitize` 单条删除）则 toast 级提示并保持当前会话不变。
+4. 消费完信号后 chat 页调 `clearPendingSession()`，恢复待命。
+
+**新建对话**（顶栏按钮）沿用既有 `newChatSignal`：`clearMessages()` 改为"先 flush 旧会话，再置空 messages、`currentSessionId = null`"；新 id 在**首条消息落盘时**才生成（避免点开"新建"再返回就凭空多出一个空会话条目）。
+
+### 7.3 落盘时机
+
+- `done` / `error` / 用户主动停止（`stopGeneration`）→ 清 `loading` 后按 `SAVE_DEBOUNCE_MS`（700ms）debounce 写一次。
+- 流式期间（含 `tool_call` streak）不写库，仅内存态。
+- 写前刷新会话头：`refreshMeta(meta, messages, now)`；标题仅当 `titleEdited === false` 时用 `deriveTitleFromMessages(messages)` 重算。
+- 写结果处理：`saved` 静默；`saved-without-attachments` 静默（图片位置已由 `expired` 回填 `ChatMsg.expiredImages`）；`unsupported` 静默（首帧已由 `historySupported === false` 给过一次提示，不重复打扰）。
+
+### 7.4 侧栏交互
+
+| 元素 | 行为 |
+| --- | --- |
+| 搜索框 | 输入后 200ms 防抖调 `searchSessions(query)`；空查询回落完整列表；搜索中显示"无匹配"空态 |
+| 会话项 | 单行标题（`truncate`）+ 相对时间；当前 `currentSessionId` 高亮；点击即 §7.2 流程 |
+| 删除 | 悬停/聚焦显示删除按钮 → `window.confirm` → `storage.deleteSession(id)` → `refreshSessions()`；删的若是当前会话，一并 `clearMessages()` |
+| 降级提示 | `historySupported === false` 时列表区顶部固定一条「当前浏览器不支持本地保存，本次对话不会留存」，列表区显示空态 |
+
+列表首次挂载即 `refreshSessions()`（读 `meta` 表，不碰消息体）；每次落盘成功后同步刷新一次，保证新会话立刻出现在列表。
+
+### 7.5 过期图片占位
+
+`ChatList` 对用户消息的 `images.map`：`src === ''` 且 `expiredImages.includes(idx)` → 渲染 `h-24 w-24` 灰底虚线块（文案「图片已过期」，`title` 说明"会话容量超限，此图已被清理"）；`src === ''` 且未登记 → 返回 `null` 跳过该槽位（不渲染破图）。其余情况照旧 `<img>`。
