@@ -18,6 +18,14 @@ export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 
 export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['off', 'low', 'medium', 'high'];
 
+/**
+ * 档位类型守卫：把「外部输入是否属于档位集合」从布尔判断升级为类型收窄，
+ * 供服务端校验请求体时替代 `THINKING_EFFORTS.includes(v as never)` 一类的断言逃逸。
+ */
+export function isThinkingEffort(value: unknown): value is ThinkingEffort {
+  return typeof value === 'string' && (THINKING_EFFORTS as readonly string[]).includes(value);
+}
+
 /** 生成参数：thinkingEffort 已接线；temperature/maxTokens 仍为占位 */
 export interface GenerationSettings {
   /** 思考强度档位；缺省视为 medium（映射时缺省不发参数则视为跟随 provider 默认） */
