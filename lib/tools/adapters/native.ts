@@ -9,6 +9,7 @@ import type {
   ProviderMessage,
   ProviderToolCall,
   StreamDelta,
+  ThinkingEffort,
 } from '@/lib/provider/types.ts';
 import { renderForNative } from '../render.ts';
 import { formatAskUserArgs } from '../builtin/ask_user.ts';
@@ -25,12 +26,14 @@ export class NativeAdapter implements ToolAdapter {
     model: string,
     messages: ProviderMessage[],
     tools: ToolDefinition[],
-    user?: string
+    user?: string,
+    thinking?: ThinkingEffort
   ): CompleteOptions {
     return {
       model,
       messages,
       user,
+      thinking,
       tools: tools.length > 0 ? renderForNative(tools) : undefined,
       toolChoice: tools.length > 0 ? 'auto' : undefined,
     };
