@@ -6,7 +6,12 @@ import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/l
 import { acquireLocalEngine } from '@/lib/local/engine-lease';
 import { shouldRetrieve } from '@/lib/local/rag/gate';
 import { searchKnowledge } from '@/lib/local/rag/store';
-import { mergeExpiredRefs, refreshMeta } from '@/lib/history/contract';
+import {
+  mergeExpiredRefs,
+  refreshMeta,
+  shiftExpiredRefsOnDelete,
+  trimExpiredRefs,
+} from '@/lib/history/contract';
 import { deriveTitleFromMessages } from '@/lib/history/title';
 import { ensurePersistentStorage, getHistoryStorage } from '@/lib/history/storage';
 import { SAVE_DEBOUNCE_MS, createSessionMeta } from '@/lib/history/types';
@@ -107,6 +112,29 @@ function applyEviction(messages: ChatMsg[], expired: ExpiredImageRef[]): ChatMsg
   return next;
 }
 
+/**
+ * 发送前回填上一条 assistant 的 ask_user 中断（doc/chat-history.md §8.3 顺带修正）。
+ *
+ * ask_user 是中断语义、没有 tool_result 事件，不回填则"等待回答"永远挂起。
+ * 提成纯函数是为了在发送链路上**先算再同步写 ref**：请求体组装读的是 ref，
+ * 若只靠 setMessages 的 updater，闭包里读到的仍是回填前的数组。
+ */
+function backfillAwaitingQuestions(prev: ChatMsg[]): ChatMsg[] {
+  const i = prev.length - 1;
+  const last = prev[i];
+  if (last?.role !== 'assistant' || !last.awaitingQuestions?.length) return prev;
+  const next = [...prev];
+  next[i] = {
+    ...last,
+    toolCalls: (last.toolCalls ?? []).map((t) =>
+      t.name === 'ask_user' && !t.result
+        ? { ...t, result: { ok: true, summary: '用户已回答', ms: 0 } }
+        : t
+    ),
+  };
+  return next;
+}
+
 export interface SendOptions {
   /** 开启诊断模式：无进行中会话时以 intake 重新开题（空 payload） */
   startDiagnosis?: boolean;
@@ -140,6 +168,10 @@ export function useChat(selectedModel: string) {
   const pendingSessionId = useChatStore((s) => s.pendingSessionId);
   const setCurrentSessionId = useChatStore((s) => s.setCurrentSessionId);
   const clearPendingSession = useChatStore((s) => s.clearPendingSession);
+  // 侧栏改名广播（doc/chat-history.md §8.1）
+  const renameSignal = useChatStore((s) => s.renameSignal);
+  const renamedSession = useChatStore((s) => s.renamedSession);
+  const seenRenameSignalRef = useRef(0);
   // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
@@ -299,6 +331,16 @@ export function useChat(selectedModel: string) {
     });
   }, [openSessionSignal, pendingSessionId, loadSession, discardSession, clearPendingSession]);
 
+  // 消费改名广播：同步 sessionMetaRef 的标题与 titleEdited（不改 updatedAt，改名不是活动）。
+  // 不回写 state 也不在 effect 体内 setState，故不受级联渲染约束
+  useEffect(() => {
+    if (renameSignal === seenRenameSignalRef.current) return;
+    seenRenameSignalRef.current = renameSignal;
+    const base = sessionMetaRef.current;
+    if (!renamedSession || !base || base.id !== renamedSession.id) return;
+    sessionMetaRef.current = { ...base, title: renamedSession.title, titleEdited: true };
+  }, [renameSignal, renamedSession]);
+
   const sendMessage = useCallback(
     async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
@@ -321,21 +363,11 @@ export function useChat(selectedModel: string) {
 
       // 上一条 assistant 还有待回答的 ask_user 时先回填其工具轨迹：
       // ask_user 是中断语义、没有 tool_result 事件，不回填则"等待回答"永远挂起
-      setMessages((prev) => {
-        const i = prev.length - 1;
-        const last = prev[i];
-        if (last?.role !== 'assistant' || !last.awaitingQuestions?.length) return prev;
-        const next = [...prev];
-        next[i] = {
-          ...last,
-          toolCalls: (last.toolCalls ?? []).map((t) =>
-            t.name === 'ask_user' && !t.result
-              ? { ...t, result: { ok: true, summary: '用户已回答', ms: 0 } }
-              : t
-          ),
-        };
-        return next;
-      });
+      const backfilled = backfillAwaitingQuestions(messagesRef.current);
+      if (backfilled !== messagesRef.current) {
+        messagesRef.current = backfilled;
+        setMessages(backfilled);
+      }
 
       // ocrTexts 与 images 一一对应：本地 OCR 转文字模式产物，随消息上行供服务端
       // 以文本块拼进正文（doc/browser-local-ocr.md §6.2）；images 保留在本地用于气泡展示
@@ -349,7 +381,9 @@ export function useChat(selectedModel: string) {
           ? { imageSendMode: options.imageSendMode }
           : {}),
       };
-      const history = [...messages, userMsg];
+      // 上行历史读 ref 而非 messages 闭包：重新生成/编辑重发会先剪枝内存态再调发送，
+      // 闭包里的数组仍是剪枝前的旧值（doc/chat-history.md §8.3）
+      const history = [...messagesRef.current, userMsg];
       // 首条消息发出即确定会话身份（id 在这里生成）：点开"新建"但没发消息不会留下空会话
       if (!sessionMetaRef.current) {
         sessionMetaRef.current = createSessionMeta(createSessionId(), Date.now());
@@ -544,7 +578,100 @@ export function useChat(selectedModel: string) {
         scheduleSave();
       }
     },
-    [messages, loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave]
+    [loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave]
+  );
+
+  /**
+   * 删除单条消息（doc/chat-history.md §8.3）。
+   *
+   * 三件事必须同批：消息数组移除 → expiredImages 下标左移 → 落库。
+   * 漏掉第二步会把过期标记挪到下一条消息上（好图被显示成「图片已过期」）。
+   * 删空即视为放弃这段对话：清内存态并删库，不留"点开就复活"的空壳会话。
+   */
+  const deleteMessage = useCallback(
+    (index: number) => {
+      if (loading) return;
+      const current = messagesRef.current;
+      if (index < 0 || index >= current.length) return;
+
+      const next = current.filter((_, i) => i !== index);
+      const nextExpired = shiftExpiredRefsOnDelete(expiredRefsRef.current, index);
+
+      if (next.length === 0) {
+        const sessionId = sessionMetaRef.current?.id ?? null;
+        sessionMetaRef.current = null;
+        expiredRefsRef.current = [];
+        messagesRef.current = [];
+        setMessages([]);
+        setDiagnoseContext(null);
+        setCurrentSessionId(null);
+        if (sessionId) void useChatStore.getState().removeSession(sessionId);
+        return;
+      }
+
+      expiredRefsRef.current = nextExpired;
+      messagesRef.current = next;
+      setMessages(next);
+      scheduleSave();
+    },
+    [loading, scheduleSave, setCurrentSessionId]
+  );
+
+  /**
+   * 重新生成：截断最后一条 user 消息之后的全部内容，用它自己再发一次。
+   * 附件与 OCR 产物沿用原条，不重新读取；先剪枝 ref 再调 sendMessage，
+   * 否则 sendMessage 组装的上行历史里还留着本该丢弃的旧回答。
+   */
+  const regenerate = useCallback(async () => {
+    if (loading) return;
+    const current = messagesRef.current;
+    let userIndex = -1;
+    for (let i = current.length - 1; i >= 0; i -= 1) {
+      if (current[i].role === 'user') {
+        userIndex = i;
+        break;
+      }
+    }
+    if (userIndex < 0) return;
+
+    const source = current[userIndex];
+    const trimmed = current.slice(0, userIndex);
+    expiredRefsRef.current = trimExpiredRefs(expiredRefsRef.current, userIndex);
+    messagesRef.current = trimmed;
+    setMessages(trimmed);
+
+    await sendMessage(
+      source.content,
+      source.images ?? [],
+      source.files ?? [],
+      source.ocrTexts,
+      source.imageSendMode ? { imageSendMode: source.imageSendMode } : undefined
+    );
+  }, [loading, sendMessage]);
+
+  /** 编辑重发：截断到目标 user 消息之前，用新正文重发；附件沿用原条（§8.3） */
+  const editAndResend = useCallback(
+    async (index: number, text: string) => {
+      if (loading) return;
+      const current = messagesRef.current;
+      const target = current[index];
+      if (!target || target.role !== 'user') return;
+      if (!text.trim() && !(target.images?.length ?? 0) && !(target.files?.length ?? 0)) return;
+
+      const trimmed = current.slice(0, index);
+      expiredRefsRef.current = trimExpiredRefs(expiredRefsRef.current, index);
+      messagesRef.current = trimmed;
+      setMessages(trimmed);
+
+      await sendMessage(
+        text,
+        target.images ?? [],
+        target.files ?? [],
+        target.ocrTexts,
+        target.imageSendMode ? { imageSendMode: target.imageSendMode } : undefined
+      );
+    },
+    [loading, sendMessage]
   );
 
   return {
@@ -557,6 +684,12 @@ export function useChat(selectedModel: string) {
     loadSession,
     /** 丢弃当前会话且不落盘（当前会话被删除时调用） */
     discardSession,
+    /** 删除单条消息（§8.3）；删除后为空则整段会话作废 */
+    deleteMessage,
+    /** 重新生成最后一条回答（§8.3） */
+    regenerate,
+    /** 编辑某条 user 消息并重发（§8.3） */
+    editAndResend,
     diagnoseContext,
   };
 }
