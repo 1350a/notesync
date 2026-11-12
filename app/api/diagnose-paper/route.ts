@@ -38,18 +38,13 @@ import { deriveCompleteness } from '@/lib/diagnose/completeness';
 import type { DiagnosisResult } from '@/lib/diagnose/types';
 import { CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
 import { estimateCost, logCost } from '@/lib/chat/cost';
-
-const encoder = new TextEncoder();
-
-const SSE_HEADERS = {
-  'Content-Type': 'text/event-stream; charset=utf-8',
-  'Cache-Control': 'no-cache',
-  Connection: 'keep-alive',
-} as const;
-
-function sse(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
+import {
+  encoder,
+  readClientId,
+  readJsonBody,
+  sse,
+  SSE_HEADERS,
+} from '@/lib/sse';
 
 /** 从组装消息提取可读文本（切题/汇总提示词用；图片以占位计入，多模态时本体随消息上行） */
 function materialText(message: ProviderMessage): string {
@@ -66,9 +61,12 @@ interface GroupConclusion {
 }
 
 export async function POST(request: Request) {
-  const clientId = request.headers.get('x-client-id') ?? 'anonymous';
+  const clientId = readClientId(request);
   console.log(`[paper] client=${clientId}`);
-  const body = (await request.json()) as { model?: unknown; attachments?: unknown; user?: unknown };
+  type PaperBody = { model?: unknown; attachments?: unknown; user?: unknown };
+  const parsedBody = await readJsonBody<PaperBody>(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
   const attachments = parseAttachments(body.attachments);
 
   const stream = new ReadableStream<Uint8Array>({
