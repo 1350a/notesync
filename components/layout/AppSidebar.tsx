@@ -53,6 +53,7 @@ function SidebarContent() {
   const removeSession = useChatStore((s) => s.removeSession);
   const renameSession = useChatStore((s) => s.renameSession);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
+  const refreshSessions = useChatStore((s) => s.refreshSessions);
   const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [keyword, setKeyword] = useState('');
@@ -64,6 +65,12 @@ function SidebarContent() {
   /** Esc 取消时 input 会跟着失焦，用它压掉 blur 的提交 */
   const cancelRenameRef = useRef(false);
   const query = normalizeKeyword(keyword);
+
+  // 列表首次挂载即刷新（§7.4）：store 快照原本只在 /chat 的 useChat 里刷，直接进
+  // /diagnose、/local 时快照为空，列表与搜索会整体空转，故收口到侧栏自身挂载
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
 
   // 搜索：防抖 200ms；先标题过滤（零 IO），标题命中不足再逐条回读正文补齐。
   // 正文扫描上限 SEARCH_BODY_SCAN_LIMIT 条，命中够数或扫完即停（§7.4）
