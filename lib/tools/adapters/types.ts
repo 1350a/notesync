@@ -4,7 +4,7 @@
  * 屏蔽 native（原生 tools 协议）与 text（系统提示词+围栏解析）的差异，
  * 让 loop.ts 可以完全模式无关地运行。
  */
-import type { CompleteOptions, ProviderMessage, StreamDelta } from '@/lib/provider/types.ts';
+import type { CompleteOptions, ProviderMessage, StreamDelta, ThinkingEffort } from '@/lib/provider/types.ts';
 import type {
   ExtractedToolCall,
   ExtractedToolCalls,
@@ -19,13 +19,15 @@ export interface ToolAdapter {
   /**
    * 构建补全请求。
    * native: 注入 tools 字段；text: 将工具说明追加到 system prompt。
-   * user 为上游终端用户标识（可选，wip-safety-protocol.md §6）。
+   * user 为上游终端用户标识（可选，wip-safety-protocol.md §6）；
+   * thinking 为思考强度档位（可选，doc/user-settings.md §2.1）。
    */
   buildRequest(
     model: string,
     messages: ProviderMessage[],
     tools: ToolDefinition[],
-    user?: string
+    user?: string,
+    thinking?: ThinkingEffort
   ): CompleteOptions;
 
   /**
