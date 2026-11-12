@@ -236,9 +236,12 @@ event: error        data: {"code":"provider_error","error":"...","model":"...","
 | code             | 触发条件                                         | 附加字段        |
 | ---------------- | ------------------------------------------------ | --------------- |
 | `no_model`       | 未配置任何可用模型                               | —               |
+| `invalid_request`| 请求体不是合法 JSON 或结构不符（解析失败，就地拦截） | —               |
 | `invalid_model`  | 请求的模型名不属于任何已配置 Provider（不静默回落） | `available[]`   |
 | `unconfigured`   | 归属 Provider 的 API_KEY / BASE_URL 缺失         | `model` / `provider` |
 | `provider_error` | 上游错误（401、模型不存在、网络异常等，含 catch 兜底） | `model` / `provider` |
+
+**`invalid_request` 的形态**：请求体解析失败时同样以 `text/event-stream` 回 `error` 事件（`code: 'invalid_request'`）而非抛 500 空响应——客户端总能按同一套 SSE 解析处理。
 
 **code 覆盖**：loop 内部错误现已全部带 `code`——解析兜底失败为 `parse_error`，模型请求失败为 `provider_error`；路由层对未标注 `code` 的 error 事件一律兜底为 `provider_error`（见 `app/api/chat/route.ts`）。前端仍建议对未知 `code` 值有兜底文案。
 
