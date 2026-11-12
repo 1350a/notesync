@@ -6,6 +6,12 @@ import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/l
 import { acquireLocalEngine } from '@/lib/local/engine-lease';
 import { shouldRetrieve } from '@/lib/local/rag/gate';
 import { searchKnowledge } from '@/lib/local/rag/store';
+import { mergeExpiredRefs, refreshMeta } from '@/lib/history/contract';
+import { deriveTitleFromMessages } from '@/lib/history/title';
+import { ensurePersistentStorage, getHistoryStorage } from '@/lib/history/storage';
+import { SAVE_DEBOUNCE_MS, createSessionMeta } from '@/lib/history/types';
+import type { ExpiredImageRef, SessionMeta, SessionRecord } from '@/lib/history/types';
+import { useChatStore } from '@/store/useChatStore';
 import {
   CONTENT_BLOCKED_MESSAGE,
   HARD_BLOCK_MESSAGE,
@@ -60,6 +66,47 @@ function parseDiagnosisResult(raw: unknown): DiagnosisResult | null {
   return record as unknown as DiagnosisResult;
 }
 
+/** 会话 id：优先 crypto.randomUUID（仅安全上下文可用），降级时间戳 + 随机串 */
+function createSessionId(): string {
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj && typeof cryptoObj.randomUUID === 'function') return cryptoObj.randomUUID();
+  return `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 把存储层的过期坐标折算成消息上的展示态字段（doc/chat-history.md §4.1） */
+function attachExpiredImages(messages: ChatMsg[], refs: ExpiredImageRef[]): ChatMsg[] {
+  if (refs.length === 0) return messages;
+  const next = [...messages];
+  for (const ref of refs) {
+    const target = next[ref.msg];
+    if (!target) continue;
+    const list = target.expiredImages ?? [];
+    if (list.includes(ref.img)) continue;
+    next[ref.msg] = { ...target, expiredImages: [...list, ref.img].sort((a, b) => a - b) };
+  }
+  return next;
+}
+
+/**
+ * 淘汰结果回写内存态：清空对应图片槽位并留痕。
+ * 不清会把已被删掉的附件继续挂在气泡上，用户点开还能看到"已过期"的图。
+ */
+function applyEviction(messages: ChatMsg[], expired: ExpiredImageRef[]): ChatMsg[] {
+  if (expired.length === 0) return messages;
+  const next = [...messages];
+  for (const item of expired) {
+    const target = next[item.msg];
+    const current = target?.images?.[item.img];
+    if (!target?.images || typeof current !== 'string' || current === '') continue;
+    const images = [...target.images];
+    images[item.img] = '';
+    const list = target.expiredImages ?? [];
+    const marked = list.includes(item.img) ? list : [...list, item.img].sort((a, b) => a - b);
+    next[item.msg] = { ...target, images, expiredImages: marked };
+  }
+  return next;
+}
+
 export interface SendOptions {
   /** 开启诊断模式：无进行中会话时以 intake 重新开题（空 payload） */
   startDiagnosis?: boolean;
@@ -79,6 +126,20 @@ export function useChat(selectedModel: string) {
   /** 诊断会话上下文（服务端经 done.diagnose.context 回传，客户端仅持久不推导；null 即普通聊天） */
   const [diagnoseContext, setDiagnoseContext] = useState<DiagnoseContext | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // ——会话历史接线（doc/chat-history.md §7）：messages 仍是本 hook 唯一的内存态，
+  // 这里只补「什么时候落盘、怎么恢复」两条链路，不动发送与流式解析——
+  /** 当前会话头；null = 尚未落库的新对话（id 在首条消息发出时生成） */
+  const sessionMetaRef = useRef<SessionMeta | null>(null);
+  /** 已过期附件坐标：落库时原样带回，避免同一条被重复淘汰 */
+  const expiredRefsRef = useRef<ExpiredImageRef[]>([]);
+  /** 落盘读最新内存态：state 给渲染、ref 给异步回调，防闭包读到旧数组 */
+  const messagesRef = useRef<ChatMsg[]>([]);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenOpenSignalRef = useRef(0);
+  const openSessionSignal = useChatStore((s) => s.openSessionSignal);
+  const pendingSessionId = useChatStore((s) => s.pendingSessionId);
+  const setCurrentSessionId = useChatStore((s) => s.setCurrentSessionId);
+  const clearPendingSession = useChatStore((s) => s.clearPendingSession);
   // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
@@ -97,16 +158,146 @@ export function useChat(selectedModel: string) {
     setLoading(false);
   }, []);
 
-  /** 新建对话：中断进行中的生成并清空消息（诊断会话一并作废） */
-  const clearMessages = useCallback(() => {
+  /** 唯一写库出口：done / error / 停止 / 切换会话 / 新建会话前都会经过这里 */
+  const flushSession = useCallback(async () => {
+    const current = messagesRef.current;
+    const base = sessionMetaRef.current;
+    // 还没发过消息（无 id）或会话已空：不产生空壳条目
+    if (!base || current.length === 0) return;
+
+    const storage = getHistoryStorage();
+    if (!storage.supported) return;
+
+    // 标题只在用户没手改过时按首条用户消息派生（§2.3）；字节数/时间为实际内容
+    const meta = refreshMeta(
+      base.titleEdited ? base : { ...base, title: deriveTitleFromMessages(current) },
+      current,
+      Date.now()
+    );
+    const record: SessionRecord = {
+      id: meta.id,
+      messages: current,
+      expiredImages: expiredRefsRef.current,
+    };
+
+    const result = await storage.saveSession(meta, record);
+    sessionMetaRef.current = meta;
+    if (result.status === 'unsupported') return;
+
+    // 首次真正写成功后再申请持久化：只在用得上的环境里问一次（§3.3）
+    ensurePersistentStorage();
+
+    if (result.expired.length > 0) {
+      expiredRefsRef.current = mergeExpiredRefs(expiredRefsRef.current, result.expired);
+      setMessages((prev) => {
+        const next = applyEviction(prev, result.expired);
+        messagesRef.current = next;
+        return next;
+      });
+    }
+
+    setCurrentSessionId(meta.id);
+    // 列表顺序按 updatedAt 倒序，写完必须刷新，否则新会话不会立刻出现在侧栏
+    void useChatStore.getState().refreshSessions();
+  }, [setCurrentSessionId]);
+
+  /** 流式结束后的合并落库：一次请求只写一次（§3.1） */
+  const scheduleSave = useCallback(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void flushSession();
+    }, SAVE_DEBOUNCE_MS);
+  }, [flushSession]);
+
+  /** 丢弃当前会话且不落盘：会话已被删除时用，否则下一次落盘会把它重建出来 */
+  const discardSession = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    sessionMetaRef.current = null;
+    expiredRefsRef.current = [];
+    messagesRef.current = [];
     setLoading(false);
     setMessages([]);
     setDiagnoseContext(null);
+    setCurrentSessionId(null);
+  }, [setCurrentSessionId]);
+
+  /** 载入历史会话：先落盘当前会话，再回填目标会话（§7.2） */
+  const loadSession = useCallback(
+    async (id: string) => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      await flushSession();
+
+      const record = await getHistoryStorage().loadSession(id);
+      // 记录损坏（已被 sanitize 单条删除）或已不存在：保持当前会话不变，不摆空壳
+      if (!record) return false;
+
+      const meta =
+        useChatStore.getState().sessions.find((item) => item.id === id) ??
+        createSessionMeta(id, Date.now());
+      const restored = attachExpiredImages(record.messages as ChatMsg[], record.expiredImages);
+      sessionMetaRef.current = { ...meta };
+      expiredRefsRef.current = record.expiredImages;
+      messagesRef.current = restored;
+      setMessages(restored);
+      // 诊断会话上下文不随历史恢复（协议未落库该字段），一律按普通聊天接着聊
+      setDiagnoseContext(null);
+      setLoading(false);
+      setCurrentSessionId(id);
+      return true;
+    },
+    [flushSession, setCurrentSessionId]
+  );
+
+  /** 新建对话：中断生成、把旧会话落盘，再清空（诊断会话一并作废） */
+  const clearMessages = useCallback(() => {
+    void (async () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      await flushSession();
+      discardSession();
+    })();
+  }, [flushSession, discardSession]);
+
+  // messages → ref 单向同步：setMessages 之后的下一次异步落盘都能读到最新内容
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // 首屏恢复历史列表与能力判定（读 meta 表，不碰消息体）
+  useEffect(() => {
+    void useChatStore.getState().refreshSessions();
   }, []);
+
+  // 消费侧栏发来的打开请求：pendingSessionId 为空表示"丢弃当前会话"。
+  // 放进微任务：effect 体内同步 setState 会触发级联渲染（react-hooks 规则），
+  // 且 loadSession 本身是异步链路，早一个 tick 晚一个 tick 无行为差异
+  useEffect(() => {
+    if (openSessionSignal === seenOpenSignalRef.current) return;
+    seenOpenSignalRef.current = openSessionSignal;
+    const target = pendingSessionId;
+    queueMicrotask(() => {
+      if (target) void loadSession(target);
+      else discardSession();
+      clearPendingSession();
+    });
+  }, [openSessionSignal, pendingSessionId, loadSession, discardSession, clearPendingSession]);
 
   const sendMessage = useCallback(
     async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
@@ -159,6 +350,11 @@ export function useChat(selectedModel: string) {
           : {}),
       };
       const history = [...messages, userMsg];
+      // 首条消息发出即确定会话身份（id 在这里生成）：点开"新建"但没发消息不会留下空会话
+      if (!sessionMetaRef.current) {
+        sessionMetaRef.current = createSessionMeta(createSessionId(), Date.now());
+      }
+      messagesRef.current = history;
       setMessages(history);
       setLoading(true);
 
@@ -344,10 +540,23 @@ export function useChat(selectedModel: string) {
         if (trace) finalizeTrace(trace);
         setLoading(false);
         abortControllerRef.current = null;
+        // done / error / 用户停止都走这里：合并一次落库（§3.1）
+        scheduleSave();
       }
     },
-    [messages, loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort]
+    [messages, loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave]
   );
 
-  return { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext };
+  return {
+    messages,
+    loading,
+    sendMessage,
+    stopGeneration,
+    clearMessages,
+    /** 载入历史会话（供页面消费侧栏的打开请求时调用） */
+    loadSession,
+    /** 丢弃当前会话且不落盘（当前会话被删除时调用） */
+    discardSession,
+    diagnoseContext,
+  };
 }
