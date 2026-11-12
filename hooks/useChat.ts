@@ -3,6 +3,7 @@ import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
 import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
 import { CLIENT_ID_HEADER, getClientId, getUserId } from '@/lib/client-id';
 import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/lib/diagnose/types';
+import { shouldRetrieve } from '@/lib/local/rag/gate';
 import { searchKnowledge } from '@/lib/local/rag/store';
 import {
   CONTENT_BLOCKED_MESSAGE,
@@ -169,8 +170,9 @@ export function useChat(selectedModel: string) {
       // 本地检索（doc/browser-local-inference.md §6.1）：开关打开且引擎就绪时，
       // 发送前在浏览器内检索种子知识库，命中片段随请求上行。引擎未就绪/嵌入失败
       // 一律静默跳过（数据不出设备，检索是纯增益），消息照常裸发、绝不阻断。
+      // 触发条件见 §5.4：只有查询达到 RAG_MIN_QUERY_CHARS 才检索，短问候不白付一次嵌入。
       let ragContexts: RagContext[] | undefined;
-      if (ragEnabled && text.trim()) {
+      if (ragEnabled && shouldRetrieve(text)) {
         try {
           const hits = await searchKnowledge(text);
           if (hits.length > 0) {
