@@ -45,7 +45,10 @@ export interface UserSettings {
   systemPrompt: string;
   /** 生成参数（未接线占位，无 UI） */
   generation: GenerationSettings;
-  /** OCR 偏好（未接线占位，无 UI） */
+  /**
+   * OCR 偏好（已接线，doc/browser-local-ocr.md §6.1）：
+   * 默认档为「全本地」（product-vision.md P4 约束③）——true=图片一律先本地转文字，原图不出端
+   */
   ocr: { preferLocal: boolean };
   /** 本地知识检索（已接线，doc/browser-local-inference.md §7）：true=发送前浏览器内检索并注入命中片段 */
   rag: { enabled: boolean };
@@ -57,7 +60,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   language: 'system',
   systemPrompt: '',
   generation: {},
-  ocr: { preferLocal: false },
+  // 保守档默认：图片先本地转文字，原图不出端（product-vision.md P4 约束③）
+  ocr: { preferLocal: true },
   rag: { enabled: false },
 };
 
@@ -108,15 +112,20 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
   return out;
 }
 
+/**
+ * OCR 偏好规整：默认档是「全本地」（图片先转文字，原图不出端）。
+ * 与 normalizeRag 的「只有显式 true 才生效」相反——这里的保守侧是 true，
+ * 因此只有 **显式 false** 才关闭；缺省、'false' 字符串、坏值一律回落到默认档。
+ * （宁可多一次本地识别，也不误把图片外发。）
+ */
 function normalizeOcr(raw: unknown): UserSettings['ocr'] {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { preferLocal: false };
-  // 布尔语义从严：只有显式 true 才生效，其余（含 'true' 字符串）视为未设置
-  return { preferLocal: (raw as Record<string, unknown>).preferLocal === true };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { preferLocal: true };
+  return { preferLocal: (raw as Record<string, unknown>).preferLocal !== false };
 }
 
 function normalizeRag(raw: unknown): UserSettings['rag'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { enabled: false };
-  // 与 ocr.preferLocal 同款从严布尔：路由绝对权在使用者，默认关闭
+  // 从严布尔：只有显式 true 才生效，其余（含 'true' 字符串）视为未设置；与 ocr.preferLocal 的保守侧相反
   return { enabled: (raw as Record<string, unknown>).enabled === true };
 }
 

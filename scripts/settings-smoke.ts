@@ -59,10 +59,14 @@ check('maxTokens 非正数丢弃', eq(normalizeSettings({ generation: { maxToken
 check('generation 非对象丢弃', eq(normalizeSettings({ generation: 'high' }).generation, {}));
 
 /* ---------- normalizeSettings：ocr 与未知字段 ---------- */
-check('ocr.preferLocal 严格 true', normalizeSettings({ ocr: { preferLocal: true } }).ocr.preferLocal === true);
-check("ocr.preferLocal 'true' 字符串视为否", normalizeSettings({ ocr: { preferLocal: 'true' } }).ocr.preferLocal === false);
+// 默认档为「全本地」（product-vision.md P4 约束③）：保守侧是 true，只有显式 false 才关闭
+check('ocr.preferLocal 缺省回落 true', normalizeSettings({}).ocr.preferLocal === true);
+check('ocr.preferLocal 显式 true 生效', normalizeSettings({ ocr: { preferLocal: true } }).ocr.preferLocal === true);
+check('ocr.preferLocal 显式 false 才关闭', normalizeSettings({ ocr: { preferLocal: false } }).ocr.preferLocal === false);
+check("ocr.preferLocal 'false' 字符串不误关", normalizeSettings({ ocr: { preferLocal: 'false' } }).ocr.preferLocal === true);
+check('ocr 非对象回落默认档', normalizeSettings({ ocr: 'local' }).ocr.preferLocal === true);
 
-/* ---------- normalizeSettings：rag（本地检索开关，从严布尔同 ocr） ---------- */
+/* ---------- normalizeSettings：rag（本地检索开关，从严布尔，默认关闭） ---------- */
 check('rag.enabled 严格 true', normalizeSettings({ rag: { enabled: true } }).rag.enabled === true);
 check("rag.enabled 'true' 字符串视为否", normalizeSettings({ rag: { enabled: 'true' } }).rag.enabled === false);
 check('rag 非对象回落默认', normalizeSettings({ rag: 'on' }).rag.enabled === false);
