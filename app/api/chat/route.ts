@@ -66,6 +66,7 @@ import type { ProviderMessage } from '@/lib/provider/types';
 import { estimateCost, logCost } from '@/lib/chat/cost';
 import { trimMessages } from '@/lib/chat/trim';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
+import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '@/lib/safety/redact';
 import { CHAT_BASE_SYSTEM_PROMPT, CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
 import { createAdapter } from '@/lib/tools/adapters';
 import { registerBuiltinTools } from '@/lib/tools/builtin';
@@ -610,7 +611,8 @@ export async function POST(request: Request) {
                 sse('error', {
                   // loop 已标注 code（parse_error/provider_error）则透传；未标注按模型请求失败兜底
                   code: ev.code ?? 'provider_error',
-                  error: explainProviderError(ev.message),
+                  // loop 的 message 可能夹带上游原文，这里统一过一遍脱敏（审查项 S2）
+                  error: explainProviderError(redactUpstreamText(ev.message) || '模型请求失败'),
                   model,
                   provider: provider.name,
                 })
@@ -679,12 +681,17 @@ export async function POST(request: Request) {
           );
         }
       } catch (err) {
+        // 异常原文只进服务端日志，响应给脱敏摘要（审查项 S2）
+        const rawError = err instanceof Error ? err.message : String(err ?? "");
+        if (rawError) {
+          console.error(`[chat] 模型请求失败：${rawError.slice(0, MAX_ERROR_LOG_CHARS)}`);
+        }
         controller.enqueue(
           encoder.encode(
             sse("error", {
               code: "provider_error",
               error: explainProviderError(
-                err instanceof Error ? err.message : "模型请求失败"
+                redactUpstreamText(rawError) || "模型请求失败"
               ),
               model,
               provider: provider.name,
