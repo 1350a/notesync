@@ -9,6 +9,7 @@ import type { ChatMsg } from '@/lib/chat/messages';
 import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
 import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
 import DiagnosisCard from './DiagnosisCard';
+import MessageActions, { MessageEditor } from './MessageActions';
 import ToolTrace from './ToolTrace';
 
 /**
@@ -70,12 +71,23 @@ export default function ChatList({
   messages,
   loading,
   onDiagnoseAction,
+  onDeleteMessage,
+  onRegenerate,
+  onEditResend,
 }: {
   messages: ChatMsg[];
   loading: boolean;
   /** 掌握度回路回调（明白了/还不懂/继续），由页面层接 useChat；缺省不渲染回路按钮 */
   onDiagnoseAction?: (event: DiagnoseRequestEvent, label: string) => void;
+  /** 删除单条消息（doc/chat-history.md §8.3）；缺省则整条操作条不出现（未接线不露 UI） */
+  onDeleteMessage?: (index: number) => void;
+  /** 重新生成最后一条回答 */
+  onRegenerate?: () => void;
+  /** 编辑某条 user 消息并重发 */
+  onEditResend?: (index: number, text: string) => void;
 }) {
+  // 就地编辑的目标下标：null = 不在编辑态。只允许一条同时编辑，切走即放弃草稿
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   // 滚动跟随收口在页面层（app/chat/page.tsx）：用户操作优先的条件式吸底（doc/mobile-ux.md §3）
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-4">
@@ -96,8 +108,8 @@ export default function ChatList({
           key={i}
           className={
             m.role === 'user'
-              ? 'self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
-              : 'self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm shadow-sm'
+              ? 'group self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
+              : 'group self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm shadow-sm'
           }
           style={
             m.role === 'user'
@@ -217,9 +229,32 @@ export default function ChatList({
                   </span>
                 </div>
               ) : null}
-              {m.content ? <div>{m.content}</div> : null}
+              {editingIndex === i ? (
+                <MessageEditor
+                  initial={m.content}
+                  onCancel={() => setEditingIndex(null)}
+                  onSubmit={(text) => {
+                    setEditingIndex(null);
+                    onEditResend?.(i, text);
+                  }}
+                />
+              ) : m.content ? (
+                <div>{m.content}</div>
+              ) : null}
             </>
           )}
+
+          {/* 操作条：只有外部接线了删除能力才出现（未接线不露 UI，AGENTS.md §8） */}
+          {onDeleteMessage && editingIndex !== i && !loading ? (
+            <MessageActions
+              role={m.role}
+              canRegenerate={m.role === 'assistant' && i === messages.length - 1 && Boolean(onRegenerate)}
+              disabled={loading}
+              onEdit={m.role === 'user' && onEditResend ? () => setEditingIndex(i) : undefined}
+              onRegenerate={onRegenerate}
+              onDelete={() => onDeleteMessage(i)}
+            />
+          ) : null}
         </div>
       ))}
 
