@@ -168,6 +168,8 @@ export default function ChatList({
               {m.images && m.images.length > 0 ? (
                 <div className="mb-2 flex flex-wrap gap-2">
                   {m.images.map((src, idx) => (
+                    // 消息里的图片是上传时读出的 data URL，next/image 优化器无法处理内联 src；
+                    // 气泡内缩略图固定 96px，走优化器无收益且会多一次 /_next/image 代理
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={`img-${idx}`}
