@@ -307,6 +307,65 @@ describe('finalizeDiagnosis 编排', () => {
     expect(fin.context.state).toBe('L1_only');
   });
 
+  it('guard 重试后重交 L1：结论、守卫、状态三者同源', async () => {
+    // 首次交 L2 且正文不引用作答 → guard 必败；重试时模型改交 L1（画像本就不引用作答）
+    const store = {
+      args: {
+        level: 'L2',
+        knowledgePoints: ['二次方程'],
+        errorCause: { code: 'case_miss', confidence: 0.9 },
+      } as Record<string, unknown> | null,
+    };
+    const fin = await finalizeDiagnosis({
+      session: { context: context({ state: 'diagnose' }), completeness: FULL },
+      baseMessages,
+      mainRun: doneRun('这道题考一元二次方程的解法，先用因式分解，再……'),
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async () => {
+        store.args = { level: 'L1', knowledgePoints: ['二次方程'], notes: '未辨认出作答' };
+        return doneRun('（改交 L1 画像）');
+      },
+    });
+    // 交付的是 L1 结论，就不该按 L2 进 explain（旧实现此处 state 会是 explain）
+    expect(fin.retried).toBe('guard');
+    expect(fin.diagnosis?.level).toBe('L1');
+    expect(fin.guardPassed).toBe(true);
+    expect(fin.context.state).toBe('done');
+  });
+
+  it('guard 重试后重交高置信 L2：按重交置信度进 explain，不回 clarify', async () => {
+    // 首次提交低置信、正文不引用 → guard 败；重试重交高置信且正文引用作答
+    const store = {
+      args: {
+        level: 'L2',
+        knowledgePoints: ['二次方程'],
+        errorCause: { code: 'case_miss', confidence: 0.3 },
+      } as Record<string, unknown> | null,
+    };
+    const fin = await finalizeDiagnosis({
+      session: { context: context({ state: 'diagnose' }), completeness: FULL },
+      baseMessages,
+      mainRun: doneRun('这道题考一元二次方程的解法，先用因式分解，再……'),
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async () => {
+        store.args = {
+          level: 'L2',
+          knowledgePoints: ['二次方程'],
+          errorCause: { code: 'case_miss', confidence: 0.9 },
+        };
+        return doneRun('你写到 x=2 就停了，另一个根哪去了？');
+      },
+    });
+    // 结论按重交值组装，状态迁移也必须按重交值：高置信 → explain（旧实现会按首次 0.3 回 clarify）
+    expect(fin.guardPassed).toBe(true);
+    expect(fin.diagnosis?.errorCause?.code).toBe('case_miss');
+    expect(fin.context.state).toBe('explain');
+  });
+
   it('guard 首查通过：直接交付，无重试调用', async () => {
     const store = {
       args: {
