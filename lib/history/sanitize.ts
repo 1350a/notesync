@@ -7,6 +7,14 @@
  */
 import { MAX_DATA_URL, parseTextFiles } from '../chat/messages.ts';
 import type { ToolCallView } from '../chat/messages.ts';
+import type { AskUserQuestion } from '../tools/types.ts';
+import type {
+  DiagnosisResult,
+  ErrorCauseRef,
+  HintStep,
+  StrategyCard,
+} from '../diagnose/types.ts';
+import { isKnownErrorCode } from '../diagnose/error-causes.ts';
 import { normalizeTitle } from './title.ts';
 import { MAX_IMAGES_PER_MESSAGE, MAX_MESSAGE_CHARS, UNTITLED_SESSION } from './types.ts';
 import type {
@@ -97,6 +105,144 @@ function isEmptyBubble(message: HistoryMessage): boolean {
   return !hasText && !hasImages && !hasOcr && !hasFiles;
 }
 
+/** 结构化字段的清洗上限（落库数据可能被改坏，只保留 UI 真会渲染的部分） */
+const MAX_AWAITING_QUESTIONS = 8;
+const MAX_QUESTION_OPTIONS = 6;
+const MAX_QUESTION_CHARS = 400;
+const MAX_OPTION_CHARS = 120;
+const MAX_LABEL_CHARS = 40;
+const MAX_KNOWLEDGE_POINTS = 3;
+const MAX_KNOWLEDGE_CHARS = 40;
+const MAX_HINTS = 3;
+const MAX_HINT_CHARS = 300;
+const MAX_STRATEGY_STEPS = 6;
+const MAX_STRATEGY_STEP_CHARS = 200;
+const MAX_NOTE_CHARS = 200;
+
+/** 取自有字段对象（排除 null 与数组） */
+function asRecord(raw: unknown): Record<string, unknown> | null {
+  return raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
+}
+
+/** 清洗字符串数组：非字符串/空白项丢弃，超量截断 */
+function sanitizeStringList(raw: unknown, maxItems: number, limit: number): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const item of raw.slice(0, maxItems)) {
+    const text = sanitizeText(item, limit).trim();
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+/**
+ * 清洗 ask_user 待回答问题：question 必填，label / options 逐项校验。
+ * 回读路径不再用 as 断言直接信任落库数据——字段被改坏时卡片会渲染出空白项。
+ */
+function sanitizeAwaitingQuestions(raw: unknown): AskUserQuestion[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: AskUserQuestion[] = [];
+  for (const item of raw.slice(0, MAX_AWAITING_QUESTIONS)) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const question = sanitizeText(record.question, MAX_QUESTION_CHARS).trim();
+    if (!question) continue;
+    const entry: AskUserQuestion = { question };
+    const label = sanitizeText(record.label, MAX_LABEL_CHARS).trim();
+    if (label) entry.label = label;
+    const options = sanitizeStringList(record.options, MAX_QUESTION_OPTIONS, MAX_OPTION_CHARS);
+    if (options.length > 0) entry.options = options;
+    out.push(entry);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** 清洗错因引用：code 必须落在 14 条枚举内，confidence 收敛到 0~1 */
+function sanitizeErrorCause(raw: unknown): ErrorCauseRef | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const code = typeof record.code === 'string' ? record.code : '';
+  if (!isKnownErrorCode(code)) return null;
+  const confidence =
+    typeof record.confidence === 'number' && Number.isFinite(record.confidence)
+      ? Math.min(1, Math.max(0, record.confidence))
+      : 0;
+  return { code, confidence };
+}
+
+/** 清洗策略卡：errorCode 必须合法，id 与非空 steps 缺一即视为无效（卡片无法渲染） */
+function sanitizeStrategyCard(raw: unknown): StrategyCard | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const errorCode = typeof record.errorCode === 'string' ? record.errorCode : '';
+  if (!isKnownErrorCode(errorCode)) return null;
+  const id = sanitizeText(record.id, MAX_LABEL_CHARS).trim();
+  const steps = sanitizeStringList(record.steps, MAX_STRATEGY_STEPS, MAX_STRATEGY_STEP_CHARS);
+  if (!id || steps.length === 0) return null;
+  return {
+    errorCode,
+    id,
+    steps,
+    subject: 'math',
+    version:
+      typeof record.version === 'number' && Number.isFinite(record.version) ? record.version : 1,
+  };
+}
+
+/** 清洗提示阶梯：level 只接受 1/2/3，content 非空的才保留 */
+function sanitizeHints(raw: unknown): HintStep[] {
+  if (!Array.isArray(raw)) return [];
+  const out: HintStep[] = [];
+  for (const item of raw.slice(0, MAX_HINTS)) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const level = record.level;
+    if (level !== 1 && level !== 2 && level !== 3) continue;
+    const content = sanitizeText(record.content, MAX_HINT_CHARS).trim();
+    if (!content) continue;
+    out.push({ level, content });
+  }
+  return out;
+}
+
+/** 清洗诊断结论：level 非法整条丢弃，其余字段逐项回落（DiagnosisCard 只渲染已知形状） */
+function sanitizeDiagnosis(raw: unknown): DiagnosisResult | undefined {
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  const level = record.level === 'L1' || record.level === 'L2' ? record.level : null;
+  if (!level) return undefined;
+  const completeness = asRecord(record.completeness) ?? {};
+  const diagnosis: DiagnosisResult = {
+    subject: 'math',
+    level,
+    completeness: {
+      hasProblem: completeness.hasProblem === true,
+      hasStudentAnswer: completeness.hasStudentAnswer === true,
+      hasCorrectAnswer: completeness.hasCorrectAnswer === true,
+      hasAnalysis: completeness.hasAnalysis === true,
+    },
+    knowledgePoints: sanitizeStringList(
+      record.knowledgePoints,
+      MAX_KNOWLEDGE_POINTS,
+      MAX_KNOWLEDGE_CHARS
+    ),
+    errorCause: sanitizeErrorCause(record.errorCause),
+    strategy: sanitizeStrategyCard(record.strategy),
+    hints: sanitizeHints(record.hints),
+    strategyVersion:
+      typeof record.strategyVersion === 'number' && Number.isFinite(record.strategyVersion)
+        ? record.strategyVersion
+        : 1,
+  };
+  const secondary = sanitizeErrorCause(record.secondaryErrorCause);
+  if (secondary) diagnosis.secondaryErrorCause = secondary;
+  const notes = sanitizeText(record.notes, MAX_NOTE_CHARS).trim();
+  if (notes) diagnosis.notes = notes;
+  return diagnosis;
+}
+
 /** 清洗单条消息；role 非法返回 null */
 function sanitizeMessage(raw: unknown): HistoryMessage | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -132,10 +278,12 @@ function sanitizeMessage(raw: unknown): HistoryMessage | null {
   if (toolCalls) message.toolCalls = toolCalls;
 
   if (Array.isArray(record.awaitingQuestions) && record.awaitingQuestions.length > 0) {
-    message.awaitingQuestions = record.awaitingQuestions as HistoryMessage['awaitingQuestions'];
+    const awaitingQuestions = sanitizeAwaitingQuestions(record.awaitingQuestions);
+    if (awaitingQuestions) message.awaitingQuestions = awaitingQuestions;
   }
-  if (record.diagnosis && typeof record.diagnosis === 'object') {
-    message.diagnosis = record.diagnosis as HistoryMessage['diagnosis'];
+  if (record.diagnosis) {
+    const diagnosis = sanitizeDiagnosis(record.diagnosis);
+    if (diagnosis) message.diagnosis = diagnosis;
   }
   if (record.localOnly === true) message.localOnly = true;
   if (record.blocked === true) message.blocked = true;
