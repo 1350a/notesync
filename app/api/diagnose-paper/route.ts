@@ -37,6 +37,7 @@ import {
 import { deriveCompleteness } from '@/lib/diagnose/completeness';
 import type { DiagnosisResult } from '@/lib/diagnose/types';
 import { CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
+import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '@/lib/safety/redact';
 import { estimateCost, logCost } from '@/lib/chat/cost';
 import {
   encoder,
@@ -305,11 +306,15 @@ export async function POST(request: Request) {
           }),
         );
       } catch (err) {
+        // 上游异常原文只进服务端日志，响应给脱敏摘要（审查项 S2）
+        const raw = err instanceof Error ? err.message : String(err ?? '');
+        if (raw) console.error(`[paper] 整卷诊断请求失败：${raw.slice(0, MAX_ERROR_LOG_CHARS)}`);
+        const summary = redactUpstreamText(raw);
         controller.enqueue(
           encoder.encode(
             sse('error', {
               code: 'provider_error',
-              error: err instanceof Error ? err.message : '整卷诊断请求失败',
+              error: summary ? `整卷诊断请求失败：${summary}` : '整卷诊断请求失败，请稍后重试。',
             }),
           ),
         );
