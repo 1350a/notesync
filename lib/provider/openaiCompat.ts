@@ -430,7 +430,7 @@ export class OpenAICompatProvider implements LLMProvider {
       stream,
     };
     if (options.json) body.response_format = { type: 'json_object' };
-    // 上游终端用户标识（wip-safety-protocol §6）：请求体 user 字段，开关控制携带
+    // 上游终端用户标识（safety-protocol §6）：请求体 user 字段，开关控制携带
     if (options.user && process.env.USER_FIELD_ENABLED !== '0') {
       body.user = options.user;
     }
@@ -584,7 +584,7 @@ export class OpenAICompatProvider implements LLMProvider {
             }[];
           };
           const choice = chunk.choices?.[0];
-          // finish_reason 随流透传（wip-safety-protocol §3：拦截判定需要它；最后一次出现的为准）
+          // finish_reason 随流透传（safety-protocol §3：拦截判定需要它；最后一次出现的为准）
           if (choice?.finish_reason) {
             yield { finishReason: choice.finish_reason };
           }

@@ -1,13 +1,13 @@
 /**
  * 诊断状态机（纯函数，不碰网络）
  *
- * 契约来源：wip-agent-workflow.md §2 迁移表，7 状态版（strategize 并入 diagnose）。
+ * 契约来源：agent-workflow.md §2 迁移表，7 状态版（strategize 并入 diagnose）。
  * 机器只认事件不认历史：route.ts 编排时逐事件驱动，前端随请求上送 DiagnoseContext。
  * 状态数量与预算为 D 级约束，实测可调；「有显式状态 + 有追问预算 + 有终止条件」三点不可丢。
  */
 import type { DiagnoseContext, DiagnoseEvent } from './types.ts';
 
-/** 追问预算：初始补问与置信度回炉同计，耗尽强制收敛（wip-agent-workflow.md §4.1，D 级可调） */
+/** 追问预算：初始补问与置信度回炉同计，耗尽强制收敛（agent-workflow.md §4.1，D 级可调） */
 export const CLARIFY_BUDGET = 2;
 
 /** 迁移结果：事件与当前状态不合法时 accepted=false 且 context 原样返回，调用方按兵不动而非报错 */
@@ -35,7 +35,7 @@ export function transition(ctx: DiagnoseContext, event: DiagnoseEvent): Transiti
     case 'intake': {
       if (event.type === 'user_stop') return toDone(ctx);
       if (event.type !== 'intake_done') return rejected;
-      // 无原题连学科都判不了：留在 intake 引导补题（wip-diagnosis-model.md §1.1 必需项）
+      // 无原题连学科都判不了：留在 intake 引导补题（diagnosis-model.md §1.1 必需项）
       if (!event.hasProblem) return { accepted: true, context: { ...ctx, state: 'intake' } };
       if (!event.isMath) return { accepted: true, context: { ...ctx, state: 'reject' } };
       // 进入 clarify 即发出第一轮补问（常见错法清单话术），预扣 1 次预算
@@ -46,7 +46,7 @@ export function transition(ctx: DiagnoseContext, event: DiagnoseEvent): Transiti
       if (event.type === 'user_stop') return toDone(ctx);
       if (event.type !== 'clarify_done') return rejected;
       if (event.hasAnswer) return { accepted: true, context: { ...ctx, state: 'diagnose' } };
-      // 明确拒绝：直接降级 L1，不再浪费一轮追问（wip-diagnosis-model.md §2.2）
+      // 明确拒绝：直接降级 L1，不再浪费一轮追问（diagnosis-model.md §2.2）
       if (event.refused) return { accepted: true, context: { ...ctx, state: 'L1_only' } };
       // 答了但没给出作答：预算未尽再问一轮（绑定可验证推测），耗尽强制收敛
       if (ctx.clarifyUsed >= CLARIFY_BUDGET) return { accepted: true, context: { ...ctx, state: 'L1_only' } };
@@ -57,7 +57,7 @@ export function transition(ctx: DiagnoseContext, event: DiagnoseEvent): Transiti
       if (event.type === 'user_stop') return toDone(ctx);
       if (event.type !== 'diagnosis_done') return rejected;
       if (event.outcome === 'guard_failed') {
-        // 作答引用判据两试不过：降级 L1，不硬编错因（wip-diagnosis-model.md §7.3）
+        // 作答引用判据两试不过：降级 L1，不硬编错因（diagnosis-model.md §7.3）
         return { accepted: true, context: { ...ctx, state: 'L1_only' } };
       }
       if (event.outcome === 'confident') {

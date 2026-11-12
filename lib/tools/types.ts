@@ -122,7 +122,7 @@ export interface ExtractedToolCalls {
   raw: string;
   /** 解析失败时的诊断信息（为空表示解析成功） */
   parseError?: string;
-  /** 上游流终止原因（拦截判定路径之一，wip-safety-protocol.md §3） */
+  /** 上游流终止原因（拦截判定路径之一，safety-protocol.md §3） */
   finishReason?: string;
 }
 
@@ -143,7 +143,7 @@ export type ToolLoopEvent =
   | { type: 'awaiting_user'; questions: AskUserQuestion[]; toolCallId: string }
   | { type: 'done'; usedRounds: number; finishReason: string }
   /**
-   * 上游拦截（content_blocked）：本轮内容不回填历史、请求终止（wip-safety-protocol.md §3.1 硬项）。
+   * 上游拦截（content_blocked）：本轮内容不回填历史、请求终止（safety-protocol.md §3.1 硬项）。
    * 循环内检测到即丢弃本轮 assistant 消息——被拒内容回传上游会再拦甚至触发冷却。
    */
   | { type: 'blocked'; signal: 'finish_reason' | 'content'; finishReason?: string }

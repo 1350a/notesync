@@ -1,5 +1,5 @@
 /**
- * 上游拦截信号归一（wip-safety-protocol.md §1/§3）
+ * 上游拦截信号归一（safety-protocol.md §1/§3）
  *
  * 上游行为不对称（DeepSeek 无专门错误码、智谱流中只返回理由），
  * 不能把合规兜底赌在上游——这里把「响应形态信号」统一归一为 content_blocked。

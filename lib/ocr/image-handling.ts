@@ -51,7 +51,7 @@ export interface ImageConversionResult {
   texts: (string | null)[];
   /**
    * 与 texts 一一对应的整体置信度（0~100，tesseract 口径）；失败项为 null。
-   * 供回显确认面板标注低置信项（wip-diagnosis-model.md §1.3 规则②，阈值由调用方定）
+   * 供回显确认面板标注低置信项（diagnosis-model.md §1.3 规则②，阈值由调用方定）
    */
   confidences: (number | null)[];
   failures: ImageOcrFailure[];

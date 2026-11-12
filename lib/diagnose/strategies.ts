@@ -1,7 +1,7 @@
 /**
  * 错因 → 策略卡常量表
  *
- * 契约来源：doc/wip-diagnosis-model.md §4。策略不因题目而异，按错因 code 直查，不做检索。
+ * 契约来源：doc/diagnosis-model.md §4。策略不因题目而异，按错因 code 直查，不做检索。
  * 条目属 D 级约束：措辞可实测调整，但 StrategyCard 接口形状是硬项，变更须同批更新文档。
  */
 import type { ErrorCode } from './error-causes.ts';

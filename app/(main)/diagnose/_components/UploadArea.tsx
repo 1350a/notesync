@@ -80,7 +80,7 @@ export default function UploadArea() {
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
-  /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，wip-agent-workflow.md §5） */
+  /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，agent-workflow.md §5） */
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -301,7 +301,7 @@ export default function UploadArea() {
 
   return (
     <div className="w-full max-w-3xl mx-auto space-y-6">
-      {/* 诊断模式：单题对话式 / 整卷四步流程（wip-agent-workflow.md §5） */}
+      {/* 诊断模式：单题对话式 / 整卷四步流程（agent-workflow.md §5） */}
       <div
         className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white text-sm shadow-sm w-fit"
         role="group"

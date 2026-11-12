@@ -18,7 +18,7 @@ describe('normalizeForQuote', () => {
   });
 });
 
-describe('checkAnswerQuote（wip-diagnosis-model.md §7.3）', () => {
+describe('checkAnswerQuote（diagnosis-model.md §7.3）', () => {
   const source = '由判别式 b²-4ac=9-4k>0，解得 k<9/4';
 
   it('引用作答片段（连续原文窗口）：run 命中', () => {

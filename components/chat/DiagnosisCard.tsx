@@ -2,7 +2,7 @@
 /**
  * 诊断结果卡片（DiagnosisResult 渲染 + explain 掌握度回路入口）
  *
- * 契约：wip-diagnosis-model.md §6（结构）、wip-agent-workflow.md §4.3（掌握度回路：
+ * 契约：diagnosis-model.md §6（结构）、agent-workflow.md §4.3（掌握度回路：
  * 明白了→结束；还不懂/继续→阶梯降一级；不强制不阻塞——不点也能正常继续对话）。
  * 移动端遵循 doc/mobile-ux.md §4：触屏按钮热区 ≥44px（touch: variant）。
  */
@@ -132,7 +132,7 @@ export default function DiagnosisCard({
       )}
 
       {onAction && isL2 && (
-        // 掌握度回路（wip-agent-workflow.md §4.3(a)）：触屏 44px 热区，窄屏三等分铺满
+        // 掌握度回路（agent-workflow.md §4.3(a)）：触屏 44px 热区，窄屏三等分铺满
         <div className="mt-3 grid grid-cols-3 gap-2">
           <button
             type="button"

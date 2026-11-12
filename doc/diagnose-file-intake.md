@@ -7,7 +7,7 @@
 按 `AGENTS.md` §9，改这里先于改代码。
 
 > **口径边界**：本文件只定义**上传与组装**，不定义「一道题够不够诊断」。
-> 完整度判定口径以 `wip-diagnosis-model.md` §1 为准（结论：**只认「有原题」为必需项**，作答有无决定走 L2 还是 L1，
+> 完整度判定口径以 `diagnosis-model.md` §1 为准（结论：**只认「有原题」为必需项**，作答有无决定走 L2 还是 L1，
 > 正确答案 / 标准解析纯属增强）。实装在 `lib/diagnose/completeness.ts`，两处不得各写一套判据。
 
 ## 1. 范围
@@ -122,7 +122,7 @@ interface DiagnoseAttachment {
 | `no_content` | 附件全部无效，无可发送内容 |
 | `provider_error` | 上游返回错误 |
 | `parse_error` | 工具调用解析兜底失败（doc/tool-protocol.md §5.3） |
-| `content_blocked` | 上游安全策略拒绝（输入或生成中）。**不可重试**（重试只会再被拦一次）；UI 展示拦截说明，不展示已流出片段；被拒内容不进入下一轮历史（wip-safety-protocol.md §2/§3.1） |
+| `content_blocked` | 上游安全策略拒绝（输入或生成中）。**不可重试**（重试只会再被拦一次）；UI 展示拦截说明，不展示已流出片段；被拒内容不进入下一轮历史（safety-protocol.md §2/§3.1） |
 
 ## 8. 调试开关（MOCK）
 

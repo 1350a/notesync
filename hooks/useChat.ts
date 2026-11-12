@@ -106,7 +106,7 @@ export function useChat(selectedModel: string) {
     async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
-      // 输入侧本地前置过滤（wip-safety-protocol.md §4，客户端优先：命中数据不出端）。
+      // 输入侧本地前置过滤（safety-protocol.md §4，客户端优先：命中数据不出端）。
       // 只判纯文本输入；附件/OCR 产物不在词表范围（§4 语义判定交上游 + 形态归一）。
       // 命中即在本机挂提示气泡，不建立请求、不留待回答状态。
       const safety = checkInputSafety(text, loadWordlist());

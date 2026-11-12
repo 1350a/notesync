@@ -104,7 +104,7 @@ function ThinkingEffortSelect({
   );
 }
 
-/** OCR 回显确认草稿：识别文本可编辑，确认后才随消息上行（wip-diagnosis-model.md §1.3） */
+/** OCR 回显确认草稿：识别文本可编辑，确认后才随消息上行（diagnosis-model.md §1.3） */
 interface OcrDraft {
   texts: string[];
   confidences: (number | null)[];
@@ -136,7 +136,7 @@ export default function ChatInput({
   const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
   /** 本地 OCR 进行中进度；非 null 时阻断重复发送 */
   const [ocrBusy, setOcrBusy] = useState<{ done: number; total: number } | null>(null);
-  /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，wip-product-vision.md §3.3） */
+  /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，product-vision.md §3.3） */
   const [diagnosisMode, setDiagnosisMode] = useState(false);
   /** OCR 回显确认草稿：非 null 时输入区上方出现确认面板，阻断直接发送 */
   const [ocrDraft, setOcrDraft] = useState<OcrDraft | null>(null);
@@ -364,7 +364,7 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* OCR 回显确认面板（wip-diagnosis-model.md §1.3）：识别文本先经学生确认/修正才上行，
+      {/* OCR 回显确认面板（diagnosis-model.md §1.3）：识别文本先经学生确认/修正才上行，
           低置信项标红强制核对；触屏可编辑（touch 16px） */}
       {ocrDraft && (
         <div className="mx-1 rounded-xl border border-border bg-muted/30 p-3">
@@ -451,7 +451,7 @@ export default function ChatInput({
               {modelsMessage}
             </span>
           )}
-          {/* 诊断模式开关（对话模式主线，wip-product-vision.md §3.3）：
+          {/* 诊断模式开关（对话模式主线，product-vision.md §3.3）：
               开启后发送即开启/延续诊断会话（错因归因，不给答案开场） */}
           <button
             type="button"
@@ -530,7 +530,7 @@ export default function ChatInput({
                 />
               </svg>
             </Button>
-            {/* 三档选择（wip-product-vision.md P4）：全本地 / 多模态 / 混合。
+            {/* 三档选择（product-vision.md P4）：全本地 / 多模态 / 混合。
                 P4 约束②：多模态能力未知或不支持时只呈现全本地一档，不得表现存在选择 */}
             {images.length > 0 && (
               <div className="flex flex-col gap-1">

@@ -68,13 +68,13 @@ export interface AssembleResult {
 }
 
 // ---------------------------------------------------------------------------
-// 诊断核心契约（wip-diagnosis-model.md §4.1/§6 + wip-agent-workflow.md §2）
+// 诊断核心契约（diagnosis-model.md §4.1/§6 + agent-workflow.md §2）
 // 接口形状为硬项：字段变更须同批更新对应文档。
 // ---------------------------------------------------------------------------
 
 import type { ErrorCode } from './error-causes.ts';
 
-/** 策略卡：错因 → 干预策略，直查不检索（wip-diagnosis-model.md §4.1） */
+/** 策略卡：错因 → 干预策略，直查不检索（diagnosis-model.md §4.1） */
 export interface StrategyCard {
   /** 对应错因表的 code（§3） */
   errorCode: ErrorCode;
@@ -87,7 +87,7 @@ export interface StrategyCard {
   version: number;
 }
 
-/** 完整度四要素（wip-diagnosis-model.md §1.1：仅 hasProblem 必需；hasAnalysis 只留痕，不参与门槛判定） */
+/** 完整度四要素（diagnosis-model.md §1.1：仅 hasProblem 必需；hasAnalysis 只留痕，不参与门槛判定） */
 export interface DiagnosisCompleteness {
   hasProblem: boolean;
   hasStudentAnswer: boolean;
@@ -108,7 +108,7 @@ export interface HintStep {
   content: string;
 }
 
-/** 诊断输出结构（wip-diagnosis-model.md §6）；对话模式与整卷模式共用，差别只在渲染层 */
+/** 诊断输出结构（diagnosis-model.md §6）；对话模式与整卷模式共用，差别只在渲染层 */
 export interface DiagnosisResult {
   subject: 'math';
   level: 'L1' | 'L2';
@@ -127,7 +127,7 @@ export interface DiagnosisResult {
   strategyVersion: number;
 }
 
-/** 诊断状态机七状态（wip-agent-workflow.md §2 裁剪：strategize 并入 diagnose——策略卡按错因直查，独立状态不产生新输入） */
+/** 诊断状态机七状态（agent-workflow.md §2 裁剪：strategize 并入 diagnose——策略卡按错因直查，独立状态不产生新输入） */
 export type DiagnoseState =
   | 'intake' // 收题：判定有无原题、是否数学
   | 'clarify' // 补问：作答缺失或置信度不足时追问（有预算）
@@ -137,7 +137,7 @@ export type DiagnoseState =
   | 'reject' // 非数学题：固定话术 + 能力说明
   | 'done';
 
-/** 学科标识；v1 仅数学，多学科时在此扩联合（wip-product-vision.md §2 非目标） */
+/** 学科标识；v1 仅数学，多学科时在此扩联合（product-vision.md §2 非目标） */
 export type DiagnoseSubject = 'math';
 
 /**
@@ -147,13 +147,13 @@ export type DiagnoseSubject = 'math';
 export interface DiagnoseContext {
   subject: DiagnoseSubject;
   state: DiagnoseState;
-  /** 已消耗追问轮次（初始补问与置信度不足回炉同计），达预算强制收敛（wip-agent-workflow.md §4.1） */
+  /** 已消耗追问轮次（初始补问与置信度不足回炉同计），达预算强制收敛（agent-workflow.md §4.1） */
   clarifyUsed: number;
   /** explain 当前所处提示阶梯层级，逐级下降用 */
   hintLevel: 1 | 2 | 3;
 }
 
-/** 状态机输入事件；实现为纯函数，迁移语义见 wip-agent-workflow.md §2 迁移表 */
+/** 状态机输入事件；实现为纯函数，迁移语义见 agent-workflow.md §2 迁移表 */
 export type DiagnoseEvent =
   /** intake 完成：有无原题、是否数学题 */
   | { type: 'intake_done'; hasProblem: boolean; isMath: boolean }
@@ -162,7 +162,7 @@ export type DiagnoseEvent =
   /**
    * diagnose 完成，三态出口：
    * confident 达标进 explain；low_confidence 预算有余回 clarify 一次、耗尽走低置信输出；
-   * guard_failed 作答引用判据两试不过，降级 L1（wip-diagnosis-model.md §7.3）
+   * guard_failed 作答引用判据两试不过，降级 L1（diagnosis-model.md §7.3）
    */
   | { type: 'diagnosis_done'; outcome: 'confident' | 'low_confidence' | 'guard_failed' }
   /** explain：用户点「继续」或「还不懂」→ 降一级 */

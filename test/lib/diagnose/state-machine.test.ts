@@ -13,7 +13,7 @@ function run(ctx: DiagnoseContext, events: DiagnoseEvent[]): DiagnoseContext {
   return cur;
 }
 
-describe('诊断状态机（wip-agent-workflow.md §2，7 状态版）', () => {
+describe('诊断状态机（agent-workflow.md §2，7 状态版）', () => {
   it('主路径：intake→clarify→diagnose→explain→done', () => {
     const final = run(createInitialContext(), [
       { type: 'intake_done', hasProblem: true, isMath: true },

@@ -577,7 +577,7 @@ export async function POST(request: Request) {
           signal: request.signal,
           // 上游拦截判定（两条路径：finish_reason 异常值 / 拒绝性文本，§3）
           blockedDetector: isBlockedSignal,
-          // 上游终端用户标识（随机 UUID；wip-safety-protocol §6）
+          // 上游终端用户标识（随机 UUID；safety-protocol §6）
           user: typeof body.user === 'string' && body.user.length <= 64 ? body.user : undefined,
           // 思考强度档位（doc/user-settings.md §2.1）：枚举外取值一律按未设置处理
           thinking: isThinkingEffort(body.thinkingEffort) ? body.thinkingEffort : undefined,

@@ -4,7 +4,7 @@ import { findStrategyCard, STRATEGY_CARDS, STRATEGY_VERSION } from '../../../lib
 import { deriveCompleteness, resolveDiagnosisLevel } from '../../../lib/diagnose/completeness.ts';
 import type { DiagnosisResult } from '../../../lib/diagnose/types.ts';
 
-describe('错因表 × 策略卡一对一（wip-diagnosis-model.md §8）', () => {
+describe('错因表 × 策略卡一对一（diagnosis-model.md §8）', () => {
   it('错因 14 条', () => {
     expect(ERROR_CAUSES).toHaveLength(14);
   });
@@ -38,7 +38,7 @@ describe('错因表 × 策略卡一对一（wip-diagnosis-model.md §8）', () =
   });
 });
 
-describe('完整度推导（wip-diagnosis-model.md §1.2 注）', () => {
+describe('完整度推导（diagnosis-model.md §1.2 注）', () => {
   it('四类标签各自点亮对应布尔', () => {
     const c = deriveCompleteness([
       { category: 'origin', text: '解方程 x^2=4' },

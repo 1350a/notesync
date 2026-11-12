@@ -308,7 +308,7 @@ export function advanceAfterResponse(input: {
   const { context, completeness, submission, outcome } = input;
 
   if (context.state === 'intake') {
-    // 没有原题连学科都判不了：留在 intake 继续引导（wip-diagnosis-model.md §1.1）
+    // 没有原题连学科都判不了：留在 intake 继续引导（diagnosis-model.md §1.1）
     if (!completeness.hasProblem) return context;
     if (!submission.isMath) {
       const rejected = transition(context, { type: 'intake_done', hasProblem: true, isMath: false }).context;

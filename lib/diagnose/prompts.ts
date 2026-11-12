@@ -1,7 +1,7 @@
 /**
  * 诊断状态机分状态 system prompt 构建器（纯字符串拼接，可单测）
  *
- * 契约来源：wip-agent-workflow.md §2（分状态职责）+ wip-diagnosis-model.md
+ * 契约来源：agent-workflow.md §2（分状态职责）+ diagnosis-model.md
  * §7（输出纪律三条禁令，逐字写入——唯一硬项）。
  * lookup_strategy / lookup_errorcause 按文档 §3 建议先内联进提示词，实测上下文占用后再决定工具化。
  */
@@ -9,7 +9,7 @@ import { ERROR_CAUSES } from './error-causes.ts';
 import { STRATEGY_CARDS, STRATEGY_VERSION } from './strategies.ts';
 import type { DiagnoseContext, DiagnoseState, DiagnosisCompleteness, DiagnosisResult } from './types.ts';
 
-/** 三条禁令逐字（wip-diagnosis-model.md §7.1），所有诊断态共用 */
+/** 三条禁令逐字（diagnosis-model.md §7.1），所有诊断态共用 */
 export const DISCIPLINE_BLOCK = [
   '【输出纪律（最高优先级）】',
   '1. 不得直接给答案——未完成定位前，答案不得作为首个输出。',
@@ -60,7 +60,7 @@ function intakePrompt(): string {
   ].join('\n\n');
 }
 
-/** clarify 态：绑定可验证推测的补问（wip-agent-workflow.md §4.1） */
+/** clarify 态：绑定可验证推测的补问（agent-workflow.md §4.1） */
 function clarifyPrompt(input: DiagnosePromptInput): string {
   const used = input.ctx.clarifyUsed;
   return [
@@ -96,7 +96,7 @@ function diagnosePrompt(input: DiagnosePromptInput): string {
     .join('\n\n');
 }
 
-/** explain 态：提示阶梯当前级输出（wip-diagnosis-model.md §5） */
+/** explain 态：提示阶梯当前级输出（diagnosis-model.md §5） */
 function explainPrompt(input: DiagnosePromptInput): string {
   const level = input.ctx.hintLevel;
   const levelSpec: Record<1 | 2 | 3, string> = {
@@ -113,7 +113,7 @@ function explainPrompt(input: DiagnosePromptInput): string {
   ].join('\n\n');
 }
 
-/** L1_only 态：只出题目画像 + 声明（wip-diagnosis-model.md §2.2） */
+/** L1_only 态：只出题目画像 + 声明（diagnosis-model.md §2.2） */
 function l1OnlyPrompt(): string {
   return [
     '当前处于【仅画像】阶段：未能进行错因归因（未提供作答、追问预算耗尽或未能定位断点）。',

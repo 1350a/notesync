@@ -13,7 +13,7 @@ import {
   STRUCTURE_RULES,
 } from '../../../lib/safety/wordlist.ts';
 
-describe('拦截判定（wip-safety-protocol.md §3，两条路径）', () => {
+describe('拦截判定（safety-protocol.md §3，两条路径）', () => {
   it('finish_reason 路径：异常值命中，正常值放过', () => {
     expect(isBlockedFinishReason('content_filter')).toBe(true);
     expect(isBlockedFinishReason('CONTENT_FILTER')).toBe(true);
@@ -40,7 +40,7 @@ describe('拦截判定（wip-safety-protocol.md §3，两条路径）', () => {
   });
 });
 
-describe('输入侧过滤（wip-safety-protocol.md §4，结构规则默认启用）', () => {
+describe('输入侧过滤（safety-protocol.md §4，结构规则默认启用）', () => {
   it('超长输入硬拦截', () => {
     const r = checkInputSafety('a'.repeat(STRUCTURE_RULES.maxChars + 1));
     expect(r.level).toBe('hard');

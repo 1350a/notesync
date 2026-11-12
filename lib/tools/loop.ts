@@ -66,7 +66,7 @@ export interface RunToolLoopOptions {
   maxRounds?: number;
   signal?: AbortSignal;
   /**
-   * 上游拦截检测（wip-safety-protocol.md §3，两条路径任一命中即 true）。
+   * 上游拦截检测（safety-protocol.md §3，两条路径任一命中即 true）。
    * 命中后循环丢弃本轮 assistant 消息（不 appendResults）并终止——
    * 被拒内容回传上游会再拦一次甚至触发用户级冷却（§3.1 硬项）。
    */

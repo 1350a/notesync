@@ -112,7 +112,7 @@ export interface StreamDelta {
   reasoning?: string;
   /**
    * 流终止原因（随流透传，以最后一次出现的为准）。
-   * content_filter 等异常值是上游拦截判定路径之一（wip-safety-protocol.md §3）。
+   * content_filter 等异常值是上游拦截判定路径之一（safety-protocol.md §3）。
    */
   finishReason?: string;
   /**

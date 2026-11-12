@@ -1,5 +1,5 @@
 /**
- * POST /api/diagnose-paper — 整卷诊断四步流程（wip-agent-workflow.md §5）
+ * POST /api/diagnose-paper — 整卷诊断四步流程（agent-workflow.md §5）
  *
  * ① 切题（1 次调用，结构化 JSON）→ ② 分类（本地关键词规则，零 token）→
  * ③ 同类共享诊断（按错因组数计调用，复用 submit_diagnosis 的提交结构）→ ④ 汇总（1 次调用）。

@@ -19,7 +19,7 @@ export interface ToolAdapter {
   /**
    * 构建补全请求。
    * native: 注入 tools 字段；text: 将工具说明追加到 system prompt。
-   * user 为上游终端用户标识（可选，wip-safety-protocol.md §6）；
+   * user 为上游终端用户标识（可选，safety-protocol.md §6）；
    * thinking 为思考强度档位（可选，doc/user-settings.md §2.1）。
    */
   buildRequest(

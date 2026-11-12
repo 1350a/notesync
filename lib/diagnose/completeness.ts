@@ -1,10 +1,10 @@
 /**
  * 完整度推导
  *
- * 契约来源：doc/wip-diagnosis-model.md §1.2 注——四类附件标签（origin/wrong/correct/analysis）
+ * 契约来源：doc/diagnosis-model.md §1.2 注——四类附件标签（origin/wrong/correct/analysis）
  * 保留为上传分类标签，但完整度判定只看「有无原题」与「有无作答」；解析不参与门槛。
  *
- * 衔接方案（wip-diagnosis-model.md §8 待办「DiagnosisResult 与附件结构如何衔接」的实现口径）：
+ * 衔接方案（diagnosis-model.md §8 待办「DiagnosisResult 与附件结构如何衔接」的实现口径）：
  * completeness 四布尔由附件 category 推导，仅作留痕，不作诊断分支条件。
  * 注意与 assemble.ts 的容错差异：附件可能被服务端 parseAttachments 逐条丢弃，
  * 这里以「传入列表里还有多少有效项」为准，故留 boolean[] 而非复用 AssembleResult.stats。
