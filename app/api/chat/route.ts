@@ -44,6 +44,7 @@ import {
 } from '@/lib/chat/messages';
 import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
 import { buildDiagnoseSystemPrompt } from '@/lib/diagnose/prompts';
+import { THINKING_EFFORTS } from '@/lib/settings/types';
 import { parseAttachments } from '@/lib/diagnose/parse-attachments';
 import { findStrategyCard, STRATEGY_VERSION } from '@/lib/diagnose/strategies';
 import { transition } from '@/lib/diagnose/state-machine';
@@ -578,6 +579,10 @@ export async function POST(request: Request) {
           blockedDetector: isBlockedSignal,
           // 上游终端用户标识（随机 UUID；wip-safety-protocol §6）
           user: typeof body.user === 'string' && body.user.length <= 64 ? body.user : undefined,
+          // 思考强度档位（doc/user-settings.md §2.1）：枚举外取值一律按未设置处理
+          thinking: THINKING_EFFORTS.includes(body.thinkingEffort as never)
+            ? (body.thinkingEffort as (typeof THINKING_EFFORTS)[number])
+            : undefined,
         });
 
         for await (const ev of generator) {
