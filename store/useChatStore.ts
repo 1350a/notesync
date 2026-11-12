@@ -1,4 +1,5 @@
 import { getHistoryStorage } from '@/lib/history/storage.ts';
+import { normalizeTitle } from '@/lib/history/title.ts';
 import type { SessionMeta } from '@/lib/history/types.ts';
 import { createLocalStorageUIStorage } from '@/lib/ui/storage.ts';
 import { create } from 'zustand';
@@ -26,6 +27,12 @@ interface ChatState {
   /** 待打开的目标会话；为 null 且 openSessionSignal 变化 = 丢弃当前会话（不落盘） */
   pendingSessionId: string | null;
   openSessionSignal: number;
+  /**
+   * 改名广播（doc/chat-history.md §8.1）：useChat 的 sessionMetaRef 是内存态真源，
+   * 侧栏改名后必须让它同步，否则下一次 flushSession 会用旧标题把库里的新标题覆盖回去
+   */
+  renamedSession: { id: string; title: string } | null;
+  renameSignal: number;
   setSettingsOpen: (open: boolean) => void;
   /** 侧栏开合统一入口：内存态与持久化原子同步（doc/mobile-ux.md §2） */
   setSidebarOpen: (open: boolean) => void;
@@ -43,6 +50,8 @@ interface ChatState {
   setCurrentSessionId: (id: string | null) => void;
   /** 删除会话：若删的是当前会话，先切断归属再删库，避免随后的落盘把它重建 */
   removeSession: (id: string) => Promise<void>;
+  /** 会话改名：规整后写库并广播；标题为空/未变化返回 false（不写库） */
+  renameSession: (id: string, title: string) => Promise<boolean>;
 }
 
 const uiStorage = createLocalStorageUIStorage();
@@ -58,6 +67,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   pendingSessionId: null,
   openSessionSignal: 0,
+  renamedSession: null,
+  renameSignal: 0,
 
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setSidebarOpen: (open) => {
@@ -109,5 +120,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     await getHistoryStorage().deleteSession(id);
     await get().refreshSessions();
+  },
+
+  renameSession: async (id, title) => {
+    // 规整在写库前做一次：空标题、纯空白一律拒绝，不产生"无标题会话"
+    const normalized = normalizeTitle(title);
+    if (!normalized) return false;
+    if (get().sessions.find((item) => item.id === id)?.title === normalized) return false;
+    const ok = await getHistoryStorage().renameSession(id, normalized);
+    if (!ok) return false;
+    // 先广播再刷新列表：当前会话的内存 meta 要跟着改，否则下一次落盘会用旧标题覆盖
+    set((state) => ({
+      renamedSession: { id, title: normalized },
+      renameSignal: state.renameSignal + 1,
+    }));
+    await get().refreshSessions();
+    return true;
   },
 }));
