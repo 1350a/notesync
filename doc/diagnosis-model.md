@@ -9,13 +9,15 @@ AIGC:
     ReservedCode2: z7DphEwCI25JXTK01BDksVXOL3rQJI3sqwKLS8k/SC2WCWOol5frfdtjwBb0GI039AhOmpjbFIdwv5uAj848dBE9nYAxAwAOk67OQLoKtmLTS8sVjI9vU55nzvJIPgV/d3LhedblRSh11j/hRZouf0iMDCaARbttqD1Z/g1Jld1tBqbQIy6/NhMTNtY=
 ---
 
-# 诊断模型（WIP · 未完成，待评审）
+# 诊断模型（协议 v1）
 
-> **状态：草稿 / 未定稿，尚未实装。**
-> 本文定义诊断的业务中间结构，决定状态机与接口形状（`wip-agent-workflow.md` 依赖本文）。
+> **状态：已定稿并实装**（2026-11-12 去 `wip-` 前缀转正）。错因表、策略卡、提示阶梯与输出纪律的
+> 落点为 `lib/diagnose/error-causes.ts`、`strategies.ts`、`prompts.ts`、`guard.ts`；
+> 逐条实装状态见 `implementation-status.md` §1~§2。
+> 本文定义诊断的业务中间结构，决定状态机与接口形状（`agent-workflow.md` 依赖本文）。
 > v1 范围：**初中／高中数学**。英语架构预留，不实装。
 >
-> **约束强度**：分级说明见 `wip-product-vision.md` §0。本文**错因枚举条目、阈值、级数均为「方向 D」或「假设 A」级**，实测后可增删调整，不必回头改文档；**唯一硬项是 §7 的输出纪律三条禁令**。
+> **约束强度**：分级说明见 `product-vision.md` §0。本文**错因枚举条目、阈值、级数均为「方向 D」或「假设 A」级**，实测后可增删调整，不必回头改文档；**唯一硬项是 §7 的输出纪律三条禁令**。
 
 ## 1. 完整度门槛
 

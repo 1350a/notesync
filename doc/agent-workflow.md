@@ -15,10 +15,10 @@ AIGC:
 > 落点：`lib/diagnose/state-machine.ts`（纯函数迁移表）、`lib/diagnose/runtime.ts`（结构化判定与编排）、
 > `app/api/chat/route.ts`（SSE 事件推导）、`app/api/diagnose-paper/route.ts`（整卷，契约见 `doc/diagnose-paper.md`）。
 > 实装与本稿的差异：`strategize` 已合并进 `diagnose`（策略卡按 code 服务端组装，不再单独迁移）；`lookup_strategy` / `lookup_errorcause` 与切题一并内联进提示词，**未工具化**。
-> 依赖：`wip-diagnosis-model.md`（中间结构与错因表）。
+> 依赖：`diagnosis-model.md`（中间结构与错因表）。
 > 现存实现：`lib/tools/loop.ts` 的多轮工具循环 + `app/api/chat/route.ts` 的 SSE 编排。本文在其上加**状态机**与**终止条件**，不改动既有工具协议。
 >
-> **约束强度**：分级说明见 `wip-product-vision.md` §0。**状态划分、命名、轮数预算、整卷四步均为「方向 D」级**——实现时合并状态、改名、改步数都可以，只要「有显式状态、有追问预算、有终止条件」这三点成立；**`explain` 输出不得退化为解析为硬约束**（见 `wip-diagnosis-model.md` §7）。
+> **约束强度**：分级说明见 `product-vision.md` §0。**状态划分、命名、轮数预算、整卷四步均为「方向 D」级**——实现时合并状态、改名、改步数都可以，只要「有显式状态、有追问预算、有终止条件」这三点成立；**`explain` 输出不得退化为解析为硬约束**（见 `diagnosis-model.md` §7）。
 
 ## 1. 为什么需要状态机
 
@@ -103,7 +103,7 @@ v1 只需三个工具（原生 Function Calling），沿用 `doc/tool-protocol.m
 
 理由：这是提示词工程的职责，不是状态机的职责。状态机加关卡只会制造摩擦，且用户总能绕过。
 
-约束落在提示词层，见 `wip-diagnosis-model.md` §7（三条禁令 + 作答片段引用的机械判据）。状态机只保证一点：**即使用户第一句就要答案，`explain` 输出仍走 §7 纪律**，不允许退化为整段解析。
+约束落在提示词层，见 `diagnosis-model.md` §7（三条禁令 + 作答片段引用的机械判据）。状态机只保证一点：**即使用户第一句就要答案，`explain` 输出仍走 §7 纪律**，不允许退化为整段解析。
 
 ## 5. 整卷诊断流程
 
