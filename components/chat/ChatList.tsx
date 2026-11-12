@@ -167,18 +167,39 @@ export default function ChatList({
               ) : null}
               {m.images && m.images.length > 0 ? (
                 <div className="mb-2 flex flex-wrap gap-2">
-                  {m.images.map((src, idx) => (
-                    // 消息里的图片是上传时读出的 data URL，next/image 优化器无法处理内联 src；
-                    // 气泡内缩略图固定 96px，走优化器无收益且会多一次 /_next/image 代理
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={`img-${idx}`}
-                      src={src}
-                      alt={`上传图片 ${idx + 1}`}
-                      className="h-24 w-24 rounded-lg object-cover"
-                      style={{ border: '1px solid var(--border)' }}
-                    />
-                  ))}
+                  {m.images.map((src, idx) => {
+                    // 存库时被配额淘汰的槽位是空串：命中过期登记就摆占位，
+                    // 未登记则整槽不渲染（避免历史会话里出现莫名其妙的灰块）
+                    if (!src) {
+                      if (!m.expiredImages?.includes(idx)) return null;
+                      return (
+                        <div
+                          key={`img-${idx}`}
+                          className="flex h-24 w-24 items-center justify-center rounded-lg text-[11px]"
+                          style={{
+                            border: '1px dashed var(--border)',
+                            backgroundColor: 'var(--bg-deep)',
+                            color: 'var(--text-muted)',
+                          }}
+                          title="附件超出本地存储预算已被清理，仅保留占位"
+                        >
+                          图片已过期
+                        </div>
+                      );
+                    }
+                    return (
+                      // 消息里的图片是上传时读出的 data URL，next/image 优化器无法处理内联 src；
+                      // 气泡内缩略图固定 96px，走优化器无收益且会多一次 /_next/image 代理
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={`img-${idx}`}
+                        src={src}
+                        alt={`上传图片 ${idx + 1}`}
+                        className="h-24 w-24 rounded-lg object-cover"
+                        style={{ border: '1px solid var(--border)' }}
+                      />
+                    );
+                  })}
                 </div>
               ) : null}
               {m.ocrTexts && m.ocrTexts.length > 0 ? (
