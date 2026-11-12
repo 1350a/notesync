@@ -19,6 +19,7 @@
  *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
  *   no_content      上传的附件全部提取失败，没有可发送的内容
  *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等；loop 未标注 code 时也兜底为此值）
+ *   invalid_request 请求体不是合法 JSON（此前抛异常退化成框架 500，前端收不到 error 事件）
  *   parse_error     工具调用解析兜底失败（loop 内标注，见 doc/tool-protocol.md §5.3）
  *
  * 诊断模式附件：请求体可带 attachments（结构见 lib/diagnose/types.ts），
@@ -72,8 +73,14 @@ import { createSubmissionStore, createSubmitDiagnosisTool } from '@/lib/tools/bu
 import { runToolLoop } from '@/lib/tools/loop';
 import { getEnabledTools } from '@/lib/tools/registry';
 import type { ToolMode } from '@/lib/tools/types';
-
-const encoder = new TextEncoder();
+import {
+  encoder,
+  errorStream,
+  readClientId,
+  readJsonBody,
+  sse,
+  SSE_HEADERS,
+} from '@/lib/sse';
 
 // 确保内置工具注册
 registerBuiltinTools();
@@ -82,28 +89,6 @@ registerBuiltinTools();
 function resolveTrimBudgetLabel(): string {
   const parsed = parseInt(process.env.TRIM_BUDGET_CHARS || '', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : '24000(默认)';
-}
-
-/** 封装一条 SSE 事件为字节流 */
-function sse(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-}
-
-const SSE_HEADERS = {
-  "Content-Type": "text/event-stream; charset=utf-8",
-  "Cache-Control": "no-cache",
-  Connection: "keep-alive",
-} as const;
-
-/** 直接返回单条 error 事件的流（用于请求前校验失败） */
-function errorStream(data: {
-  code: "invalid_model" | "unconfigured" | "provider_error" | "no_model" | "no_content";
-  error: string;
-  model?: string;
-  provider?: string;
-  available?: string[];
-}): Response {
-  return new Response(sse("error", data), { headers: SSE_HEADERS });
 }
 
 /** 把组装结果渲染成可读摘要（MOCK 专用，不回显 base64 本体） */
@@ -408,14 +393,16 @@ function mockStream(attachments: DiagnoseAttachment[], body: ChatRequestBody): R
 export async function POST(request: Request) {
   // 匿名客户端标识（无登录体系的 user_id 替代，doc/user-settings.md §4）：
   // 仅日志追溯用，不参与路由/存储，服务端保持逐请求无状态
-  const clientId = request.headers.get('x-client-id') ?? 'anonymous';
+  const clientId = readClientId(request);
   console.log(`[chat] client=${clientId}`);
 
   // messages 元素可带 images（聊天界面上传的图片 dataUrl，组装成多模态内容）、
   // imageTexts（本地 OCR 转文字产物，非空时忽略 images 本体，任何模型可安全消费，
   // 见 doc/browser-local-ocr.md §6.2）与 files（聊天界面上传的纯文本文件，
   // 按 [文件 名字] 锚点拼进正文，纯文本模型同样可用）
-  const body = (await request.json()) as ChatRequestBody;
+  const parsedBody = await readJsonBody<ChatRequestBody>(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
   if (process.env.MOCK_MODEL === '1') {
