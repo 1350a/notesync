@@ -75,6 +75,9 @@ export interface NativeToolDef {
 }
 
 /** 补全请求选项 */
+/** 思考强度档位（doc/user-settings.md §2.1；与 lib/settings/types.ts 的 ThinkingEffort 同形，避免跨层依赖） */
+export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
+
 export interface CompleteOptions {
   model: string;
   messages: ProviderMessage[];
@@ -84,6 +87,8 @@ export interface CompleteOptions {
   signal?: AbortSignal;
   /** 上游终端用户标识（OpenAI 兼容 user 字段；随机 UUID，见 doc/user-settings.md §4.1） */
   user?: string;
+  /** 思考强度档位；custom provider 不发送（未知字段严格校验风险），映射见 mapThinkingParam */
+  thinking?: ThinkingEffort;
   /** 工具定义（native 模式）；不传则本次请求无工具调用能力 */
   tools?: NativeToolDef[];
   /** 工具选择策略（默认 "auto"；P1 仅类型预留，P4 接线） */
