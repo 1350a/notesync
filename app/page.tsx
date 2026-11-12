@@ -34,24 +34,80 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 下方生成大量占位内容，用于测试 Header 的吸顶效果 */}
+        {/* 三张真实卖点卡：文案只写已实装能力（对照 doc/product-vision.md §2 与总账状态列） */}
         <section className="space-y-6 pt-10">
-          <h2 className="text-2xl font-bold">功能特性展示（滚动测试区）</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <Card key={i} className="shadow-sm">
-                <CardHeader>
-                  <CardTitle>智能诊断模块 {i + 1}</CardTitle>
-                  <CardDescription>
-                    向下滚动页面，查看顶部导航栏是否保持吸顶并带有毛玻璃效果。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-32 bg-muted/50 rounded-lg flex items-center justify-center text-muted-foreground text-sm border border-dashed">
-                    占位内容区域
-                  </div>
-                </CardContent>
-              </Card>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>对话诊断：错因优先于答案</CardTitle>
+                <CardDescription>
+                  先定位你「为什么错」，再按需给出分级提示；答案只在你主动索取时出现，绝不整段复述解法。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/chat" className="text-sm font-medium text-primary hover:underline">
+                  进入单题诊断 →
+                </Link>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>整卷批量：一张卷一份报告</CardTitle>
+                <CardDescription>
+                  上传整卷自动切题，按错因聚类共享诊断，输出逐题诊断与汇总报告，20 题的模型调用压到个位数。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/diagnose" className="text-sm font-medium text-primary hover:underline">
+                  进入整卷上传 →
+                </Link>
+              </CardContent>
+            </Card>
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle>本地优先：默认原图不出设备</CardTitle>
+                <CardDescription>
+                  图片默认在浏览器内完成本地识别，仅发送文字；需要原图理解时显式切换多模态档，外发当次明示。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/ocr" className="text-sm font-medium text-primary hover:underline">
+                  查看本地识别能力 →
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* 流程三栏：上传 → 追问 → 报告 */}
+        <section className="space-y-4 pt-4">
+          <h2 className="text-2xl font-bold">一次诊断，三步完成</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                step: '01',
+                title: '上传题目',
+                desc: '拍照或上传单题、整卷，图片默认走本地识别，文字直接粘贴也行。',
+              },
+              {
+                step: '02',
+                title: '追问定位错因',
+                desc: 'AI 带着可验证的推测追问，先定位断点再给分级提示，不直接代答。',
+              },
+              {
+                step: '03',
+                title: '拿到诊断报告',
+                desc: '逐题给出错因与策略卡，整卷另出汇总报告；每一步依据都可解释。',
+              },
+            ].map((item) => (
+              <div
+                key={item.step}
+                className="rounded-lg border border-border bg-card p-6 flex flex-col gap-2"
+              >
+                <span className="text-3xl font-extrabold text-primary/60">{item.step}</span>
+                <h3 className="text-lg font-bold">{item.title}</h3>
+                <p className="text-sm text-muted-foreground">{item.desc}</p>
+              </div>
             ))}
           </div>
         </section>
