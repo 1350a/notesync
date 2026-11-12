@@ -103,7 +103,7 @@ AIGC:
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
 | DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 26 文件 / 310 用例，`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 30 文件 / 352 用例（2026-11-12 审查整改后实测，原 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
@@ -167,6 +167,25 @@ AIGC:
 > 模型未声明图片能力时不渲染直传 / 混合两档（P4 约束②）。聊天页与整卷上传区同口径；
 > 整卷的混合档组装由附件形态自动判定（`lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode`），
 > 不再需要客户端额外传档位字段。
+
+### 9.2 代码审查整改（2026-11-12，分支 `fix/review-hardening`）
+
+> 对 143 个源文件（约 1.8 万行，不含 `components/ui`）的审查结论做 9 项整改，全部实装并逐项实测。
+> 分支累计 25 个 commit，未推送；门禁全绿：lint 0 告警、`tsc --noEmit` 通过、`npm test` 30 文件 / 352 用例全过、`build` 9 条路由通过、`npm run scan:xss` high 0 / medium 0 / low 1（既有的常量菜单 href 告警）。
+
+| 项 | 问题 | 整改落点 | 实测结论 |
+|---|---|---|---|
+| S1 | 请求体裸解析，非法 JSON 抛 500 空响应 | `lib/sse.ts` 收拢 `safeJson` / `errorStream` / `readClientId` / `invalid_request`，两路由统一 | 非法 JSON 改为 200 + `text/event-stream` + `{"code":"invalid_request",...}` |
+| S2 | 上游错误原文直透客户端 | `lib/provider/openaiCompat.ts` 模板化文案 + `lib/safety/redact.ts`（`extractUpstreamMessage` 只取 message、`redactUpstreamText` 脱敏摘要 ≤ 200 字符），完整原文只进 `console.error` | 402 → 「上游账户余额或额度不足…（上游摘要：Insufficient Balance (request_id: [id])）」，日志仍留完整 JSON |
+| S3 | 附件数量无上限 | `lib/diagnose/parse-attachments.ts` 解析前截断 `MAX_ATTACHMENTS = 12` | 200 条入参只取前 12 条并打日志 |
+| S4 | system 角色消息直透模型上下文（提示词注入面） | `lib/chat/messages.ts` 的 `buildProviderMessages` 丢弃 role=system 并 `console.warn`；前端 `hooks/useChat.ts` 只对 `content_blocked` 走专属分支，其余 error 统一拼 `[错误] ...` | 非 content_blocked 的新错误码不破坏前端解析 |
+| L1 | 历史回读用 `as` 断言，脏数据可直接进渲染层 | `lib/history/sanitize.ts` 逐字段校验 `awaitingQuestions` / `errorCause` / `strategyCard` / `hints` / `diagnosis` | 新增 `test/lib/history/sanitize.test.ts` 用例覆盖 |
+| L2 | 反代可能缓冲 SSE | `lib/sse.ts` 的 `SSE_HEADERS` 补 `X-Accel-Buffering: no` | — |
+| R1 | 路由过长 | 抽 `lib/mock/chat.ts`、`lib/mock/paper.ts`；`app/api/chat/route.ts` 709 → 402 行，`app/api/diagnose-paper/route.ts` 329 → 280 行 | 纯搬运，零行为变化 |
+| R2 | `.env.example` 与实际读取不同步 | 补 `TRIM_BUDGET_CHARS`、`USER_FIELD_ENABLED` | — |
+| R3 | 双份 SSE 实现 | 共用 `lib/sse.ts` 的 `sse()` / `SSE_HEADERS` / `x-client-id` | 纯搬运，零行为变化 |
+
+**行为变化（有意为之，非零影响）**：S1 把 HTML 500 改为结构化 SSE error；S3 让超出 12 张的附件被直接丢弃（单题口径仍是 4 张，12 张为整卷余量）；S4 让客户端传入的 system 消息不再进上下文。协议侧已同步 `doc/tool-protocol.md`（`invalid_request` 事件形态）与 `doc/diagnose-file-intake.md`（错误码表）。
 
 ## 10. 待决策
 
