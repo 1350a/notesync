@@ -329,6 +329,13 @@ export function buildProviderMessages(
     }
   }
   const messages: ProviderMessage[] = body.messages.map((m, index) => {
+    // 客户端不允许注入 system：system 提示词只能由服务端注入（CHAT_BASE_SYSTEM_PROMPT
+    // 与诊断分阶段提示词）。原样透传等于把提示词控制权交给请求方，是提示词注入面；
+    // 丢弃并留痕，不静默。
+    if (m.role === 'system') {
+      console.warn(`[chat] 第 ${index + 1} 条消息 role=system 被丢弃：system 仅由服务端注入`);
+      return null;
+    }
     const ocrTexts = m.role === 'user' ? parseImageTexts(m.imageTexts) : [];
     const isOcrTextMessage = ocrTexts.length > 0;
     const hasImages = Array.isArray(m.images) && m.images.length > 0;
@@ -359,10 +366,10 @@ export function buildProviderMessages(
     }
 
     return {
-      role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
+      role: m.role === 'assistant' ? 'assistant' : 'user',
       content,
     };
-  });
+  }).filter((m): m is ProviderMessage => m !== null);
 
   if (body.content) {
     messages.push({ role: 'user', content: body.content });
