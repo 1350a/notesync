@@ -13,8 +13,10 @@ import {
   resolveGlobalAttachmentBudget,
   resolveSessionAttachmentBudget,
   stripImageBodies,
+  shiftExpiredRefsOnDelete,
   toExpiredRefs,
   totalAttachmentBytes,
+  trimExpiredRefs,
   utf8Bytes,
 } from '../../../lib/history/contract.ts';
 import {
@@ -23,7 +25,7 @@ import {
   createSessionMeta,
   makeBlobKey,
 } from '../../../lib/history/types.ts';
-import type { AttachmentRef, HistoryMessage } from '../../../lib/history/types.ts';
+import type { AttachmentRef, ExpiredImageRef, HistoryMessage } from '../../../lib/history/types.ts';
 
 /*
  * 容量契约（doc/chat-history.md §3）。
@@ -244,5 +246,42 @@ describe('会话头刷新', () => {
     expect(next.attachmentBytes).toBe(3);
     expect(next.title).toBe('手改标题');
     expect(next.titleEdited).toBe(true);
+  });
+});
+
+describe('过期坐标收缩（§8.3 消息级操作）', () => {
+  it('删除中间一条：其后登记整体左移一格，自身登记消失', () => {
+    const refs: ExpiredImageRef[] = [
+      { msg: 0, img: 0 },
+      { msg: 2, img: 1 },
+      { msg: 3, img: 0 },
+    ];
+    expect(shiftExpiredRefsOnDelete(refs, 2)).toEqual([
+      { msg: 0, img: 0 },
+      { msg: 2, img: 0 },
+    ]);
+  });
+
+  it('删除首条：全部左移一格', () => {
+    const refs: ExpiredImageRef[] = [
+      { msg: 0, img: 0 },
+      { msg: 1, img: 2 },
+    ];
+    expect(shiftExpiredRefsOnDelete(refs, 0)).toEqual([{ msg: 0, img: 2 }]);
+  });
+
+  it('删掉末条不影响前面的坐标；空数组原样返回', () => {
+    const refs: ExpiredImageRef[] = [{ msg: 0, img: 1 }];
+    expect(shiftExpiredRefsOnDelete(refs, 1)).toEqual([{ msg: 0, img: 1 }]);
+    expect(shiftExpiredRefsOnDelete([], 3)).toEqual([]);
+  });
+
+  it('截断后只保留仍存在的坐标', () => {
+    const refs: ExpiredImageRef[] = [
+      { msg: 0, img: 0 },
+      { msg: 2, img: 1 },
+    ];
+    expect(trimExpiredRefs(refs, 2)).toEqual([{ msg: 0, img: 0 }]);
+    expect(trimExpiredRefs(refs, 0)).toEqual([]);
   });
 });

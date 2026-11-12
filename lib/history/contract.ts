@@ -243,3 +243,30 @@ export function fillImage(
   return next;
 }
 
+/**
+ * 删除单条消息后的过期坐标收缩（doc/chat-history.md §8.3）。
+ *
+ * `ExpiredImageRef.msg` 是消息下标，与 blob key 的 `msgIndex` 严格对齐；删掉一条消息
+ * 会让后面所有下标左移一位，不收缩就会把过期标记落到隔壁消息上（好图被渲染成占位）。
+ * 被删的那条自身连同它的登记一起消失。
+ */
+export function shiftExpiredRefsOnDelete(
+  refs: ExpiredImageRef[],
+  removedAt: number
+): ExpiredImageRef[] {
+  if (refs.length === 0) return refs;
+  const out: ExpiredImageRef[] = [];
+  for (const ref of refs) {
+    if (ref.msg < removedAt) out.push(ref);
+    else if (ref.msg > removedAt) out.push({ msg: ref.msg - 1, img: ref.img });
+  }
+  return out;
+}
+
+/** 截断到 keepLength 条消息后只保留仍存在的坐标（重新生成 / 编辑重发用，§8.3） */
+export function trimExpiredRefs(refs: ExpiredImageRef[], keepLength: number): ExpiredImageRef[] {
+  if (refs.length === 0) return refs;
+  if (keepLength <= 0) return [];
+  return refs.filter((ref) => ref.msg < keepLength);
+}
+
