@@ -129,10 +129,13 @@ embedTexts(texts: string[]): Promise<Float32Array[]>
 - **嵌入失败（模型损坏/内存不足）** → `embedTexts` 抛错，调用方跳过本次检索
   （聊天链路直接裸发，不阻断消息发送），不回落云端。
 
-实装状态（2026-11-10 复核）：`disposeLocalEngine()` 签名已为 `Promise<void>`（内含
-`setTimeout(0)` 防迟到的 Worker 消息串入下一实例），但**当前无调用方**——页面卸载 /
-切换会话时的释放接线仍未做，挂在 §8；OCR 侧的 `disposeOcrWorker()` 已在 `/ocr` 页面
-接入，可作为接线时的参照实现。
+实装状态（2026-11-12 复核）：`disposeLocalEngine()` 签名已为 `Promise<void>`（内含
+`setTimeout(0)` 防迟到的 Worker 消息串入下一实例），释放接线已实装——`lib/local/engine-lease.ts`
+以**租约引用计数**管理：`acquireLocalEngine()` 返回幂等释放函数，计数归零时才调用
+`disposeLocalEngine()`；`hooks/useLocalEngine.ts`（能力页 / 设置分区）与聊天链路
+（`hooks/useChat.ts`，随 `useEffect` 的 cleanup 释放）共用同一份计数，最后一个使用方
+退出才 terminate，不会因数个使用方交替进出而反复销毁重建引擎。OCR 侧的
+`disposeOcrWorker()` 已在 `/ocr` 页面接入。
 
 ## 5. RAG 协议（`lib/local/rag/`）
 
@@ -283,8 +286,6 @@ normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.prefer
 - 云端 embedding 选项、对话任务本地档位、模型镜像端点可配置（当前 `env.remoteHost`
   固定为空、不允许外联，属**有意锁定**而非待补功能）。
 - 用户会话/笔记语料索引化（待数据层协议明确后扩展 §5.1）。
-- 本地引擎释放接线：`disposeLocalEngine()` 已实现且返回 `Promise<void>`，但**无调用方**
-  （§4 实装状态），页面卸载 / 切换会话的释放尚未接。
 - Safari 26 WebGPU EP 内存问题跟踪（onnxruntime #26827）——影响 q4f16 档在
   Safari 的可用性，届时或对 Safari 强制 q8/wasm。
 

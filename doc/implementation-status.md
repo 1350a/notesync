@@ -65,7 +65,7 @@ AIGC:
 | 语义缓存 | 无 | 🧊 | — |
 | 错因聚类（复用嵌入） | 无 | 🧊 | — |
 | `chunkText` 调用方 | 纯函数已有，无调用方 | 🧊 | `lib/local/rag/search.ts` |
-| `disposeLocalEngine()` 调用方 | 已实装：租约引用计数，`acquireLocalEngine` / `releaseLocalEngine` 归零时释放；能力页、设置分区与聊天链路共用同一租约 | ✅ | `lib/local/engine-lease.ts` |
+| `disposeLocalEngine()` 调用方 | 已实装：租约引用计数，`acquireLocalEngine()` 返回幂等释放函数，计数归零时调用 `disposeLocalEngine()`；能力页、设置分区与聊天链路共用同一租约 | ✅ | `lib/local/engine-lease.ts` |
 | 本地对话（端侧生成） | 占位禁用 | 🧊 | — |
 
 ## 4. 安全与合规
