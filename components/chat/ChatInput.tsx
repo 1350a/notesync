@@ -314,6 +314,8 @@ export default function ChatInput({
         <div className="flex flex-wrap items-center gap-2 px-2">
           {images.map((img, idx) => (
             <div key={`img-${idx}`} className="relative group">
+              {/* 预览图是 FileReader 读出的 data URL：next/image 的优化器只接可路由的 URL，
+                  data URL 属于内联 src，会被判为非法并报错；且缩略图固定 64px，无优化收益 */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={img}
