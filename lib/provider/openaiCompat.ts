@@ -31,7 +31,29 @@ import type {
   ProviderMessage,
   ProviderModel,
   StreamDelta,
+  ThinkingEffort,
 } from './types.ts';
+
+/**
+ * 思考强度 → Provider 请求体参数映射（doc/user-settings.md §2.1，协议预留的两个参数名）。
+ * 返回 null 表示本次不携带思考参数（跟随 provider 默认）。
+ * - zhipu：GLM 官方口径只有开/关粒度——off 发 disabled，low/medium/high 统一 enabled；
+ * - deepseek：reasoning_effort 档位；off 不发送（关闭语义 = 选用非推理模型，由模型下拉承担）；
+ * - custom：恒不发送——自定义端点对未知字段可能严格校验（与 user 字段开关同口径）。
+ */
+export function mapThinkingParam(
+  name: 'deepseek' | 'zhipu' | 'custom',
+  thinking: ThinkingEffort | undefined,
+): Record<string, unknown> | null {
+  if (!thinking) return null;
+  if (name === 'custom') return null;
+  if (name === 'zhipu') {
+    return { thinking: { type: thinking === 'off' ? 'disabled' : 'enabled' } };
+  }
+  // deepseek
+  if (thinking === 'off') return null;
+  return { reasoning_effort: thinking };
+}
 
 /** 单次请求超时（ms） */
 const REQUEST_TIMEOUT = 120_000;
@@ -412,6 +434,9 @@ export class OpenAICompatProvider implements LLMProvider {
     if (options.user && process.env.USER_FIELD_ENABLED !== '0') {
       body.user = options.user;
     }
+    // 思考强度档位（doc/user-settings.md §2.1）：custom 不发送（未知字段严格校验风险）
+    const thinkingParam = mapThinkingParam(this.name, options.thinking);
+    if (thinkingParam) Object.assign(body, thinkingParam);
     if (options.tools) {
       body.tools = options.tools;
       if (options.toolChoice) body.tool_choice = options.toolChoice;
