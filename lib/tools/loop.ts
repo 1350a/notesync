@@ -73,10 +73,12 @@ export interface RunToolLoopOptions {
   blockedDetector?: (round: { text: string; finishReason?: string }) => boolean;
   /** 上游终端用户标识（随请求透传到 Provider 请求体 user 字段，doc/user-settings.md §4.1） */
   user?: string;
+  /** 思考强度档位（随请求透传，doc/user-settings.md §2.1） */
+  thinking?: import('@/lib/provider/types.ts').ThinkingEffort;
 }
 
 export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<ToolLoopEvent> {
-  const { model, provider, adapter, tools, signal, blockedDetector, user } = options;
+  const { model, provider, adapter, tools, signal, blockedDetector, user, thinking } = options;
   const maxRounds = options.maxRounds ?? 3;
   const currentMessages = [...options.messages];
 
@@ -89,7 +91,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
   while (usedRounds < maxRounds) {
     usedRounds++;
-    const req = adapter.buildRequest(model, currentMessages, tools, user);
+    const req = adapter.buildRequest(model, currentMessages, tools, user, thinking);
     req.signal = signal;
 
     const queue = new AsyncQueue<ToolLoopEvent>();
@@ -211,7 +213,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         content: '工具调用轮数已达上限，请不要再调用任何工具，直接回答用户最新的问题。',
       },
     ];
-    const req = adapter.buildRequest(model, convergeMessages, [], user);
+    const req = adapter.buildRequest(model, convergeMessages, [], user, thinking);
     req.signal = signal;
 
     try {
