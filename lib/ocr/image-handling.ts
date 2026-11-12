@@ -6,6 +6,8 @@
  * （lib/chat/messages.ts 的 OCR 文本块格式化）引用，除 ocrRecognize 外保持纯函数。
  */
 import { ocrRecognize } from "./local.ts";
+import { CLIENT_ID_HEADER, getClientId } from "../client-id.ts";
+import type { OcrEngine } from "../settings/types.ts";
 
 /** 图片发送模式：原图直传 | 本地 OCR 转文字（全本地） | 混合（OCR 打底 + 原图补充） */
 export type ImageSendMode = "direct" | "local-ocr" | "mixed";
@@ -51,7 +53,8 @@ export interface ImageConversionResult {
   texts: (string | null)[];
   /**
    * 与 texts 一一对应的整体置信度（0~100，tesseract 口径）；失败项为 null。
-   * 供回显确认面板标注低置信项（diagnosis-model.md §1.3 规则②，阈值由调用方定）
+   * 云端引擎无 tesseract 置信度，恒为 null（低置信标红规则仅适用本地引擎，
+   * doc/cloud-ocr.md §6）。供回显确认面板标注低置信项（diagnosis-model.md §1.3 规则②）
    */
   confidences: (number | null)[];
   failures: ImageOcrFailure[];
@@ -59,13 +62,46 @@ export interface ImageConversionResult {
 }
 
 /**
- * 把一组图片 dataUrl 依次经本地 OCR 转文字。
- * 失败（异常或空结果）逐张记录为 failure，由调用方阻断发送并交用户决策——
- * 静默丢内容违反 doc §6.4 的失败语义。
+ * 单张识别：local=tesseract（浏览器 Worker 内）；cloud=POST /api/ocr（服务端代理 glm-ocr，
+ * 像素出端——开启即用户显式同意，doc/cloud-ocr.md §3）。失败语义同 §6：抛错交调用方
+ * 阻断/提示，绝不静默回落另一引擎。
+ */
+async function recognizeOne(
+  dataUrl: string,
+  engine: OcrEngine,
+): Promise<{ text: string; confidence: number | null }> {
+  if (engine === "cloud") {
+    const res = await fetch("/api/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", [CLIENT_ID_HEADER]: getClientId() },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    const payload: unknown = await res.json().catch(() => null);
+    const record =
+      payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+    if (!res.ok) {
+      const message =
+        typeof record?.message === "string" && record.message.trim()
+          ? record.message.trim()
+          : `请求失败（HTTP ${res.status}）`;
+      throw new Error(message);
+    }
+    // 成功响应的 text 可能为空串：空结果由上层按失败统一处理（与本地引擎同口径）
+    return { text: typeof record?.text === "string" ? record.text : "", confidence: null };
+  }
+  const { text, confidence } = await ocrRecognize(dataUrl);
+  return { text, confidence };
+}
+
+/**
+ * 把一组图片 dataUrl 依次转文字（engine 决定本地 tesseract 或云端 glm-ocr，
+ * doc/cloud-ocr.md §6）。失败（异常或空结果）逐张记录为 failure，由调用方阻断发送
+ * 并交用户决策——静默丢内容违反 doc §6.4 的失败语义。
  */
 export async function convertImagesToTexts(
   images: string[],
   onProgress?: (done: number, total: number) => void,
+  engine: OcrEngine = "local",
 ): Promise<ImageConversionResult> {
   const started = performance.now();
   const texts: (string | null)[] = new Array(images.length).fill(null);
@@ -75,7 +111,7 @@ export async function convertImagesToTexts(
 
   for (let i = 0; i < images.length; i += 1) {
     try {
-      const { text, confidence } = await ocrRecognize(images[i]);
+      const { text, confidence } = await recognizeOne(images[i], engine);
       // 空结果按失败处理：图片无字与识别崩溃对用户而言都需要显式决策
       if (text.trim()) {
         texts[i] = text;
