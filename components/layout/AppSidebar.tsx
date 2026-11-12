@@ -10,6 +10,7 @@ import {
   mergeHits,
   normalizeKeyword,
 } from '@/lib/history/search';
+import { exportSessionMarkdown } from '@/lib/history/export';
 import { getHistoryStorage } from '@/lib/history/storage';
 import type { SessionMeta } from '@/lib/history/types';
 import { Button } from '@/components/ui/button';
@@ -50,12 +51,18 @@ function SidebarContent() {
   const openSession = useChatStore((s) => s.openSession);
   const startNewChat = useChatStore((s) => s.startNewChat);
   const removeSession = useChatStore((s) => s.removeSession);
+  const renameSession = useChatStore((s) => s.renameSession);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
   const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [keyword, setKeyword] = useState('');
   const [hits, setHits] = useState<SessionMeta[]>([]);
   const [searching, setSearching] = useState(false);
+  // 改名态：只允许一条进入编辑；草稿与提交分开，Esc 取消不写库（§8.1）
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState('');
+  /** Esc 取消时 input 会跟着失焦，用它压掉 blur 的提交 */
+  const cancelRenameRef = useRef(false);
   const query = normalizeKeyword(keyword);
 
   // 搜索：防抖 200ms；先标题过滤（零 IO），标题命中不足再逐条回读正文补齐。
@@ -123,6 +130,34 @@ function SidebarContent() {
     },
     [removeSession]
   );
+
+  /** 导出为 Markdown：读库里已落盘快照（§8.2）；读不到说明会话已被删，明确告知而不是静默 */
+  const handleExport = useCallback(async (meta: SessionMeta) => {
+    const ok = await exportSessionMarkdown(meta);
+    if (!ok) window.alert('该会话内容已不存在，无法导出。');
+  }, []);
+
+  const beginRename = useCallback((meta: SessionMeta) => {
+    cancelRenameRef.current = false;
+    setRenamingId(meta.id);
+    setDraftTitle(meta.title);
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    cancelRenameRef.current = true;
+    setRenamingId(null);
+    setDraftTitle('');
+  }, []);
+
+  const commitRename = useCallback(async () => {
+    const id = renamingId;
+    if (!id) return;
+    const title = draftTitle;
+    setRenamingId(null);
+    setDraftTitle('');
+    // 空标题 / 与原值相同由 store 判掉（返回 false），这里不需要额外提示
+    await renameSession(id, title);
+  }, [draftTitle, renamingId, renameSession]);
 
   return (
     <div className="flex flex-col h-full w-64">
@@ -243,30 +278,83 @@ function SidebarContent() {
                 const active = item.id === currentSessionId;
                 return (
                   <li key={item.id} className="group relative">
-                    <button
-                      type="button"
-                      onClick={() => handleOpen(item.id)}
-                      title={item.title}
-                      className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-3 pr-8 text-left transition-colors ${
-                        active
-                          ? 'bg-background shadow-sm border border-border/50'
-                          : 'border border-transparent hover:bg-muted/60'
-                      }`}
-                    >
-                      <span className="flex-1 truncate text-sm">{item.title}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {formatUpdatedAt(item.updatedAt)}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(item)}
-                      title="删除会话"
-                      aria-label={`删除会话 ${item.title}`}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-xs text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      ×
-                    </button>
+                    {renamingId === item.id ? (
+                      <input
+                        autoFocus
+                        value={draftTitle}
+                        maxLength={60}
+                        aria-label="会话标题"
+                        onChange={(event) => setDraftTitle(event.target.value)}
+                        onFocus={() => {
+                          cancelRenameRef.current = false;
+                        }}
+                        onBlur={() => {
+                          // Esc 已经取消过就不再提交（元素移除时部分浏览器仍会派发 blur）
+                          if (cancelRenameRef.current) return;
+                          void commitRename();
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void commitRename();
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            cancelRename();
+                          }
+                        }}
+                        title="回车保存，Esc 取消；留空则放弃改名"
+                        className="w-full rounded-lg border border-border/50 bg-background py-1.5 pl-3 pr-2 text-sm outline-none"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleOpen(item.id)}
+                        title={item.title}
+                        className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-3 pr-20 text-left transition-colors ${
+                          active
+                            ? 'bg-background shadow-sm border border-border/50'
+                            : 'border border-transparent hover:bg-muted/60'
+                        }`}
+                      >
+                        <span className="flex-1 truncate text-sm">{item.title}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {formatUpdatedAt(item.updatedAt)}
+                        </span>
+                      </button>
+                    )}
+                    {renamingId === item.id ? null : (
+                      // 三个动作按钮：桌面 hover / 键盘聚焦才显形，触屏常显（doc/mobile-ux.md §4）
+                      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
+                        <button
+                          type="button"
+                          onClick={() => beginRename(item)}
+                          title="重命名会话"
+                          aria-label={`重命名会话 ${item.title}`}
+                          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleExport(item)}
+                          title="导出为 Markdown"
+                          aria-label={`导出会话 ${item.title}`}
+                          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(item)}
+                          title="删除会话"
+                          aria-label={`删除会话 ${item.title}`}
+                          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
                   </li>
                 );
               })}
