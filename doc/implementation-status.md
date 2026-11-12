@@ -65,7 +65,7 @@ AIGC:
 | 语义缓存 | 无 | 🧊 | — |
 | 错因聚类（复用嵌入） | 无 | 🧊 | — |
 | `chunkText` 调用方 | 纯函数已有，无调用方 | 🧊 | `lib/local/rag/search.ts` |
-| `disposeLocalEngine()` 调用方 | 无，引擎常驻内存 | ❌ | `lib/local/engine.ts` |
+| `disposeLocalEngine()` 调用方 | 已实装：租约引用计数，`acquireLocalEngine` / `releaseLocalEngine` 归零时释放；能力页、设置分区与聊天链路共用同一租约 | ✅ | `lib/local/engine-lease.ts` |
 | 本地对话（端侧生成） | 占位禁用 | 🧊 | — |
 
 ## 4. 安全与合规
@@ -79,7 +79,7 @@ AIGC:
 | 三级处置话术 | 已实装：硬拦截 / 软引导（system prompt 承载）/ 关怀转介 | ✅ | `lib/safety/messages.ts` |
 | 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
 | 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
-| 图片上传明示 | 无 | ❌ | 同上 §7 |
+| 图片上传明示 | 已实装：聊天输入区三档逐档标注是否外发，整卷上传区对外发档明示「图片将上传至模型服务商」 | ✅ | `components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx` |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
 
@@ -90,7 +90,7 @@ AIGC:
 | 设置存储抽象 + normalize | 已实装 | ✅ | `lib/settings/storage.ts` |
 | 主题三选 + 水合 + 反闪烁 | 已实装 | ✅ | `lib/settings/theme.ts` |
 | 默认模型下拉 | 已实装 | ✅ | `components/ModelSelect.tsx` |
-| 取消首次引导，改默认档 | 决策已定，未实装 | ❌ | `product-vision.md` §3.1 |
+| 取消首次引导，改默认档 | 已实装：不弹首次引导，冷启即保守档（图片默认先本地转文字，原图不出端；只有显式 `false` 才切外发） | ✅ | `lib/settings/types.ts`、`test/lib/settings/defaults.test.ts` |
 | 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板可选 | ✅ | `lib/settings/types.ts` |
 | 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 不发参数 | ✅ | `lib/provider/openaiCompat.ts` |
 | `systemPrompt` / `temperature` / `maxTokens` | 协议标注未接线 | 🧊 | `doc/user-settings.md` |
@@ -103,7 +103,7 @@ AIGC:
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
 | DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试已补：17 文件 / 199 用例，`npm test` 全过；CI 未接（无 `.github/`） | 🟡 | `test/`、`vitest.config.mts` |
+| 关键测试 + CI | 测试 19 文件 / 208 用例，`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 基本实装，发送吸底例外挂账 | 🟡 | `doc/mobile-ux.md` |
 
@@ -158,8 +158,8 @@ AIGC:
 | 全本地 / 多模态 / 混合三档（`lib/ocr/image-handling.ts`） | `product-vision.md` P4 | 🟡 |
 | `explain` 掌握度回路（明白了 / 还不懂） | `agent-workflow.md` §4.3(a) | ✅ |
 | 成本计量口径（每次诊断调用次数、token 区间） | 交付边界 D | ✅ |
-| 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ❌ |
-| 首页视觉重构（结构已有，信息层级待定） | 空白 #6 | ❌ |
+| 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ✅（落点 `doc/demo-script.md`：开场 15s → 单题 55s → 整卷 55s → 本地优先与代价 30s → 收尾 15s，含讲者禁忌表与四类事故兜底） |
+| 首页视觉重构 | 空白 #6 | ✅（结构层级已定稿：删占位卡，改为对话诊断 / 整卷批量 / 本地优先三卖点卡 +「上传 → 追问 → 报告」流程三栏，各带入口；视觉打磨另议） |
 | 上下文裁剪（不设硬边界，长会话只保留当前题相关） | 空白 #5 | ✅ |
 
 > 三档已按模型能力自动派生、可当次切换，但「选另一条路径要多慢 / 多差」的代价提示未做，故记 🟡（依据 `product-vision.md` P4）。
@@ -170,5 +170,5 @@ AIGC:
 - [x] RAG 触发阈值（建议按语料字数，如 > 3000 字）—— **已定（2026-11-12）：查询侧阈值 `RAG_MIN_QUERY_CHARS = 8`（去空白后有效字符数），落点 `lib/local/rag/gate.ts`；语料侧 3000 字阈值仅适用于尚未落地的笔记语料索引化，本期不实现**
 - [x] 设备标识字段确认为请求体 `user` —— **已定（2026-11-12）：确认用请求体 `user`（OpenAI 兼容规范），不使用 HTTP header；与日志用 `X-Client-Id` 严格区分，代码已实装**
 - [x] `confidence` 判定依据（模型自评是否可信）—— **已定（2026-11-12）：采信模型自评，不引入外部校验层；置信度仅用于决定是否强制回显确认（协议 §1.3），不作为对外结论强度声明**
-- [ ] 演示主线是否包含整卷流程（`product-vision.md` §3.3，纯演示取舍，不涉及代码）
+- [x] 演示主线是否包含整卷流程（`product-vision.md` §3.3，纯演示取舍，不涉及代码）—— **已定（2026-11-12）：含，整卷占约 55 秒，见 `doc/demo-script.md` 分镜第 3 段**
 *（内容由AI生成，仅供参考）*
