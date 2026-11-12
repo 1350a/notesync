@@ -41,5 +41,35 @@ export function redactUpstreamText(text: string): string {
     .slice(0, MAX_ERROR_SUMMARY_CHARS);
 }
 
+/**
+ * 从上游响应体里只取「语义」那一句，再交给 {@link redactUpstreamText} 脱敏。
+ *
+ * 直接把整段 JSON 塞进摘要会把 `type` / `param` / `code` 等上游内部字段一并
+ * 暴露到浏览器，其中的 `code` 还容易和本地 `error.code` 混淆。这里按常见形态
+ * 取 message 文本（`error.message` / `error` 字符串 / 顶层 `message` / `msg`），
+ * 解析不了（网关返回 HTML 或纯文本）就退回原文，语义不丢。
+ */
+export function extractUpstreamMessage(raw: string): string {
+  const text = (raw ?? '').trim();
+  if (!text) return '';
+  try {
+    const parsed: unknown = JSON.parse(text);
+    const record = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    if (record) {
+      const error = record.error;
+      if (typeof error === 'string' && error.trim()) return error.trim();
+      if (error && typeof error === 'object') {
+        const message = (error as Record<string, unknown>).message;
+        if (typeof message === 'string' && message.trim()) return message.trim();
+      }
+      if (typeof record.message === 'string' && record.message.trim()) return record.message.trim();
+      if (typeof record.msg === 'string' && record.msg.trim()) return record.msg.trim();
+    }
+  } catch {
+    // 非 JSON：原文继续走脱敏流程
+  }
+  return text;
+}
+
 /** 日志侧最多留存的原文长度：够定位问题，又不至于把整段响应体写进日志 */
 export const MAX_ERROR_LOG_CHARS = 2000;
