@@ -183,6 +183,7 @@ notesync/
 | [doc/diagnose-file-intake.md](./doc/diagnose-file-intake.md) | 诊断模式文件接入契约：四类标签、判定与提取规则、请求体、组装产物、MOCK 调试开关 |
 | [doc/diagnose-paper.md](./doc/diagnose-paper.md) | 整卷诊断协议：请求体、SSE 事件序列、四步流程（识卷 → 逐题 → 汇总 → 报告）、`stats` 口径、MOCK 标注 |
 | [doc/product-vision.md](./doc/product-vision.md) | 产品理念：诊断 vs 解析的分界、三档路径（全本地 / 多模态 / 混合）、演示主线、非目标 |
+| [doc/demo-script.md](./doc/demo-script.md) | 3 分钟演示分镜：诊断≠搜题主线、单题追问阶梯与错因、整卷四步、本地优先与外发代价、讲者禁忌与事故兜底 |
 | [doc/diagnosis-model.md](./doc/diagnosis-model.md) | 诊断业务中间结构：错因表（14 条）、完整度四要素、策略卡、提示阶梯、输出纪律三条禁令 |
 | [doc/agent-workflow.md](./doc/agent-workflow.md) | 诊断工作流协议：七状态迁移表、追问预算、掌握度回路、整卷四步划分与降级语义 |
 | [doc/safety-protocol.md](./doc/safety-protocol.md) | 安全协议：三级处置、上游拦截归一、拦截后历史回滚、输入侧词表、设备标识 `user`、图片上传明示 |
@@ -194,7 +195,7 @@ notesync/
 ## 11. 已知挂账
 
 - 本地小模型对话（v2，Qwen3-0.6B / Qwen2.5-0.5B-Instruct ONNX 待评测）、云端 embedding、云 OCR 两段管线。
-- `disposeLocalEngine()` 已实现（`Promise<void>`）但当前无调用方，页面卸载/内存释放的接线待补；OCR 侧 `disposeOcrWorker()` 已在 `/ocr` 页面接入。
+- `disposeLocalEngine()` 已接线：走 `lib/local/engine-lease.ts` 的租约引用计数，`acquireLocalEngine` / `releaseLocalEngine` 归零时释放，能力页、设置分区与聊天链路共用同一份租约；OCR 侧 `disposeOcrWorker()` 已在 `/ocr` 页面接入。
 - 设置中的 `generation` / `systemPrompt` / 语言 / 朗读音色未接线（服务端注入待做）；会话持久化 `/api/sessions` 未做。
 - 工具调用：多工具并行、外部 MCP server 注册未实现。
 - Safari WebGPU EP 内存问题（onnxruntime #26827）跟踪中，届时可能对 Safari 强制 q8/WASM。
