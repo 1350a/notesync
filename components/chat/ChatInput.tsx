@@ -587,7 +587,7 @@ export default function ChatInput({
                     §7 图片上传明示：外发档当次明示图片将离开设备 */}
                 {imageMode === 'local-ocr' && (
                   <span className="text-[10px] text-muted-foreground">
-                    全本地：原图不出设备；识别可能有误，发送前需确认
+                    全本地：原图不出设备；但用不到原图理解，图文混排 / 手写可能识别有误，发送前需确认
                   </span>
                 )}
                 {imageMode === 'direct' && (

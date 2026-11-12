@@ -383,10 +383,16 @@ export default function UploadArea() {
                 OCR转文字
               </button>
             </div>
-            <span className="min-w-0 flex-1 text-xs text-slate-500">
+            {/* P4 约束①：代价必须写在选择处（触屏无 hover）；
+                safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
+            <span
+              className={`min-w-0 flex-1 text-xs ${
+                imageMode === 'local-ocr' ? 'text-slate-500' : 'text-amber-600'
+              }`}
+            >
               {imageMode === 'local-ocr'
-                ? '图片将经浏览器本地OCR转文字后发送（原图不出设备，纯文本模型可用）'
-                : '图片将按多模态直接发送；若该模型实际不吃图片，会返回明确的错误提示'}
+                ? '图片经浏览器本地识别转文字后发送（原图不出设备）；但用不到原图理解，图文混排 / 手写可能识别有误'
+                : '多模态：图片将上传至模型服务商；若该模型实际不吃图片，会返回明确的错误提示'}
             </span>
           </div>
         )}
