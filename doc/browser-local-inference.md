@@ -170,6 +170,31 @@ score = 0.65 × cosine(queryVec, chunkVec) + 0.35 × keywordScore(query, chunk)
   参数消费，调用方不传即取默认；本文件不触碰 IndexedDB 与 Worker，
   `npm run smoke:rag` 直接可跑（AGENTS.md 脚本零依赖约定）。
 
+### 5.4 触发条件（查询侧阈值）
+
+`rag.enabled` 是**总开关**，不是「每条消息都检索」。实际是否发起检索由
+`lib/local/rag/gate.ts` 的纯函数 `shouldRetrieve(query)` 决定：
+
+```
+有效字符数 = Array.from(query.replace(/\s+/g, '')).length   // 去空白，按字符计（代理对算 1）
+shouldRetrieve = 有效字符数 >= RAG_MIN_QUERY_CHARS
+```
+
+- `RAG_MIN_QUERY_CHARS = 8`。v1 语料为 27 条种子知识卡，短输入（「你好」「谢谢」
+  「1+1」「这题怎么做」）几乎不可能命中，却仍要付一次查询嵌入与 IndexedDB 读取，
+  故设下限直接跳过。
+- 定 8 而非 12 的实测依据：「二次函数顶点坐标怎么求」为 11 字符，是最短的正常数学
+  问句之一；阈值 12 会把它误判为短句、静默不检索，8 既容纳该问句又挡住 5 字符级
+  寒暄。用例见 `test/lib/local/rag/gate.test.ts`（13 项，含阈值 ±1 边界、全空白、
+  中英混排、代理对）。
+- 空白不计入有效字符：`'一'.repeat(6) + ' '.repeat(20)` 仍判为不检索，避免超长填充
+  绕过下限。
+- 未达下限属**设备内静默跳过**（§1 设备边界规则），不发提示、不阻断发送、不回落云端；
+  消息照常裸发，仅请求体不带 `ragContexts`。
+- **语料侧阈值不在本期落地**：种子卡数量固定（§5.1），语料规模阈值只在「用户会话 /
+  笔记语料索引化」（§8）落地时才有意义，届时在本节补充「笔记语料 ≥ 3000 字才建索引」
+  一类规则。
+
 ## 6. 聊天链路接入（ragContexts 契约）
 
 本地 RAG 的第一个业务接入：**发送前在浏览器内检索，命中片段随请求体提交**，
@@ -178,7 +203,7 @@ score = 0.65 × cosine(queryVec, chunkVec) + 0.35 × keywordScore(query, chunk)
 
 ### 6.1 客户端（`hooks/useChat.ts`）
 
-发送前若 `rag.enabled === true` 且用户输入非空：直接调用 `searchKnowledge(text)`
+发送前若 `rag.enabled === true` 且 `shouldRetrieve(text)` 为真（查询侧阈值见 §5.4）：直接调用 `searchKnowledge(text)`
 （嵌入 query → topK → 取回 chunk），命中则把 `{title, snippet(≤800), score(4 位小数)}`
 附到请求体 `ragContexts`。链路**不额外判断引擎状态**：引擎未就绪时由 `embedTexts`
 内部先 `initLocalEngine` 惰性拉起来，首次会触发 24–30MB 资产加载与编译，该条消息
