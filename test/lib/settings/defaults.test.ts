@@ -50,3 +50,35 @@ describe('默认设置：保守档（product-vision.md §3.1 / P4 约束③）',
     expect(resolveImageSendMode(undefined, false)).toBe('local-ocr');
   });
 });
+
+/*
+ * OCR 转写引擎（doc/cloud-ocr.md §4）：默认 local，云端档必须显式合法值才开启——
+ * 云端意味着图片像素出端，坏值/缺字段一律回落保守档。
+ */
+describe('OCR 引擎偏好：默认本地，云端须显式（doc/cloud-ocr.md §4）', () => {
+  it('DEFAULT_SETTINGS 的 ocr.engine 为 local（隐私保守档）', () => {
+    expect(DEFAULT_SETTINGS.ocr.engine).toBe('local');
+  });
+
+  it('cloneDefaults 返回隔离副本，改副本不污染默认值', () => {
+    const a = cloneDefaults();
+    a.ocr.engine = 'cloud';
+    expect(cloneDefaults().ocr.engine).toBe('local');
+  });
+
+  it('缺省 / 坏值 / 非对象一律回落 local（旧存储无 engine 字段同此路径）', () => {
+    expect(normalizeSettings({}).ocr.engine).toBe('local');
+    expect(normalizeSettings(null).ocr.engine).toBe('local');
+    expect(normalizeSettings({ ocr: { engine: 'remote' } }).ocr.engine).toBe('local');
+    expect(normalizeSettings({ ocr: { engine: 1 } }).ocr.engine).toBe('local');
+    expect(normalizeSettings({ ocr: { engine: null } }).ocr.engine).toBe('local');
+  });
+
+  it("显式 'cloud' 才开启云端引擎，且不影响 preferLocal 的独立规整", () => {
+    expect(normalizeSettings({ ocr: { engine: 'cloud' } }).ocr.engine).toBe('cloud');
+    expect(normalizeSettings({ ocr: { engine: 'cloud' } }).ocr.preferLocal).toBe(true);
+    expect(
+      normalizeSettings({ ocr: { engine: 'cloud', preferLocal: false } }).ocr
+    ).toEqual({ preferLocal: false, engine: 'cloud' });
+  });
+});
