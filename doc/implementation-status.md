@@ -103,7 +103,7 @@ AIGC:
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
 | DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 19 文件 / 208 用例，`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 26 文件 / 310 用例，`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
@@ -155,14 +155,18 @@ AIGC:
 | OCR 低置信强制确认（阈值已定，低置信行标红并阻断直接发送） | 同上 | ✅ |
 | §7 输出纪律三条禁令写入提示词（`lib/diagnose/prompts.ts`） | `diagnosis-model.md` §7 | ✅ |
 | 「必须引用作答片段」后置校验（连续窗口 + bigram 兜底） | 同上 §7.3 | ✅ |
-| 全本地 / 多模态 / 混合三档（`lib/ocr/image-handling.ts`） | `product-vision.md` P4 | 🟡 |
+| 全本地 / 多模态 / 混合三档（`lib/ocr/image-handling.ts`、`components/chat/ChatInput.tsx`、整卷 `UploadArea.tsx`） | `product-vision.md` P4 | ✅ |
 | `explain` 掌握度回路（明白了 / 还不懂） | `agent-workflow.md` §4.3(a) | ✅ |
 | 成本计量口径（每次诊断调用次数、token 区间） | 交付边界 D | ✅ |
 | 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ✅（落点 `doc/demo-script.md`：开场 15s → 单题 55s → 整卷 55s → 本地优先与代价 30s → 收尾 15s，含讲者禁忌表与四类事故兜底） |
 | 首页视觉重构 | 空白 #6 | ✅（结构层级已定稿：删占位卡，改为对话诊断 / 整卷批量 / 本地优先三卖点卡 +「上传 → 追问 → 报告」流程三栏，各带入口；视觉打磨另议） |
 | 上下文裁剪（不设硬边界，长会话只保留当前题相关） | 空白 #5 | ✅ |
 
-> 三档已按模型能力自动派生、可当次切换，但「选另一条路径要多慢 / 多差」的代价提示未做，故记 🟡（依据 `product-vision.md` P4）。
+> 三档已按模型能力自动派生（`resolveImageSendMode`）、可当次切换，且代价提示写在选择处
+> （全本地：原图不出设备，但图文混排 / 手写可能误识；直传与混合：图片上传至模型服务商）。
+> 模型未声明图片能力时不渲染直传 / 混合两档（P4 约束②）。聊天页与整卷上传区同口径；
+> 整卷的混合档组装由附件形态自动判定（`lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode`），
+> 不再需要客户端额外传档位字段。
 
 ## 10. 待决策
 

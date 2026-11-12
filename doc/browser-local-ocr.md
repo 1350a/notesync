@@ -146,8 +146,10 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
   - `imageTexts` + `images` 同时存在（**混合档**，product-vision.md P4）：
     OCR 文本块打底 + 原图 image_url 补充，一并组装；此类消息**占用**图片保留配额，
     且仅当所选模型支持多模态才按混合组装，否则降级为纯 OCR 文本（与直传降级同口径）。
-- 直传路径完全不变；诊断附件无 imageTexts——OCR 模式下客户端直接把识别文本
-  写入附件 `text` 字段并不再上行 dataUrl（走既有纯文本附件通道）。
+- 直传路径完全不变；**整卷诊断附件已支持混合形态**：`text` 与 `dataUrl` 可同时存在
+  （`text` 承载本地 OCR 文本），服务端由 `resolveAssembleImageMode` 按附件形态自动判定
+  直传 / 混合 / 纯文本降级三档，客户端无需额外传档位字段；混合档下带 OCR 文本的图片项
+  先投文本、再投原图，与聊天侧同口径。详见 `diagnose-file-intake.md` §6.1。
 - 三档（全本地 / 多模态 / 混合）的呈现约束见 `product-vision.md` P4：
   未配置多模态模型时界面不得表现存在选择项；全本地的代价必须写在选择处。
 
