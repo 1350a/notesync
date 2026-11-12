@@ -33,14 +33,25 @@ interface UserSettings {
   defaultModel: string;               // 默认模型名；'' = 跟随后端推荐（/api/models 首项）
   language: 'system';                 // 【未接线】界面语言，当前仅占位
   systemPrompt: string;               // 【未接线】自定义系统提示词，无 UI，服务端注入待下一轮
-  generation: {                       // 【未接线】生成参数，缺省项表示跟随 provider 默认
-    temperature?: number;             //   钳制 0–2
-    maxTokens?: number;               //   钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
+  generation: {                       // 部分接线：thinkingEffort 已实装，其余仍占位
+    thinkingEffort?: ThinkingEffort;  // 【已接线 2026-11-12】思考强度档位，默认 'medium'；映射见 §2.1
+    temperature?: number;             //   【未接线】钳制 0–2
+    maxTokens?: number;               //   【未接线】钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
   };
   ocr: { preferLocal: boolean };      // 【已接线】true=聊天/诊断的图片一律先经浏览器本地 OCR 转文字再发送（隐私/省 token 优先）
   rag: { enabled: boolean };          // 【已接线】true=发送前浏览器本地检索知识库并注入命中片段（见 doc/browser-local-inference.md §6）
 }
 ```
+
+### 2.1 思考强度档位（generation.thinkingEffort，总账 §5「档位映射」的落地）
+
+- 取值：`'off' | 'low' | 'medium' | 'high'`，默认 `'medium'`；聊天输入区右下角选择，持久化到设置。
+- 请求链路：设置 → 请求体 `thinkingEffort` → `/api/chat` → `CompleteOptions.thinking` → Provider 请求体。
+- Provider 映射（`lib/provider/openaiCompat.ts` 的 `mapThinkingParam`，协议预留的两个参数名）：
+  - **zhipu**：`thinking: { type: 'disabled' | 'enabled' }`——GLM 官方口径只有开/关粒度，low/medium/high 统一映射 enabled，选择「关闭」才能真正生效；
+  - **deepseek**：`reasoning_effort: 'low' | 'medium' | 'high'`；`off` 不发送参数（关闭语义 = 选用非推理模型，由模型下拉承担）；
+  - **custom**：**不发送**——自定义端点对未知字段可能严格校验（与 user 字段开关同口径），思考由端点自身的模型/参数控制。
+- 思维链（reasoning_content）是否出现由该档位决定：`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（wip-product-vision 理念：思维链是调试设施，不是产品功能）。
 
 ### normalize 规则（`lib/settings/types.ts` 纯函数，可冒烟）
 
