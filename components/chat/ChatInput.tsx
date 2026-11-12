@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
-import { THINKING_EFFORTS, type ThinkingEffort } from '@/lib/settings/types';
+import { THINKING_EFFORTS, type OcrEngine, type ThinkingEffort } from '@/lib/settings/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import {
   convertImagesToTexts,
@@ -62,6 +62,8 @@ export interface ChatInputProps {
   modelsMessage?: string;
   /** 设置页"优先本地OCR"偏好（ocr.preferLocal）：true 时图片一律先转文字 */
   preferLocalOcr: boolean;
+  /** OCR 转写引擎（ocr.engine，doc/cloud-ocr.md）：local=tesseract 浏览器内；cloud=智谱 glm-ocr */
+  ocrEngine: OcrEngine;
   /** 诊断会话进行中（useChat 上下文非 done）：开关只负责开启新会话，会话内展示状态 */
   diagnosisActive?: boolean;
 }
@@ -121,6 +123,7 @@ export default function ChatInput({
   modelsLoading = false,
   modelsMessage,
   preferLocalOcr,
+  ocrEngine,
   diagnosisActive = false,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
@@ -254,15 +257,21 @@ export default function ChatInput({
   /** OCR 完成后进入回显确认，而不是直接发送（识别结果必须先经学生确认，§1.3 规则①②） */
   const runOcrThenConfirm = async (): Promise<boolean> => {
     setOcrBusy({ done: 0, total: images.length });
-    const result = await convertImagesToTexts(images, (done, total) =>
-      setOcrBusy({ done, total })
+    const result = await convertImagesToTexts(
+      images,
+      (done, total) => setOcrBusy({ done, total }),
+      ocrEngine
     );
     setOcrBusy(null);
     if (result.failures.length > 0) {
-      // 失败阻断发送：绝不静默丢图片内容，由用户决策（doc/browser-local-ocr.md §6.4）
+      // 失败阻断发送：绝不静默丢图片内容、绝不静默切换引擎，由用户决策
+      // （doc/browser-local-ocr.md §6.4、doc/cloud-ocr.md §6）
       const index = result.failures.map((f) => f.index + 1).join('、');
+      const engineLabel = ocrEngine === 'cloud' ? '云端' : '本地';
       pushHint(
-        `第 ${index} 张图本地OCR失败：${result.failures[0].reason}。可移除该图或改用「直传」。`
+        `第 ${index} 张图${engineLabel}OCR失败：${result.failures[0].reason}。${
+          canDirect ? '可移除该图或改用「直传」' : '可移除该图或在设置中切换识别引擎后重试'
+        }`
       );
       return false;
     }
@@ -365,14 +374,17 @@ export default function ChatInput({
       )}
 
       {/* OCR 回显确认面板（diagnosis-model.md §1.3）：识别文本先经学生确认/修正才上行，
-          低置信项标红强制核对；触屏可编辑（touch 16px） */}
+          低置信项标红强制核对；触屏可编辑（touch 16px）。
+          标题随引擎切换：云端引擎下图片已出设备，不得保留"未离开设备"陈述（doc/cloud-ocr.md §3） */}
       {ocrDraft && (
         <div className="mx-1 rounded-xl border border-border bg-muted/30 p-3">
           <p className="mb-1 text-xs font-medium text-foreground">
-            请核对本地识别结果（图片未离开设备）
+            {ocrEngine === 'cloud'
+              ? '请核对云端识别结果（图片已发送至智谱 OCR）'
+              : '请核对本地识别结果（图片未离开设备）'}
           </p>
           <p className="mb-2 text-[11px] text-muted-foreground">
-            识别可能有误，低置信已标红；可直接改正后发送。
+            识别可能有误{ocrEngine === 'cloud' ? '' : '，低置信已标红'}；可直接改正后发送。
           </p>
           {ocrDraft.texts.map((text, i) => {
             const conf = ocrDraft.confidences[i];
@@ -421,7 +433,8 @@ export default function ChatInput({
         <div className="px-2 text-[11px] text-amber-600">
           {ocrBusy && (
             <div className="text-muted-foreground">
-              本地OCR识别中 {ocrBusy.done}/{ocrBusy.total}…
+              {ocrEngine === 'cloud' ? '云端OCR识别中' : '本地OCR识别中'} {ocrBusy.done}/
+              {ocrBusy.total}…
             </div>
           )}
           {hint}
@@ -548,9 +561,14 @@ export default function ChatInput({
                         ? 'bg-foreground/10 font-medium text-foreground'
                         : 'text-muted-foreground hover:bg-muted'
                     }`}
-                    title="全本地：图片在浏览器内转文字后发送，原图不出设备（隐私、省流量）"
+                    // 代价文案随引擎：云端引擎下原图像素上行至智谱 OCR，"不出设备"仅本地引擎成立（doc/cloud-ocr.md §3）
+                    title={
+                      ocrEngine === 'cloud'
+                        ? '转文字：图片经云端OCR转文字后发送（图片将上传至智谱，公式/手写识别更好）'
+                        : '全本地：图片在浏览器内转文字后发送，原图不出设备（隐私、省流量）'
+                    }
                   >
-                    全本地
+                    {ocrEngine === 'cloud' ? '云端转文字' : '全本地'}
                   </button>
                   {canDirect && (
                     <>
@@ -576,7 +594,7 @@ export default function ChatInput({
                             ? 'bg-foreground/10 font-medium text-foreground'
                             : 'text-muted-foreground hover:bg-muted'
                         }`}
-                        title="混合：本地识别打底 + 原图上传至模型服务商（外发最多，质量最好）"
+                        title={`混合：${ocrEngine === 'cloud' ? '云端' : '本地'}识别打底 + 原图上传至模型服务商（外发最多，质量最好）`}
                       >
                         混合
                       </button>
@@ -584,10 +602,13 @@ export default function ChatInput({
                   )}
                 </div>
                 {/* P4 约束①：代价必须写在选择处，不靠 hover 提示（触屏无 hover）；
-                    §7 图片上传明示：外发档当次明示图片将离开设备 */}
+                    §7 图片上传明示：外发档当次明示图片将离开设备。
+                    转文字档的"原图不出设备"仅本地引擎成立，云端引擎必须明示图片出端（doc/cloud-ocr.md §3） */}
                 {imageMode === 'local-ocr' && (
                   <span className="text-[10px] text-muted-foreground">
-                    全本地：原图不出设备；但用不到原图理解，图文混排 / 手写可能识别有误，发送前需确认
+                    {ocrEngine === 'cloud'
+                      ? '云端转文字：图片将上传至智谱 OCR 转写（公式/手写更好，原图像素出设备），发送前需确认'
+                      : '全本地：原图不出设备；但用不到原图理解，图文混排 / 手写可能识别有误，发送前需确认'}
                   </span>
                 )}
                 {imageMode === 'direct' && (
@@ -597,7 +618,7 @@ export default function ChatInput({
                 )}
                 {imageMode === 'mixed' && (
                   <span className="text-[10px] text-amber-600">
-                    混合：原图将上传至模型服务商（另有本地识别打底）
+                    混合：原图将上传至模型服务商（另有{ocrEngine === 'cloud' ? '云端' : '本地'}识别打底）
                   </span>
                 )}
               </div>
