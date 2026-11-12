@@ -9,8 +9,19 @@
 /** 主题偏好：system 跟随系统（matchMedia 实时联动） */
 export type ThemePreference = 'light' | 'dark' | 'system';
 
-/** 生成参数（未接线占位）：缺省项表示跟随 provider 默认 */
+/**
+ * 思考强度档位（doc/user-settings.md §2.1，总账 §5 档位映射的落地）：
+ * off 关闭思考（无思维链、省时省费）；low/medium/high 控制推理深度。
+ * Provider 映射差异见 mapThinkingParam。
+ */
+export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
+
+export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['off', 'low', 'medium', 'high'];
+
+/** 生成参数：thinkingEffort 已接线；temperature/maxTokens 仍为占位 */
 export interface GenerationSettings {
+  /** 思考强度档位；缺省视为 medium（映射时缺省不发参数则视为跟随 provider 默认） */
+  thinkingEffort?: ThinkingEffort;
   temperature?: number;
   maxTokens?: number;
 }
@@ -69,6 +80,12 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
   const out: GenerationSettings = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
   const record = raw as Record<string, unknown>;
+  if (
+    typeof record.thinkingEffort === 'string' &&
+    THINKING_EFFORTS.includes(record.thinkingEffort as ThinkingEffort)
+  ) {
+    out.thinkingEffort = record.thinkingEffort as ThinkingEffort;
+  }
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     out.temperature = clamp(record.temperature, TEMPERATURE_MIN, TEMPERATURE_MAX);
   }
