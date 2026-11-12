@@ -4,7 +4,7 @@
  * 适用于纯文本或 tool calling 支持不佳的模型。
  * 依赖系统提示词注入格式要求，模型以固定的 ```tool 围栏返回 JSON。
  */
-import type { CompleteOptions, ProviderMessage, StreamDelta } from '@/lib/provider/types.ts';
+import type { CompleteOptions, ProviderMessage, StreamDelta, ThinkingEffort } from '@/lib/provider/types.ts';
 import { renderForText } from '../render.ts';
 import { formatAskUserArgs } from '../builtin/ask_user.ts';
 import type {
@@ -20,10 +20,11 @@ export class TextAdapter implements ToolAdapter {
     model: string,
     messages: ProviderMessage[],
     tools: ToolDefinition[],
-    user?: string
+    user?: string,
+    thinking?: ThinkingEffort
   ): CompleteOptions {
     if (tools.length === 0) {
-      return { model, messages, user };
+      return { model, messages, user, thinking };
     }
 
     // 注入工具说明到 system prompt 末尾。
