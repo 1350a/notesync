@@ -47,6 +47,12 @@ export interface ChatMsg {
   /** 用户随消息上传的图片 dataUrl（OCR 模式下仅用于本地展示，不再上行） */
   images?: string[];
   /**
+   * 已过期的图片槽位下标（doc/chat-history.md §4.1）：纯展示态，不落库、不参与
+   * 上行组装。images[i] === '' 且 i 在此列表中时渲染「图片已过期」占位块；
+   * 未登记的 '' 槽位直接跳过渲染（不给破图）
+   */
+  expiredImages?: number[];
+  /**
    * 本地 OCR 转文字产物（与 images 一一对应）：上行时以 imageTexts 契约随消息发送，
    * 服务端拼成文本块；气泡上以"已本地OCR"标注透出（doc/browser-local-ocr.md §6.2）
    */
