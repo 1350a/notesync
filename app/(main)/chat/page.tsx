@@ -42,11 +42,6 @@ export default function ChatPage() {
   const { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext } =
     useChat(selectedModel);
 
-  /** 掌握度回路（明白了/还不懂/继续）：作为带事件的诊断消息发送，按钮文案即用户气泡内容 */
-  const handleDiagnoseAction = (event: DiagnoseRequestEvent, label: string) => {
-    void sendMessage(label, [], [], undefined, { diagnoseEvent: event });
-  };
-
   // --- 条件式吸底（doc/mobile-ux.md §3）：用户操作优先，仅"未打断 ∧ 贴近底部"才跟随 ---
   const scrollRef = useRef<HTMLDivElement>(null);
   // 高频状态放 ref 避免每次 chunk 触发渲染；仅按钮可见性走 state
@@ -83,6 +78,30 @@ export default function ChatPage() {
     followState.current.interrupted = false;
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     setShowBackToBottom(false);
+  };
+
+  /**
+   * 发送例外（doc/mobile-ux.md §3 表格「发送例外」）：发送即明确表示"要看新内容"，
+   * 无论当前是否被判定为打断、是否贴近底部，都无条件吸底一次并复位打断态，
+   * 否则用户上翻后按发送，新回答会从屏幕外开始流式，观感像没有响应。
+   * 吸底用 auto（与流式一致）：此处是纠偏而非导航，动画反而让人等。
+   */
+  const handleSend: typeof sendMessage = (...args) => {
+    const el = scrollRef.current;
+    if (el) {
+      const state = followState.current;
+      state.interrupted = false;
+      state.atBottom = true;
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      state.lastTop = el.scrollTop;
+      setShowBackToBottom(false);
+    }
+    return sendMessage(...args);
+  };
+
+  /** 掌握度回路（明白了/还不懂/继续）：作为带事件的诊断消息发送，按钮文案即用户气泡内容 */
+  const handleDiagnoseAction = (event: DiagnoseRequestEvent, label: string) => {
+    void handleSend(label, [], [], undefined, { diagnoseEvent: event });
   };
   // 图片处理偏好（设置页"优先本地OCR"）：交由 ChatInput 派生图片发送方式
   const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
@@ -146,11 +165,11 @@ export default function ChatPage() {
         {pendingAskQuestions ? (
           <AskUserPanel
             questions={pendingAskQuestions}
-            onSubmit={(text) => void sendMessage(text, [], [])}
+            onSubmit={(text) => void handleSend(text, [], [])}
           />
         ) : (
           <ChatInput
-            onSend={sendMessage}
+            onSend={handleSend}
             onStop={stopGeneration}
             loading={loading}
             models={models}
