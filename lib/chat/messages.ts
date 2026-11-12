@@ -95,6 +95,8 @@ export interface ChatRequestBody {
   diagnose?: unknown;
   /** 上游终端用户标识（纯随机 UUID，doc/user-settings.md §4.1；服务端经 runToolLoop 透传） */
   user?: unknown;
+  /** 思考强度档位（doc/user-settings.md §2.1；服务端严格校验后经 CompleteOptions 透传） */
+  thinkingEffort?: unknown;
   /** 本地检索命中片段（浏览器端 RAG 产物，doc/browser-local-inference.md §6.2） */
   ragContexts?: unknown;
 }
