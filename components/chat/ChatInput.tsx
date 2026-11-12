@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
+import { THINKING_EFFORTS, type ThinkingEffort } from '@/lib/settings/types';
+import { useSettingsStore } from '@/store/useSettingsStore';
 import {
   convertImagesToTexts,
   resolveImageSendMode,
@@ -67,6 +69,41 @@ export interface ChatInputProps {
 /** OCR 低置信线（0~100，tesseract 口径；A 级假设实测可调）：低于此值确认面板强制标红 */
 const OCR_LOW_CONFIDENCE = 60;
 
+const THINKING_LABEL: Record<ThinkingEffort, string> = {
+  off: '关闭',
+  low: '低',
+  medium: '中',
+  high: '高',
+};
+
+/** 思考强度选择器（doc/user-settings.md §2.1）：聊天框右下角，持久化到设置 */
+function ThinkingEffortSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ThinkingEffort;
+  onChange: (v: ThinkingEffort) => void;
+  disabled: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as ThinkingEffort)}
+      disabled={disabled}
+      aria-label="思考强度"
+      title="思考强度：高=答得更准但更慢更贵；关闭=无思维链（部分模型仅支持开/关粒度，自定义端点不发送该参数）"
+      className="rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] font-medium text-muted-foreground outline-none touch:px-3 touch:py-2"
+    >
+      {THINKING_EFFORTS.map((level) => (
+        <option key={level} value={level}>
+          思考·{THINKING_LABEL[level]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /** OCR 回显确认草稿：识别文本可编辑，确认后才随消息上行（wip-diagnosis-model.md §1.3） */
 interface OcrDraft {
   texts: string[];
@@ -103,6 +140,13 @@ export default function ChatInput({
   const [diagnosisMode, setDiagnosisMode] = useState(false);
   /** OCR 回显确认草稿：非 null 时输入区上方出现确认面板，阻断直接发送 */
   const [ocrDraft, setOcrDraft] = useState<OcrDraft | null>(null);
+  // 思考强度档位（doc/user-settings.md §2.1）：持久化设置，聊天框右下角快捷切换
+  const generation = useSettingsStore((s) => s.settings.generation);
+  const thinkingEffort = generation.thinkingEffort ?? 'medium';
+  const updateSettings = useSettingsStore((s) => s.update);
+  // store.update 是浅合并：必须展开现有 generation，否则其他生成参数会被整体清掉
+  const setThinkingEffort = (v: ThinkingEffort) =>
+    updateSettings({ generation: { ...generation, thinkingEffort: v } });
 
   useEffect(() => {
     return () => {
@@ -559,21 +603,27 @@ export default function ChatInput({
           </div>
 
           {loading ? (
-            <Button
-              onClick={onStop}
-              variant="destructive"
-              className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5"
-            >
-              停止
-            </Button>
+            <div className="flex items-center gap-2">
+              <ThinkingEffortSelect value={thinkingEffort} onChange={setThinkingEffort} disabled={loading || ocrBusy !== null} />
+              <Button
+                onClick={onStop}
+                variant="destructive"
+                className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5"
+              >
+                停止
+              </Button>
+            </div>
           ) : (
-            <Button
-              onClick={() => void handleSend()}
-              disabled={!hasPayload || !selectedModel || ocrBusy !== null}
-              className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5 bg-foreground text-background hover:bg-foreground/90"
-            >
-              发送
-            </Button>
+            <div className="flex items-center gap-2">
+              <ThinkingEffortSelect value={thinkingEffort} onChange={setThinkingEffort} disabled={loading || ocrBusy !== null} />
+              <Button
+                onClick={() => void handleSend()}
+                disabled={!hasPayload || !selectedModel || ocrBusy !== null}
+                className="rounded-full h-8 px-4 text-xs touch:h-11 touch:px-5 bg-foreground text-background hover:bg-foreground/90"
+              >
+                发送
+              </Button>
+            </div>
           )}
         </div>
       </div>
