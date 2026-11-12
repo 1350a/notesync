@@ -33,6 +33,7 @@ import type {
   StreamDelta,
   ThinkingEffort,
 } from './types.ts';
+import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '../safety/redact.ts';
 
 /**
  * 思考强度 → Provider 请求体参数映射（doc/user-settings.md §2.1，协议预留的两个参数名）。
@@ -473,8 +474,37 @@ export class OpenAICompatProvider implements LLMProvider {
     }
   }
 
+  /**
+   * 上游错误文案。
+   *
+   * 原文（errText）此前被整段拼进文案，随 error 事件下发到浏览器，里面有
+   * request_id、账号信息与内部字段名。现在改为：原文只进服务端日志，
+   * 响应侧给「模板化提示 + 脱敏截断的上游摘要」。
+   *
+   * 之所以不把原文彻底丢掉：explainProviderError 依赖上游英文关键词判断
+   * 「模型不接受图片输入」这类定向提示，摘要必须留下语义。
+   */
   private errorMessage(status: number, errText: string): string {
-    return `${this.displayName} 返回错误（HTTP ${status}）：${errText || '请检查 API Key 是否正确、余额是否充足。'}`;
+    const raw = (errText || '').trim();
+    if (raw) {
+      console.error(`[provider] ${this.name} HTTP ${status}：${raw.slice(0, MAX_ERROR_LOG_CHARS)}`);
+    }
+    const hint =
+      status === 401 || status === 403
+        ? '鉴权失败，请检查 API Key 是否正确。'
+        : status === 402
+          ? '上游账户余额或额度不足，请充值后重试。'
+          : status === 404
+            ? '模型不存在或该 Key 无权访问，请检查模型名称。'
+            : status === 429
+              ? '请求过于频繁或额度受限，请稍后重试。'
+              : status >= 500
+                ? '上游服务异常，请稍后重试。'
+                : '请求被上游拒绝，请检查 API Key、余额与模型配置。';
+    const summary = redactUpstreamText(raw);
+    return `${this.displayName} 返回错误（HTTP ${status}）：${hint}${
+      summary ? `（上游摘要：${summary}）` : ''
+    }`;
   }
 
   /** 解析响应 message/delta 中的内容与思考过程（兼容 reasoning_content / reasoning） */
@@ -519,7 +549,14 @@ export class OpenAICompatProvider implements LLMProvider {
       error?: { message?: string };
     };
     if (data.error?.message) {
-      throw new Error(`${this.displayName} 返回错误：${data.error.message}`);
+      // 流式 body 内的错误同样可能带 request_id / 账号信息：日志留原文，响应留脱敏摘要
+      const rawErr = data.error.message;
+      console.error(
+        `[provider] ${this.name} 流式响应错误：${rawErr.slice(0, MAX_ERROR_LOG_CHARS)}`,
+      );
+      throw new Error(
+        `${this.displayName} 返回错误：${redactUpstreamText(rawErr) || '上游流式响应返回错误'}`,
+      );
     }
     const choice = data.choices?.[0];
     const parsed = this.parseReasoning(choice?.message);
