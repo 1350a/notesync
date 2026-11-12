@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_ERROR_LOG_CHARS,
   MAX_ERROR_SUMMARY_CHARS,
+  extractUpstreamMessage,
   redactUpstreamText,
 } from '@/lib/safety/redact';
 
@@ -63,6 +64,45 @@ describe('redactUpstreamText', () => {
 
   it('空输入返回空串（调用方据此决定是否省略摘要）', () => {
     expect(redactUpstreamText('')).toBe('');
+  });
+});
+
+describe('extractUpstreamMessage', () => {
+  it('只取 error.message，不带上游的 type / param / code 字段', () => {
+    const raw =
+      '{"error":{"message":"Insufficient Balance (request_id: 928791ca-5c85-44a0-a0e9-46997162c4c3)","type":"insufficient_balance_error","param":null,"code":"invalid_request_error"}}';
+    const out = extractUpstreamMessage(raw);
+    expect(out).toContain('Insufficient Balance');
+    expect(out).not.toContain('insufficient_balance_error');
+    expect(out).not.toContain('"code"');
+  });
+
+  it('兼容 error 为字符串、顶层 message / msg 三种形态', () => {
+    expect(extractUpstreamMessage('{"error":"boom"}')).toBe('boom');
+    expect(extractUpstreamMessage('{"message":"boom"}')).toBe('boom');
+    expect(extractUpstreamMessage('{"msg":"boom"}')).toBe('boom');
+  });
+
+  it('非 JSON（网关 HTML / 纯文本）退回原文，语义不丢', () => {
+    expect(extractUpstreamMessage('<html>502 Bad Gateway</html>')).toBe('<html>502 Bad Gateway</html>');
+  });
+
+  it('JSON 里取不到 message 时退回原文，不做二次编造', () => {
+    const raw = '{"foo":1}';
+    expect(extractUpstreamMessage(raw)).toBe(raw);
+  });
+
+  it('空输入返回空串', () => {
+    expect(extractUpstreamMessage('')).toBe('');
+  });
+
+  it('与脱敏串联后：语义保留、标识抹掉', () => {
+    const raw =
+      '{"error":{"message":"Invalid Key sk-abcdef1234567890 for user@example.com","code":"auth"}}';
+    const out = redactUpstreamText(extractUpstreamMessage(raw));
+    expect(out).toContain('Invalid Key');
+    expect(out).not.toContain('sk-abcdef1234567890');
+    expect(out).not.toContain('user@example.com');
   });
 });
 
