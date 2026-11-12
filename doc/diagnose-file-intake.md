@@ -134,6 +134,7 @@ interface DiagnoseAttachment {
 | code | 含义 |
 |---|---|
 | `no_model` | 未配置任何可用模型 |
+| `invalid_request` | 请求体不是合法 JSON 或结构不符（两个路由共用，路由层就地拦截，不进入任何流程） |
 | `invalid_model` | 模型名不属于任何已配置 Provider |
 | `unconfigured` | 归属 Provider 的 KEY / BASE_URL 缺失 |
 | `no_content` | 附件全部无效，无可发送内容 |
