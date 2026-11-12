@@ -99,6 +99,7 @@ export default function UploadArea() {
   // 默认模型记忆：与聊天页共用设置里的 defaultModel（doc/user-settings.md §5）
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
   const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
+  const ocrEngine = useSettingsStore((s) => s.settings.ocr.engine);
   const updateSettings = useSettingsStore((s) => s.update);
   /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
   const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
@@ -208,27 +209,31 @@ export default function UploadArea() {
     try {
       let prepared = readyRows;
       const imageRows = readyRows.filter((row) => row.dataUrl);
-      // 全本地与混合两档都要先跑浏览器本地 OCR，差别只在原图是否随请求上行
+      // 全本地与混合两档都要先跑 OCR（引擎由 ocr.engine 决定，doc/cloud-ocr.md §6），差别只在原图是否随请求上行
       if ((imageMode === 'local-ocr' || imageMode === 'mixed') && imageRows.length > 0) {
         setOcrProgress({ done: 0, total: imageRows.length });
         const ocrResult = await convertImagesToTexts(
           imageRows.map((row) => row.dataUrl!),
-          (done, total) => setOcrProgress({ done, total })
+          (done, total) => setOcrProgress({ done, total }),
+          ocrEngine
         );
         setOcrProgress(null);
         if (ocrResult.failures.length > 0) {
           const names = ocrResult.failures.map((f) => imageRows[f.index].name).join('、');
+          const engineLabel = ocrEngine === 'cloud' ? '云端' : '本地';
           if (imageMode === 'local-ocr') {
             // 全本地：识别文本是唯一通道，失败即无内容可发 → 阻断，由用户决策
-            // （doc/browser-local-ocr.md §6.4：绝不静默丢图片内容）
+            // （doc/browser-local-ocr.md §6.4：绝不静默丢图片内容、绝不静默切换引擎）
             setError(
-              `本地OCR未能识别：${names}（${ocrResult.failures[0].reason}）。可移除该文件或改用「直传原图」。`
+              `${engineLabel}OCR未能识别：${names}（${ocrResult.failures[0].reason}）。可移除该文件或${
+                canDirect ? '改用「直传原图」' : '在设置中切换识别引擎后重试'
+              }。`
             );
             return;
           }
           // 混合：原图仍会随请求上行，内容没丢 → 不阻断，只提示该文件降级为纯原图
           setNotice(
-            `本地OCR未能识别：${names}（${ocrResult.failures[0].reason}）。该文件本次只上传原图，不影响诊断。`
+            `${engineLabel}OCR未能识别：${names}（${ocrResult.failures[0].reason}）。该文件本次只上传原图，不影响诊断。`
           );
         }
         const textByRow = new Map(
@@ -409,9 +414,14 @@ export default function UploadArea() {
                     ? 'bg-slate-100 font-medium text-slate-800'
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
-                title="图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）"
+                // 代价文案随引擎：云端引擎下图片像素上行至智谱 OCR（doc/cloud-ocr.md §3）
+                title={
+                  ocrEngine === 'cloud'
+                    ? '图片经云端OCR（智谱 glm-ocr）转文字再发送：公式/手写识别更好，但图片将上传至智谱'
+                    : '图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）'
+                }
               >
-                OCR转文字
+                {ocrEngine === 'cloud' ? '云端转文字' : 'OCR转文字'}
               </button>
               {canDirect && (
                 <button
@@ -433,13 +443,15 @@ export default function UploadArea() {
                 safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
             <span
               className={`w-full break-words text-xs md:min-w-0 md:flex-1 ${
-                imageMode === 'local-ocr' ? 'text-slate-500' : 'text-amber-600'
+                imageMode === 'local-ocr' && ocrEngine === 'local' ? 'text-slate-500' : 'text-amber-600'
               }`}
             >
               {imageMode === 'local-ocr'
-                ? '图片经浏览器本地识别转文字后发送（原图不出设备）；但用不到原图理解，图文混排 / 手写可能识别有误'
+                ? ocrEngine === 'cloud'
+                  ? '图片将上传至智谱 OCR（glm-ocr）转文字后发送：公式/手写识别更好，但原图像素出设备'
+                  : '图片经浏览器本地识别转文字后发送（原图不出设备）；但用不到原图理解，图文混排 / 手写可能识别有误'
                 : imageMode === 'mixed'
-                  ? '混合：本地识别打底 + 原图一并上传至模型服务商（外发最多，识别不准时仍能看图）；若该模型实际不吃图片，会返回明确的错误提示'
+                  ? `混合：${ocrEngine === 'cloud' ? '云端' : '本地'}识别打底 + 原图一并上传至模型服务商（外发最多，识别不准时仍能看图）；若该模型实际不吃图片，会返回明确的错误提示`
                   : '多模态：图片将上传至模型服务商；若该模型实际不吃图片，会返回明确的错误提示'}
             </span>
           </div>
@@ -483,9 +495,9 @@ export default function UploadArea() {
                   : row.status === 'ready'
                     ? row.dataUrl
                       ? imageMode === 'local-ocr'
-                        ? '图片已就绪（发送时本地OCR转文字）'
+                        ? `图片已就绪（发送时${ocrEngine === 'cloud' ? '云端OCR' : '本地OCR'}转文字）`
                         : imageMode === 'mixed'
-                          ? '图片已就绪（发送时本地OCR打底 + 原图同传）'
+                          ? `图片已就绪（发送时${ocrEngine === 'cloud' ? '云端' : '本地'}OCR打底 + 原图同传）`
                           : '图片已就绪'
                       : `文字已提取（${row.text?.length ?? 0} 字符）`
                     : null;
@@ -547,7 +559,7 @@ export default function UploadArea() {
             className="w-full py-4 mt-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
           >
             {ocrProgress
-              ? `本地OCR识别中 ${ocrProgress.done}/${ocrProgress.total}…`
+              ? `${ocrEngine === 'cloud' ? '云端OCR识别中' : '本地OCR识别中'} ${ocrProgress.done}/${ocrProgress.total}…`
               : isSending
                 ? mode === 'paper'
                   ? '整卷处理中…'
