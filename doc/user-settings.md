@@ -46,6 +46,7 @@ interface UserSettings {
 ### 2.1 思考强度档位（generation.thinkingEffort，总账 §5「档位映射」的落地）
 
 - 取值：`'off' | 'low' | 'medium' | 'high'`，默认 `'medium'`；聊天输入区右下角选择，持久化到设置。
+- **默认值真源与保活**：`DEFAULT_SETTINGS.generation` 保持空对象（语义为「用户未设置」），默认 `'medium'` 由消费侧兜底——`components/chat/ChatInput.tsx` 取 `generation.thinkingEffort ?? 'medium'`。用户一旦在输入区改档，即由 `updateSettings` 写入 `generation.thinkingEffort` 并持久化到 `notesync-settings.v1`，此后一律以其选择为准、不再回落 `medium`（2026-11-12 拍板）。
 - 请求链路：设置 → 请求体 `thinkingEffort` → `/api/chat` → `CompleteOptions.thinking` → Provider 请求体。
 - Provider 映射（`lib/provider/openaiCompat.ts` 的 `mapThinkingParam`，协议预留的两个参数名）：
   - **zhipu**：`thinking: { type: 'disabled' | 'enabled' }`——GLM 官方口径只有开/关粒度，low/medium/high 统一映射 enabled，选择「关闭」才能真正生效；
