@@ -9,11 +9,28 @@ const CATEGORIES = new Set<ReviseCategory>(['origin', 'wrong', 'correct', 'analy
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
 export const MAX_DATA_URL = 12 * 1024 * 1024;
 
+/**
+ * 单次请求的附件条数上限。
+ *
+ * 单图体积已限（MAX_DATA_URL），但数组长度此前不限：一次 POST 塞几百条附件照样能把
+ * 内存与组装耗时打满，而投喂侧本来只用其中少数（doc/diagnose-file-intake.md：图片
+ * 投喂上限 4 张，超出降级为文字占位）。取 12 = 四类标签各 3 张，比投喂上限宽 3 倍，
+ * 正常整卷够用；超量部分丢弃并留痕，不静默。
+ */
+export const MAX_ATTACHMENTS = 12;
+
 export function parseAttachments(raw: unknown): DiagnoseAttachment[] {
   if (!Array.isArray(raw)) return [];
+  // 超量截断放在解析前：既限制结果条数，也避免脏数据把循环次数放大
+  if (raw.length > MAX_ATTACHMENTS) {
+    console.warn(
+      `[diagnose] 附件 ${raw.length} 条超过 ${MAX_ATTACHMENTS} 条上限，仅取前 ${MAX_ATTACHMENTS} 条`,
+    );
+  }
+  const items = raw.length > MAX_ATTACHMENTS ? raw.slice(0, MAX_ATTACHMENTS) : raw;
   const out: DiagnoseAttachment[] = [];
 
-  for (const item of raw) {
+  for (const item of items) {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
     const name = typeof record.name === 'string' ? record.name.trim() : '';
