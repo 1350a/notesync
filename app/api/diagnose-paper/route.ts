@@ -27,6 +27,7 @@ import {
   parseSplitResult,
   type PaperQuestion,
 } from '@/lib/diagnose/paper';
+import { runMockPaper } from '@/lib/mock/paper';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { LLMProvider, ProviderMessage } from '@/lib/provider/types';
@@ -84,57 +85,7 @@ export async function POST(request: Request) {
 
         // MOCK 剧本在最前（与 /api/chat 同序）：不触碰模型探测，零 token 可走通
         if (process.env.MOCK_MODEL === '1') {
-          step('MOCK 仿真：切题完成（2 题）', { current: 1, total: 4 });
-          const mockQuestions: PaperQuestion[] = [
-            { number: '第1题', stem: '（MOCK 仿真）解方程 2x²-5x+1=0', answer: 'x=(5±√33)/4', type: '解答题' },
-            { number: '第2题', stem: '（MOCK 仿真）求 y=1/(x-2) 的定义域', type: '填空题' },
-          ];
-          const groups = classifyQuestions(mockQuestions);
-          step(`MOCK 仿真：分为 ${groups.length} 组`, { current: 2, total: 4 });
-          let current = 2;
-          for (const group of groups) {
-            current += 1;
-            step(`MOCK 仿真：诊断 ${group.questions.map((q) => q.number).join('、')}`, {
-              current,
-              total: groups.length + 3,
-            });
-            const parsed = parseSubmission({
-              level: group.questions.some((q) => q.answer) ? 'L2' : 'L1',
-              knowledgePoints: ['MOCK 仿真考点'],
-              errorCause:
-                group.code !== 'general' ? { code: group.code, confidence: 0.8 } : { code: 'calc_error', confidence: 0.7 },
-              hints: [],
-              notes: '（MOCK 仿真数据）',
-            });
-            if (parsed.ok) {
-              controller.enqueue(
-                encoder.encode(
-                  sse('diagnosis', {
-                    result: buildDiagnosisResult(parsed.value, {
-                      hasProblem: true,
-                      hasStudentAnswer: group.questions.some((q) => q.answer),
-                      hasCorrectAnswer: false,
-                      hasAnalysis: false,
-                    }),
-                    questionNumbers: group.questions.map((q) => q.number),
-                    groupCode: group.code,
-                  }),
-                ),
-              );
-            }
-          }
-          step('MOCK 仿真：汇总', { current: groups.length + 3, total: groups.length + 3 });
-          controller.enqueue(
-            encoder.encode(sse('content', { delta: '（MOCK 仿真）整卷汇总：见上方各组卡片；剧本仅验证链路。' })),
-          );
-          controller.enqueue(
-            encoder.encode(
-              sse('done', {
-                finishReason: 'paper',
-                stats: { questions: mockQuestions.length, groups: groups.length, mock: true },
-              }),
-            ),
-          );
+          runMockPaper(controller);
           return;
         }
 
