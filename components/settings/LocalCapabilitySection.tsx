@@ -15,6 +15,7 @@ import { useCallback, useState } from 'react';
 
 import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
 import { useLocalEngine } from '@/hooks/useLocalEngine';
+import { useModels } from '@/hooks/useModels';
 import type { LocalEngineStatus } from '@/lib/local/engine';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -42,9 +43,15 @@ const TOGGLE_CLASS =
  * 能力页同源（引擎单例 800ms 轮询，分区条件挂载即停表）。
  */
 export default function LocalCapabilitySection() {
-  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
+  const ocr = useSettingsStore((s) => s.settings.ocr);
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   const updateSettings = useSettingsStore((s) => s.update);
+
+  // 云端引擎可用性来自 GET /api/models 的 providers 明细（doc/cloud-ocr.md §4 可用性门禁）：
+  // 探测未完成按不可用处理（宁可禁用，不做乐观假设），zhipu unconfigured 时云端选项置灰
+  const { providers, loading: modelsLoading } = useModels();
+  const cloudOcrReady =
+    !modelsLoading && Boolean(providers?.some((p) => p.name === 'zhipu' && p.status !== 'unconfigured'));
 
   const { status: engine, assets, init } = useLocalEngine();
   // starting 提供点击→首帧 loading 间的即时反馈（轮询粒度 800ms，补齐这个空窗）
@@ -83,17 +90,18 @@ export default function LocalCapabilitySection() {
       )}
 
       {/* 图片处理（自通用设置迁入，语义 doc/browser-local-ocr.md §6.1 不变）：
-          输入区贴图后仍可当次切换，此处为持久默认 */}
+          输入区贴图后仍可当次切换，此处为持久默认。
+          store.update 对嵌套对象整体替换，必须展开现有 ocr 保留 engine 字段 */}
       <SettingsRow
         label="图片处理（OCR）"
-        hint="优先本地OCR：图片先在浏览器内转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
+        hint="优先本地OCR：图片先转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
       >
         <div className="flex w-full gap-2">
           <button
             type="button"
-            onClick={() => updateSettings({ ocr: { preferLocal: false } })}
+            onClick={() => updateSettings({ ocr: { ...ocr, preferLocal: false } })}
             className={`${TOGGLE_CLASS} ${
-              !preferLocalOcr
+              !ocr.preferLocal
                 ? 'border-foreground/50 bg-muted font-medium'
                 : 'border-border hover:bg-muted/50'
             }`}
@@ -102,14 +110,52 @@ export default function LocalCapabilitySection() {
           </button>
           <button
             type="button"
-            onClick={() => updateSettings({ ocr: { preferLocal: true } })}
+            onClick={() => updateSettings({ ocr: { ...ocr, preferLocal: true } })}
             className={`${TOGGLE_CLASS} ${
-              preferLocalOcr
+              ocr.preferLocal
                 ? 'border-foreground/50 bg-muted font-medium'
                 : 'border-border hover:bg-muted/50'
             }`}
           >
             优先本地OCR
+          </button>
+        </div>
+      </SettingsRow>
+
+      {/* 识别引擎（doc/cloud-ocr.md §4）：preferLocal 决定要不要转写，engine 决定谁来转写。
+          cloud 档图片像素上行至智谱 glm-ocr——显式选择即同意；zhipu 未配置时置灰（诚实接线） */}
+      <SettingsRow
+        label="识别引擎（OCR）"
+        hint={
+          ocr.engine === 'cloud'
+            ? '云端 glm-ocr：公式/表格/手写识别更好，但图片像素将发送至智谱（图片出端）'
+            : '本地 tesseract：全程浏览器内转写（隐私默认）；手写/公式/复杂版面较弱，纯文本模型慎用'
+        }
+      >
+        <div className="flex w-full gap-2">
+          <button
+            type="button"
+            onClick={() => updateSettings({ ocr: { ...ocr, engine: 'local' } })}
+            className={`${TOGGLE_CLASS} ${
+              ocr.engine === 'local'
+                ? 'border-foreground/50 bg-muted font-medium'
+                : 'border-border hover:bg-muted/50'
+            }`}
+          >
+            本地
+          </button>
+          <button
+            type="button"
+            onClick={() => updateSettings({ ocr: { ...ocr, engine: 'cloud' } })}
+            disabled={!cloudOcrReady}
+            title={cloudOcrReady ? undefined : '需在 .env 配置 ZHIPU_API_KEY 后可用'}
+            className={`${TOGGLE_CLASS} ${
+              ocr.engine === 'cloud'
+                ? 'border-foreground/50 bg-muted font-medium'
+                : 'border-border hover:bg-muted/50'
+            }`}
+          >
+            云端·glm-ocr
           </button>
         </div>
       </SettingsRow>
