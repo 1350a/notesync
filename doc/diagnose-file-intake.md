@@ -1,10 +1,14 @@
 # 诊断模式 · 文件接入契约
 
-> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-08
+> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-12
 > 对应代码：`lib/diagnose/`（types / detect / assemble / extract）、`app/diagnose/_components/UploadArea.tsx`、`app/api/chat/route.ts`（attachments 分支）
 
 本文件定义"用户上传错题文件 → 组装成模型消息 → 发出请求"这一段的数据契约。
 按 `AGENTS.md` §9，改这里先于改代码。
+
+> **口径边界**：本文件只定义**上传与组装**，不定义「一道题够不够诊断」。
+> 完整度判定口径以 `wip-diagnosis-model.md` §1 为准（结论：**只认「有原题」为必需项**，作答有无决定走 L2 还是 L1，
+> 正确答案 / 标准解析纯属增强）。实装在 `lib/diagnose/completeness.ts`，两处不得各写一套判据。
 
 ## 1. 范围
 
