@@ -415,8 +415,15 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
 
   diagnosis = buildDiagnosisResult(parsed.value, resolveCompleteness(attachments, parsed.value, session.completeness));
 
+  /**
+   * 最终生效的提交。guard 重试后模型可能**重交**，且重交的 level 未必与首次相同；
+   * 交付结论、完整度、状态迁移必须同源，否则会出现「发出去的是 L1 画像、状态机却按 L2 进 explain」
+   * （或反之：拿到 L2 结论却没有掌握度回路）这类错配。
+   */
+  let effective = parsed.value;
+
   // ② guard：diagnose 态的 L2 必须引用作答原文（§7.3，重试一次不耗追问预算）
-  if (context.state === 'diagnose' && parsed.value.level === 'L2') {
+  if (context.state === 'diagnose' && effective.level === 'L2') {
     const sources = collectStudentSources(attachments, lastUserText);
     if (sources.length > 0) {
       guardPassed = checkAnswerQuote({ output: outputText, studentSources: sources }).quoted;
@@ -431,9 +438,17 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
         const resubmission = submissionStore.args;
         const reparsed = resubmission ? parseSubmission(resubmission) : null;
         if (reparsed?.ok) {
-          guardPassed = checkAnswerQuote({ output: outputText, studentSources: sources }).quoted;
+          effective = reparsed.value;
+          // 重交为 L1 时引用判据不适用（画像本就不引用作答），直接视为通过
+          guardPassed =
+            effective.level === 'L1'
+              ? true
+              : checkAnswerQuote({ output: outputText, studentSources: sources }).quoted;
           if (guardPassed) {
-            diagnosis = buildDiagnosisResult(reparsed.value, resolveCompleteness(attachments, reparsed.value, session.completeness));
+            diagnosis = buildDiagnosisResult(
+              effective,
+              resolveCompleteness(attachments, effective, session.completeness),
+            );
           }
         } else {
           guardPassed = false;
@@ -446,11 +461,11 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
     }
   }
 
-  const outcome = resolveOutcome(parsed.value, guardPassed);
+  const outcome = resolveOutcome(effective, guardPassed);
   context = advanceAfterResponse({
     context,
-    completeness: resolveCompleteness(attachments, parsed.value, session.completeness),
-    submission: parsed.value,
+    completeness: resolveCompleteness(attachments, effective, session.completeness),
+    submission: effective,
     outcome,
   });
   return { context, diagnosis, guardPassed, retried };
