@@ -79,6 +79,8 @@ export function useChat(selectedModel: string) {
   const abortControllerRef = useRef<AbortController | null>(null);
   // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
+  // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
+  const thinkingEffort = useSettingsStore((s) => s.settings.generation.thinkingEffort);
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -213,6 +215,8 @@ export function useChat(selectedModel: string) {
             diagnose,
             // 上游终端用户标识（纯随机 UUID，doc/user-settings.md §4.1）
             user: getUserId() || undefined,
+            // 思考强度档位（可能为 undefined：跟随 provider 默认）
+            thinkingEffort,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -334,7 +338,7 @@ export function useChat(selectedModel: string) {
         abortControllerRef.current = null;
       }
     },
-    [messages, loading, selectedModel, ragEnabled, diagnoseContext]
+    [messages, loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort]
   );
 
   return { messages, loading, sendMessage, stopGeneration, clearMessages, diagnoseContext };
