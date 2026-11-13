@@ -109,11 +109,13 @@ npm run start
 
 模板见 [.env.example](./.env.example)。密钥只能来自服务端环境变量，禁止写入客户端代码或存储（`AGENTS.md` §7）。
 
+每个变量的语义、取值口径、必填判定、常见组合与排障对照见 [doc/help-about-.env.md](./doc/help-about-.env.md)（含本表未列的 `TRIM_BUDGET_CHARS`、`USER_FIELD_ENABLED`、`MOCK_OCR`）；下表只列最常用的概况。
+
 | 变量 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `DEEPSEEK_API_KEY` | 三选一 | — | DeepSeek 官方 Key（OpenAI 兼容，`{BASE_URL}/chat/completions`） |
 | `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com` | 自定义端点 |
-| `DEEPSEEK_MODEL` | 否 | `deepseek-v4-flash` | 该 Provider 默认选中模型 |
+| `DEEPSEEK_MODEL` | 否 | `deepseek-flash` | 该 Provider 默认选中模型（`deepseek-v4-flash` 仅过渡别名，勿填） |
 | `ZHIPU_API_KEY` | 三选一 | — | 智谱 BigModel Key |
 | `ZHIPU_BASE_URL` | 否 | `https://open.bigmodel.cn/api/paas/v4` | 自定义端点 |
 | `ZHIPU_MODEL` | 否 | `glm-5.3` | 该 Provider 默认选中模型 |
@@ -190,6 +192,7 @@ notesync/
 | [doc/implementation-status.md](./doc/implementation-status.md) | 实施状态总账：逐条 ✅ / 🟡 / ❌ / 🧊 与代码落点、文档同步清单、交付顺序、待决策 |
 | [doc/mobile-ux.md](./doc/mobile-ux.md) | 移动端适配协议：断点、触屏热区、键盘与安全区、发送区与滚动行为 |
 | [doc/wrong-answer-set-template.md](./doc/wrong-answer-set-template.md) | 错题集录入模板：字段定义与示例 |
+| [doc/help-about-.env.md](./doc/help-about-.env.md) | 环境变量手册：变量总表与分组、Provider 配置与模型口径、工具调用/上下文/调试开关、历史遗留参数、常见配置组合、取值口径陷阱、排障对照 |
 | [doc/TECHNICAL_DOC.old.md](./doc/TECHNICAL_DOC.old.md) | 已归档的旧版技术文档（对应"简易重构前"的实现，含本地 ollama 回退链路），仅作历史参考 |
 
 ## 11. 已知挂账
