@@ -40,11 +40,12 @@ export class DeepSeekProvider extends OpenAICompatProvider {
   }
 
   /**
-   * 按模型名判定图片能力：仅含 vision 的过渡别名可直传，官方文本款一律纯文本。
+   * 按模型名判定图片能力：官方 Vision 款（flash 系列，含 vision 过渡别名）可直传，
+   * v4-pro 等纯文本款一律按文本处理。
    * 文本款直传 image_url 会被上游 400，保守交由输入区的本地 OCR 转文字通道。
    */
   modelAcceptsImages(model: string): boolean {
-    return /vision/i.test(model);
+    return /flash|vision/i.test(model.trim());
   }
 }
 

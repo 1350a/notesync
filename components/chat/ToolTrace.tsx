@@ -46,7 +46,7 @@ export default function ToolTrace({ calls }: { calls: ToolCallView[] }) {
               // ask_user 无 tool_result 事件，用稳定的等待文案代替闪烁的"运行中"
               <span style={{ color: 'var(--muted-foreground)' }}>等待回答</span>
             ) : (
-              <span className="animate-pulse" style={{ color: 'var(--accent)' }}>
+              <span className="animate-pulse" style={{ color: 'var(--primary)' }}>
                 运行中…
               </span>
             )}

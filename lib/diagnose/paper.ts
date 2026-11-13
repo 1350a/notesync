@@ -123,7 +123,7 @@ export function buildGroupDiagnosePrompt(input: {
     '只输出一个 JSON 对象，字段：',
     '{ "level":"L1|L2", "knowledgePoints":["考点，1~3条"],',
     '  "errorCause":{"code":"错因code","confidence":0~1} 或 null（L1 时为 null）,',
-    '  "secondaryErrorCause":同上 或省略, "hints":[{"level":1,"content":"..."}], "notes":"备注 或省略" }',
+    '  "secondaryErrorCause":同上 或省略, "notes":"备注 或省略" }',
     input.hasStudentAnswer
       ? '有学生作答：输出 L2 归因；正文须锚定作答内容（JSON 内 notes 简述引用了什么）。'
       : '无学生作答：输出 L1 题目画像（errorCause 为 null），不硬编错因。',

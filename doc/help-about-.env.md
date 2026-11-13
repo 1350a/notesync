@@ -82,7 +82,7 @@ AIGC:
 | 获取 Key | 开放平台 <https://platform.deepseek.com> → API keys |
 | 可用性判定 | `DEEPSEEK_API_KEY` 非空即视为可用（`deepseekAvailable()`） |
 | 模型来源 | 正常走 `GET /models` 在线枚举；枚举失败时回落白名单 `deepseek-flash`、`deepseek-v4-pro` |
-| 图片能力 | 按模型名判定，**仅名字含 `vision` 才直传**；文本款直传 `image_url` 会被上游 400，故一律走本地 OCR 转文字（`doc/browser-local-ocr.md` §6.1） |
+| 图片能力 | 按模型名判定，**名字含 `flash` 或 `vision` 才直传**（`deepseek-flash` 属官方 Vision 款）；`deepseek-v4-pro` 为纯文本，直传 `image_url` 会被上游 400，故走本地 OCR 转文字（`doc/browser-local-ocr.md` §6.1） |
 
 - `DEEPSEEK_MODEL` 是**可选首选模型**：填了会置顶并参与模型名归属校验，不填则由下拉枚举决定。
 - 模板示例值用主线名 `deepseek-flash`。**不要**再填 `deepseek-v4-flash`：它曾是过渡别名，
@@ -240,7 +240,7 @@ AIGC:
 
 ## 8. 常见配置组合
 
-### 8.1 最小可用：DeepSeek 纯文本
+### 8.1 最小可用：DeepSeek 官方主线
 
 ```dotenv
 DEEPSEEK_API_KEY=sk-xxxxxxxx
@@ -248,7 +248,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-flash
 ```
 
-其余保持默认。图片会被本地 OCR 转文字后随纯文本上行——这是纯文本模型的默认降级路径，不报错。
+其余保持默认。`deepseek-flash` 属官方 Vision 款，图片以 `image_url` 直传；切到
+`deepseek-v4-pro` 则改走本地 OCR 转文字后纯文本上行——文本款直传会被上游 400，降级路径不报错。
 
 ### 8.2 多模态直读：智谱视觉款
 
@@ -334,7 +335,7 @@ MOCK_OCR=1
 | 自定义端点 400 且文案提到 `user` | 设 `USER_FIELD_ENABLED=0`（§5.2） |
 | 自定义端点 400 且文案提到图片 | 把 `CUSTOM_ALLOW_IMAGES` 改回 `0`，图片改走本地 OCR（§4.4） |
 | 工具一次都没触发 | `TOOLS_ENABLED` 是否被写成 `false`；`TOOL_MAX_ROUNDS` 是否填成非数字（§4.1、§4.2） |
-| 图片没直传、只有文字 | 当前模型不在视觉名单：DeepSeek 名字无 `vision`；智谱不在 `ZHIPU_CATALOG` 视觉项；custom 未开 `CUSTOM_ALLOW_IMAGES` |
+| 图片没直传、只有文字 | 当前模型不在视觉名单：DeepSeek 名字无 `flash`/`vision`（如 `deepseek-v4-pro`）；智谱不在 `ZHIPU_CATALOG` 视觉项；custom 未开 `CUSTOM_ALLOW_IMAGES` |
 | 长会话早期内容丢失 | `TRIM_BUDGET_CHARS` 过低（默认 24000 字符），见 §8.5 |
 
 ## 12. 维护约定

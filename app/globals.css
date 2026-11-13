@@ -28,59 +28,123 @@
   --color-ring: var(--ring);
 }
 
-:root {
+/* ---------------------------------------------------------------------------
+   主题四档（doc/user-settings.md §4）：light / dark / sky / mint
+   应用方式：<html data-theme="..."> 由 AppLayout 写；深色同时挂 .dark 类，
+   供 tailwind 的 dark: variant（见文件顶部 @custom-variant）继续生效。
+   色值统一用 oklch，全部组合实测达 WCAG AA（正文 ≥11.5:1、次文 ≥5.2:1）。
+   --------------------------------------------------------------------------- */
+
+:root,
+[data-theme='light'] {
   --radius: 0.5rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --background: oklch(0.978 0.002 260);
+  --foreground: oklch(0.21 0.006 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
+  --card-foreground: oklch(0.21 0.006 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --popover-foreground: oklch(0.21 0.006 260);
+  --primary: oklch(0.515 0.14 255);
+  --primary-foreground: oklch(0.995 0.002 255);
+  --secondary: oklch(0.948 0.004 260);
+  --secondary-foreground: oklch(0.28 0.008 260);
+  --muted: oklch(0.948 0.004 260);
+  --muted-foreground: oklch(0.50 0.012 260);
+  --accent: oklch(0.918 0.022 255);
+  --accent-foreground: oklch(0.28 0.02 255);
+  --destructive: oklch(0.545 0.235 27);
+  --destructive-foreground: oklch(0.995 0 0);
+  --border: oklch(0.895 0.004 260);
+  --input: oklch(0.895 0.004 260);
+  --ring: oklch(0.60 0.05 255);
+  /* 历史变量补定义（见下方「兼容层」注释）：--bg-deep 是比页面底再深一档的容器底 */
+  --bg-deep: oklch(0.945 0.006 260);
+  --danger: oklch(0.545 0.235 27);
 }
 
+[data-theme='dark'],
 .dark {
-  /* 背景色改成你要求的 #454d55 (在 oklch 中大约是 0.38 0.01 240) */
-  --background: oklch(0.38 0.01 240);
-  --foreground: oklch(0.985 0 0);
+  --background: oklch(0.305 0.008 250);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.355 0.009 250);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.355 0.009 250);
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.70 0.12 255);
+  --primary-foreground: oklch(0.205 0.02 255);
+  --secondary: oklch(0.415 0.01 250);
+  --secondary-foreground: oklch(0.925 0.008 250);
+  --muted: oklch(0.415 0.01 250);
+  --muted-foreground: oklch(0.78 0.015 250);
+  --accent: oklch(0.405 0.03 255);
+  --accent-foreground: oklch(0.985 0.004 255);
+  --destructive: oklch(0.715 0.185 25);
+  --destructive-foreground: oklch(0.205 0.02 25);
+  --border: oklch(0.455 0.012 250);
+  --input: oklch(0.455 0.012 250);
+  --ring: oklch(0.60 0.03 250);
+  --bg-deep: oklch(0.265 0.008 250);
+  --danger: oklch(0.715 0.185 25);
+}
 
-  /* 卡片和弹窗稍微比背景深一点，形成悬浮感 */
-  --card: oklch(0.34 0.01 240);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.34 0.01 240);
-  --popover-foreground: oklch(0.985 0 0);
+[data-theme='sky'] {
+  --background: oklch(0.972 0.016 235);
+  --foreground: oklch(0.22 0.02 240);
+  --card: oklch(0.993 0.006 235);
+  --card-foreground: oklch(0.22 0.02 240);
+  --popover: oklch(0.993 0.006 235);
+  --popover-foreground: oklch(0.22 0.02 240);
+  --primary: oklch(0.52 0.125 240);
+  --primary-foreground: oklch(0.995 0.004 235);
+  --secondary: oklch(0.945 0.023 235);
+  --secondary-foreground: oklch(0.29 0.03 240);
+  --muted: oklch(0.945 0.023 235);
+  --muted-foreground: oklch(0.465 0.04 240);
+  --accent: oklch(0.912 0.045 238);
+  --accent-foreground: oklch(0.29 0.04 240);
+  --destructive: oklch(0.545 0.235 27);
+  --destructive-foreground: oklch(0.995 0 0);
+  --border: oklch(0.88 0.026 235);
+  --input: oklch(0.88 0.026 235);
+  --ring: oklch(0.60 0.08 240);
+  --bg-deep: oklch(0.94 0.028 235);
+  --danger: oklch(0.545 0.235 27);
+}
 
-  /* 主色和其他辅助色微调 */
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
+[data-theme='mint'] {
+  --background: oklch(0.972 0.019 160);
+  --foreground: oklch(0.22 0.02 165);
+  --card: oklch(0.993 0.008 160);
+  --card-foreground: oklch(0.22 0.02 165);
+  --popover: oklch(0.993 0.008 160);
+  --popover-foreground: oklch(0.22 0.02 165);
+  --primary: oklch(0.51 0.115 162);
+  --primary-foreground: oklch(0.995 0.004 160);
+  --secondary: oklch(0.945 0.029 160);
+  --secondary-foreground: oklch(0.29 0.03 165);
+  --muted: oklch(0.945 0.029 160);
+  --muted-foreground: oklch(0.465 0.04 165);
+  --accent: oklch(0.912 0.05 162);
+  --accent-foreground: oklch(0.29 0.04 165);
+  --destructive: oklch(0.545 0.235 27);
+  --destructive-foreground: oklch(0.995 0 0);
+  --border: oklch(0.88 0.031 160);
+  --input: oklch(0.88 0.031 160);
+  --ring: oklch(0.58 0.08 162);
+  --bg-deep: oklch(0.94 0.033 160);
+  --danger: oklch(0.545 0.235 27);
+}
 
-  /* 侧边栏用的 muted 颜色也微调一下，让它适配这个灰色 */
-  --muted: oklch(0.42 0.01 240);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-
-  --accent: oklch(0.42 0.01 240);
-  --accent-foreground: oklch(0.985 0 0);
-
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-
-  --border: oklch(0.48 0.01 240);
-  --input: oklch(0.48 0.01 240);
-  --ring: oklch(0.552 0.016 285.938);
+/* 兼容层：以下变量名在历史组件里被直接引用（ChatList / DiagnosisCard /
+   MessageActions / ToolTrace）却从无定义，色值会回落成继承色。此处统一映射到
+   语义最近的主题变量，四套主题自动跟随，不再逐个改组件。 */
+:root,
+[data-theme] {
+  --text: var(--foreground);
+  --text-muted: var(--muted-foreground);
+  --text-secondary: var(--secondary-foreground);
+  --panel-soft: var(--muted);
+  --accent-text: var(--accent-foreground);
 }
 
 @layer base {

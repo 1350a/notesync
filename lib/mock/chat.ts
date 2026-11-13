@@ -112,7 +112,7 @@ function mockDiagnosisScript(
         knowledgePoints: ['一元二次方程', '判别式与求根公式'],
         errorCause: null,
         strategy: null,
-        hints: [{ level: 1, content: `${tag}这题考判别式符号与求根公式的适用。` }],
+        hints: [],
         notes: simulatedCompleteness.hasStudentAnswer
           ? undefined
           : '未提供作答，本次不做错因归因。',

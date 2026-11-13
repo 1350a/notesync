@@ -1,25 +1,23 @@
 /**
- * 用户设置 - 主题判定（浏览器专用助手，纯函数部分可安全在 SSR 调用）。
+ * 用户设置 - 主题判定与落地（浏览器专用助手，纯函数无副作用）。
+ *
+ * 四档主题（doc/user-settings.md §4）：light / dark / sky / mint。
+ * 落地方式：<html data-theme="<主题>">，深色额外挂 .dark 类，
+ * 让 tailwind 的 dark: variant（app/globals.css 顶部 @custom-variant）继续生效。
  */
 import type { ThemePreference } from './types.ts';
 
-const DARK_QUERY = '(prefers-color-scheme: dark)';
-
-/** 解析主题偏好的实际暗色效果；'system' 跟随系统（SSR/无 matchMedia 环境回 false） */
-export function isDarkEffective(theme: ThemePreference): boolean {
-  if (theme === 'dark') return true;
-  if (theme === 'light') return false;
-  return typeof window !== 'undefined' && window.matchMedia(DARK_QUERY).matches;
+/** 四档中仅 dark 为深色主题 */
+export function isDarkTheme(theme: ThemePreference): boolean {
+  return theme === 'dark';
 }
 
 /**
- * 订阅系统主题变化（仅 'system' 偏好需要实时联动）；返回取消订阅函数。
- * 老浏览器无 matchMedia/addEventListener 时静默退化为不联动。
+ * 把主题写到 <html>：data-theme 决定色板，.dark 决定 dark: variant 与原生控件配色。
+ * 全站唯一生效点（AppLayout 调用），各页不再自行处理。
  */
-export function watchSystemTheme(onChange: (dark: boolean) => void): () => void {
-  if (typeof window === 'undefined' || !window.matchMedia) return () => {};
-  const mql = window.matchMedia(DARK_QUERY);
-  const listener = (event: MediaQueryListEvent) => onChange(event.matches);
-  mql.addEventListener('change', listener);
-  return () => mql.removeEventListener('change', listener);
+export function applyTheme(theme: ThemePreference, root?: HTMLElement): void {
+  const el = root ?? document.documentElement;
+  el.dataset.theme = theme;
+  el.classList.toggle('dark', isDarkTheme(theme));
 }

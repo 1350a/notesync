@@ -68,6 +68,17 @@ AIGC:
 | **L1 题目画像** | 只有原题（或无作答） | 考点清单、常见错法清单、自查清单 | 即使没作答也有价值；且「常见错法」本身就是最好的补问话术 |
 | **L2 错因归因** | 有学生作答（或学生自行描述错法） | 具体错因、策略卡、分级提示 | 完整诊断 |
 
+**L1 的两条边界**（实测中模型在 L1 常越权，故写进提示词并落到校验上）：
+
+- **不产出提示阶梯**：`hints` 属 explain 态逐级产出。L1 提交不得自带 hints——`parseSubmission` 对 L1 非空 hints 直接拒绝（空数组等同未提供），否则「点继续逐级下降」形同虚设。
+- **不做错因归因**：常见错法清单只写「这题可能怎么错 + 对应 `code`」，禁止逐条判定学生在这道题上的具体表现，也不设「可能优先级」这类自造列。归因是 L2 的职责，L1 只画题目画像。
+
+**判级的唯一依据是 `completeness.hasStudentAnswer`**（`resolveDiagnosisLevel`），不是模型的 `level` 字段。因此 intake 阶段的 `completeness` 已从「可选」改为**必填**（提示词与 `submit_diagnosis` 的字段说明同步）：
+
+- 作答识别的口径：算式、推导、答案、草稿、被划改或被红笔订正的部分都算作答，手写照片里同样算。填 `false` 会让状态机认定材料里没有作答 → 只能出画像并补问，整轮诊断白跑；拿不准时按 `true` 处理。
+- 聊天链路（无附件分类，`/chat` 贴图或打字）完全依赖模型判定。模型漏填时服务端回落基线（全 `false`），此时会在日志打 `聊天链路提交缺 completeness，回落基线（全 false）→ 判级按 L1 处理`，便于把「模型判错」与「模型没提交」两种原因区分开。
+- 成功提交的日志同时记录 `completeness=PSWA`（四位依次 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis）与链路（附件 / 聊天），这是判级问题的唯一现场证据。
+
 ### 2.1 L1 的补问话术
 
 不要问「请提供你的答案」，要问：
@@ -153,6 +164,8 @@ interface StrategyCard {
 
 **默认停在哪一级**：L1，由用户点「继续」逐级下降。任何一级都允许用户直接要答案，但系统必须先完成 L1/L2 的诊断输出。
 
+**产出方**：三级提示均由 explain 态按 `ctx.hintLevel` 生成，不在提交里预先填好（L1 边界见 §2）。
+
 ## 6. 输出结构
 
 ```ts
@@ -172,7 +185,7 @@ interface DiagnosisResult {
   } | null                                        // L1 时为 null
   secondaryErrorCause?: { code: string; confidence: number }
   strategy: StrategyCard | null                   // L2 才有
-  hints: Array<{ level: 1 | 2 | 3; content: string }>
+  hints: Array<{ level: 1 | 2 | 3; content: string }>   // L1 恒为空；逐级提示由 explain 态产出
   notes?: string                                  // 如「未提供作答，本次不做错因归因」
   strategyVersion: number                         // 与 §4.1 的 version 对齐
 }
@@ -211,6 +224,28 @@ interface DiagnosisResult {
 - 重试仍未引用 → 降级输出 L1 题目画像，并说明「未能定位具体断点」，不硬编错因。
 
 判据的实现成本很低（子串/近似匹配），但它是这套产品与搜题工具的分界线，建议做成后置校验而非只写进提示词。
+
+### 7.4 面向学生的措辞（不暴露评卷口径）
+
+`completeness` 四布尔、`level` 等是内部判级字段，**不得出现在学生可见的正文里**，也不得用报告口吻说「未提供正确答案」「缺少解析」——那是后台判卷的语汇，不是对学生的说明。
+
+| ❌ 后台口径 | ✅ 学生可见 |
+|---|---|
+| 「未提供正确答案，无法核对」 | 「材料里没看到参考答案」 |
+| 「未提供作答」 | 「材料里没看到你的作答」（卡片 chip 与 `DiagnosisCard` 同步为此口径） |
+| 「completeness.hasStudentAnswer=false」 | 不出现，判定只体现在「要不要补问」这个行为上 |
+
+材料缺件的说明最多一句，不逐项报缺；L1_only 的固定声明「未提供作答，本次不做错因归因」属于产品指定的收尾话术，保留。
+
+### 7.5 补交轮不重复交付正文
+
+`submit_diagnosis` 该交没交时，服务端会带上下文补跑一轮（`SUBMISSION_RETRY_PROMPT`）。补交轮**只补结构化提交**，不重复交付正文：
+
+- 提示词明确「不要重写正文 / 不要复述上面的分析 / 不要输出新的段落」。
+- `finalizeDiagnosis` 以 `runLoop(..., { silent: true })` 跑补交轮：route 的 `pump` 不转发 `content` / `reasoning` 增量（`tool_call` / `tool_result` 照常转发，用户仍能看到提交动作），补交段正文也不并入 `outputText`。
+- 主轮正文为空（模型直接跳工具、没写画像）时不静默，让补交段成为唯一交付的那一段。
+
+实测现象（v1 联调）：主轮已输出 L1 画像但没调工具，补交轮又写了一遍画像，前端在同一条消息里显示两段，第二段以未渲染的 `## L1 · 题目画像` 原文开头。
 
 ## 8. 待办
 

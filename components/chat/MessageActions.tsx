@@ -114,7 +114,7 @@ export function MessageEditor({
           onClick={() => onSubmit(value)}
           disabled={!value.trim() || tooLong}
           className="rounded-md px-2 py-1 text-[11px] disabled:opacity-40 touch:h-9 touch:px-3"
-          style={{ border: '1px solid var(--border)', color: 'var(--accent)' }}
+          style={{ border: '1px solid var(--border)', color: 'var(--primary)' }}
         >
           保存并重发
         </button>

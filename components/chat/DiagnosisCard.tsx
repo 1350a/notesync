@@ -41,7 +41,7 @@ function CauseLine({ code, confidence, role }: { code: string; confidence: numbe
         title={`模型自评置信度 ${percent}%（A 级假设，仅供参考）`}
       >
         <span className="inline-block h-1.5 w-16 overflow-hidden rounded-full" style={{ backgroundColor: 'var(--border)' }}>
-          <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: 'var(--accent)' }} />
+          <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: 'var(--primary)' }} />
         </span>
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {percent}%
@@ -67,8 +67,9 @@ export default function DiagnosisCard({
     >
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <Chip>{isL2 ? 'L2 错因归因' : 'L1 题目画像'}</Chip>
-        {result.completeness.hasStudentAnswer ? null : <Chip>未提供作答</Chip>}
-        {result.completeness.hasCorrectAnswer ? null : <Chip>未提供正确答案</Chip>}
+        {/* 完整度四布尔是内部判级依据，卡片只把「缺什么」翻成学生能懂的说法，不照搬字段语义 */}
+        {result.completeness.hasStudentAnswer ? null : <Chip>材料里没看到你的作答</Chip>}
+        {result.completeness.hasCorrectAnswer ? null : <Chip>材料里没看到参考答案</Chip>}
       </div>
 
       {result.knowledgePoints.length > 0 && (
