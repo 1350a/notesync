@@ -158,17 +158,12 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | --- | --- |
 | 算法 | `String.includes` 基础子串过滤，**不做分词、不做倒排索引** |
 | 防抖 | 输入后 **200ms** 触发，避免每次按键全量扫描 |
-| 匹配范围 | 会话标题 + 消息正文（`content` / `files[].text`）；`reasoning` 与图片本体不计 |
+| 匹配范围 | 会话标题 + 消息正文（`content` / `ocrTexts` / `files[].text`）；`reasoning` 与图片本体不计 |
 | 归一化 | 两端 `toLowerCase()`；全角转半角后匹配（中文无大小写，但模型输出常混英文/数字） |
 | 结果 | 返回命中的 `SessionMeta` 列表，按 `updatedAt` 倒序；命中条数上限 50 |
-| 成本边界 | 标题过滤零 IO 全量覆盖；正文回读仅覆盖最近 `SEARCH_BODY_SCAN_LIMIT`（50）条会话，更早的会话只按标题匹配 |
+| 成本边界 | 标题过滤零 IO 全量覆盖；正文回读覆盖最近 `SEARCH_BODY_SCAN_LIMIT`（500）条会话，`SEARCH_SCAN_BATCH`（8）条/批并行回读、逐批合并渐进刷新，命中满 50 提前停止 |
 
 不做索引的理由：会话正文总量以 MB 计，一次全扫在 10ms 量级；为搜索引入倒排索引的复杂度（增量维护、删除清理、版本迁移）远超收益。若将来实测卡顿，再按本表的"成本边界"升级。
-
-挂账（2026-11-13 排查搜索体感问题时实测确认，暂不修）：
-
-- `ocrTexts`（本地 OCR 题面文字）已随消息落库（`sanitize.ts` 回读还原），但 `matchMessages` 不匹配该字段——拍照题搜不到题面文字；拍照上传是本应用主流程，对这类用户搜索体感接近全灭。纳入需扩 `matchMessages` 并更新本表"匹配范围"。
-- 正文回读上限 50 条会话：会话数超过后早期会话正文不可搜；必要时改渐进扫描或提高上限。
 
 ---
 
@@ -179,8 +174,6 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 已完成 |
 | 2 | `lib/history/` 工厂与搜索纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
 | 3 | §8 会话与消息级操作：会话重命名、导出 Markdown、消息级删除 / 重新生成 / 编辑重发 | ✅ 已完成 |
-
-**批次 3 未做项（挂账，不在界面出现入口 —— `AGENTS.md` §8）**：跨会话全文高亮跳转（搜到正文命中后跳到该会话并高亮定位）。
 
 ---
 
@@ -217,8 +210,9 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 | 元素 | 行为 |
 | --- | --- |
-| 搜索框 | 输入后 200ms 防抖调 `searchSessions(query)`；空查询回落完整列表；搜索中显示"无匹配"空态 |
+| 搜索框 | 输入后 200ms 防抖：标题过滤先行（零 IO）立即出结果，标题命中不足再按 `SEARCH_SCAN_BATCH`（8）条/批并行回读正文补齐，逐批合并刷新列表；空查询回落完整列表；扫描期间显示「搜索中」 |
 | 会话项 | 单行标题（`truncate`）+ 相对时间；当前 `currentSessionId` 高亮；点击即 §7.2 流程 |
+| 搜索命中跳转 | 搜索结果点击时若带关键词，`openSession(id, keyword)` 随信号原子携带；聊天页加载完成后定位首条命中消息（`scrollIntoView` 居中 + 消息闪烁），并在该消息**已渲染文本**内以 DOM 层包 `<mark>` 高亮（不改 markdown sanitize 白名单）。边界：`ocrTexts` / `files[].text` 命中的文本不在气泡正文展示（OCR 仅徽章 + title 悬浮全文），这两类命中定位到消息级为止；仅标题命中的点击不跳转 |
 | 删除 | 悬停/聚焦显示删除按钮 → `window.confirm` → `storage.deleteSession(id)` → `refreshSessions()`；删的若是当前会话，一并 `clearMessages()` |
 | 降级提示 | `historySupported === false` 时列表区顶部固定一条「当前浏览器不支持本地保存，本次对话不会留存」，列表区显示空态 |
 
