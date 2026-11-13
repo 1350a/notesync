@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findFirstHitIndex,
   matchMessages,
   matchMeta,
   mergeHits,
@@ -10,8 +11,8 @@ import type { ChatMsg } from '../../../lib/chat/messages.ts';
 import type { SessionMeta } from '../../../lib/history/types.ts';
 
 /*
- * 侧栏搜索纯函数（doc/chat-history.md §7.4）：口径是"子串 + 大小写不敏感 +
- * 全角转半角"，匹配标题与正文（content / files[].text），不碰图片与推理过程。
+ * 侧栏搜索纯函数（doc/chat-history.md §5、§7.4）：口径是"子串 + 大小写不敏感 +
+ * 全角转半角"，匹配标题与正文（content / ocrTexts / files[].text），不碰图片与推理过程。
  * 这里固化三条容易被后续改动弄丢的约定：归一化时机、正文范围、结果上限与排序。
  */
 
@@ -62,6 +63,28 @@ describe('history 搜索匹配', () => {
     ];
     expect(matchMessages(messages, '附件里的关键词')).toBe(true);
     expect(matchMessages(messages, '推理里出现的')).toBe(false);
+  });
+
+  it('ocrTexts 命中题面文字，空串槽位跳过', () => {
+    const photoMsg: ChatMsg = {
+      role: 'user',
+      content: '',
+      images: ['', ''],
+      ocrTexts: ['', '已知二次函数的对称轴为x=2'],
+    };
+    expect(matchMessages([photoMsg], '对称轴')).toBe(true);
+    expect(matchMessages([{ role: 'user', content: '', ocrTexts: [''] }], '对称轴')).toBe(false);
+  });
+
+  it('findFirstHitIndex 返回首条命中下标，无命中或空关键词为 -1', () => {
+    const messages: ChatMsg[] = [
+      msg('不相关的一句话'),
+      { role: 'user', content: '', ocrTexts: ['题面含对称轴'] },
+      msg('也有对称轴'),
+    ];
+    expect(findFirstHitIndex(messages, '对称轴')).toBe(1);
+    expect(findFirstHitIndex(messages, '不存在的词')).toBe(-1);
+    expect(findFirstHitIndex(messages, '')).toBe(-1);
   });
 });
 
