@@ -53,7 +53,8 @@ function intakePrompt(): string {
     '任务：',
     '1. 通读学生上传/输入的材料，判定是否数学题。',
     '2. 若不是数学题：调用 submit_diagnosis，level 填 L1，knowledgePoints 填 []，notes 逐字填「非数学题，仅支持数学诊断」。除这一句外不要展开。',
-    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 与 strategy 填 null）。completeness 四布尔按材料实际具备情况如实填写：没有分类标签的聊天输入（贴图、打字）也算数——图里是题目就 hasProblem=true，文字/图里看得出学生作答就 hasStudentAnswer=true。',
+    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象）。',
+    '4. completeness 是可选的对象字段，一旦填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且一个不能少；禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要把这些判定写进 notes。四布尔按材料实际具备情况如实填写：没有分类标签的聊天输入（贴图、打字）也算数——图里是题目就 hasProblem=true，文字/图里看得出学生作答就 hasStudentAnswer=true。',
     '学生已提供作答时，画像里要引用其作答内容；尚未提供时，画像末尾自然过渡到「常见错法」问句，为下一轮补问做铺垫。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,
@@ -85,7 +86,7 @@ function diagnosePrompt(input: DiagnosePromptInput): string {
     '1. 先逐字引用学生作答原文的至少一处片段（算式、步骤或结论均可）——这是硬性要求，未引用视为未完成诊断。',
     '2. 从错因表选 1 个主错因（必须带 0~1 的置信度）+ 至多 1 个次错因；不准输出三个以上。',
     '3. 引用主错因对应的策略卡步骤（照表引用，不要自创）。',
-    '4. 最后调用 submit_diagnosis 提交结构化结果（level=L2，strategy 填 null 即可，服务端会按 code 注入）。',
+    '4. 最后调用 submit_diagnosis 提交结构化结果（level=L2；策略卡由服务端按主错因 code 注入，无需填写）。',
     '机械判定参考或其他证据与你的判断冲突时，先回显学生的原值再裁量，不直接判真假。',
     input.verifyEvidence ? `\n${input.verifyEvidence}` : '',
     renderErrorCauseTable(),
@@ -118,7 +119,8 @@ function l1OnlyPrompt(): string {
   return [
     '当前处于【仅画像】阶段：未能进行错因归因（未提供作答、追问预算耗尽或未能定位断点）。',
     '输出 L1 题目画像（考点清单、常见错法清单、自查清单），末尾声明「未提供作答，本次不做错因归因。」或与实际原因相符的声明；不硬编错因。',
-    '然后调用 submit_diagnosis（level=L1，errorCause 与 strategy 填 null，notes 写实际原因）。',
+    '然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象，notes 写实际原因）。',
+    'completeness 可选：若填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且齐全，禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要写进 notes。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,
   ].join('\n\n');

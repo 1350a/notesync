@@ -6,8 +6,8 @@
  * - 只校验"是否存在 / 类型 / 范围"，不做类型转换；
  * - MAX_DEPTH 防止嵌套过深（工具参数不应深嵌套，超过视为异常输入）。
  *
- * 覆盖字段：type / required / properties / enum / minimum / maximum /
- *           minLength / maxLength / items。
+ * 覆盖字段：type（支持类型数组，如 ['object', 'null'] 声明可空）/ required / properties /
+ *           enum / minimum / maximum / minLength / maxLength / items。
  * 未覆盖字段（oneOf/anyOf/$ref 等）静默跳过——JSON Schema 是"未声明即允许"。
  */
 import type { JSONSchemaObject } from './types.ts';
@@ -49,14 +49,15 @@ function validateNode(
     return;
   }
 
-  // type 校验
-  if (schema.type && !matchesType(schema.type, value)) {
-    errors.push(`${path}: 期望 ${schema.type}，实际 ${describeType(value)}`);
+  // type 校验（type 可为数组：命中任一即通过，用于 ['object', 'null'] 这类可空声明）
+  const types = normalizeTypes(schema.type);
+  if (types.length > 0 && !types.some((t) => matchesType(t, value))) {
+    errors.push(`${path}: 期望 ${types.join('|')}，实际 ${describeType(value)}`);
     return;
   }
 
   // 数值范围
-  if ((schema.type === 'number' || schema.type === 'integer') && typeof value === 'number') {
+  if ((types.includes('number') || types.includes('integer')) && typeof value === 'number') {
     if (schema.minimum !== undefined && value < schema.minimum) {
       errors.push(`${path}: 不能小于 ${schema.minimum}`);
     }
@@ -76,7 +77,7 @@ function validateNode(
   }
 
   // 对象：必填 + 逐字段递归
-  if (schema.type === 'object' && isPlainObject(value)) {
+  if (types.includes('object') && isPlainObject(value)) {
     if (schema.required) {
       for (const key of schema.required) {
         if (!(key in value)) {
@@ -94,7 +95,7 @@ function validateNode(
   }
 
   // 数组：逐项递归
-  if (schema.type === 'array' && Array.isArray(value)) {
+  if (types.includes('array') && Array.isArray(value)) {
     const itemSchema = schema.items;
     if (itemSchema) {
       value.forEach((item, i) => {
@@ -106,6 +107,12 @@ function validateNode(
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** type 归一为数组：单值 → [单值]，缺省 → []（未声明即不校验） */
+function normalizeTypes(type: JSONSchemaObject['type']): string[] {
+  if (!type) return [];
+  return Array.isArray(type) ? type : [type];
 }
 
 function matchesType(type: string, value: unknown): boolean {
@@ -122,6 +129,8 @@ function matchesType(type: string, value: unknown): boolean {
       return isPlainObject(value);
     case 'array':
       return Array.isArray(value);
+    case 'null':
+      return value === null;
     default:
       // 未知 type 不拦截（JSON Schema 未声明即允许）
       return true;

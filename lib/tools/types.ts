@@ -14,9 +14,13 @@
  * - ExtractedToolCalls.calls 是数组，P1 先做单工具，多工具预留。
  */
 
+/** JSON Schema 基础类型（type 的取值；'null' 用于声明可空字段，如 ['object', 'null']） */
+export type JSONSchemaType = 'object' | 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'null';
+
 /** JSON Schema 最小子集（仅覆盖工具参数校验所需字段） */
 export interface JSONSchemaObject {
-  type?: 'object' | 'string' | 'number' | 'integer' | 'boolean' | 'array';
+  /** 单类型，或类型数组（如 ['object', 'null']：对象或字面 null 二者其一） */
+  type?: JSONSchemaType | JSONSchemaType[];
   description?: string;
   properties?: Record<string, JSONSchemaObject>;
   required?: string[];
