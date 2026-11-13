@@ -127,6 +127,29 @@ export type SubmissionParseResult = { ok: true; value: ParsedSubmission } | { ok
 /** 单条知识点 / 备注 / 提示的长度上限，防模型倾倒长文 */
 const MAX_FIELD_CHARS = 200;
 
+/**
+ * 判定「只有空 code 的对象」——空壳错因归一。
+ *
+ * 动机：errorCause 在 schema 里是对象，模型在 L1（本不该带错因）时倾向于凑一个
+ * `{code: null, confidence: null}` 而不是干脆不传；若直接交给 parseCauseRef，会被判成
+ * 「code 不在枚举表」，让整个 L1 提交被拒、白白多花一轮重试。
+ * 这里只清空壳，不做放宽：code 有值（哪怕写错字）或 confidence 是有效数值，一律照常
+ * 进入 parseCauseRef 严格校验并如实拒绝。
+ *
+ * 空壳判定：code 为 null / undefined / 去空格后空串，且 confidence 不是 0~1 的有限数值。
+ */
+function isEmptyCauseRef(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false; // 非对象交给 parseCauseRef 报「错因不是对象」
+  const record = raw as Record<string, unknown>;
+  const code = record.code;
+  const hasCode = typeof code === 'string' ? code.trim().length > 0 : code !== null && code !== undefined;
+  if (hasCode) return false;
+  const confidence = record.confidence;
+  const hasConfidence =
+    typeof confidence === 'number' && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1;
+  return !hasConfidence;
+}
+
 function parseCauseRef(raw: unknown): ErrorCauseRef | { error: string } {
   if (!raw || typeof raw !== 'object') return { error: '错因不是对象' };
   const record = raw as Record<string, unknown>;
@@ -156,8 +179,9 @@ export function parseSubmission(raw: unknown): SubmissionParseResult {
     .map((item) => item.trim().slice(0, MAX_FIELD_CHARS))
     .slice(0, 3);
 
+  // 空壳错因（模型在 L1 传的 {code: null, confidence: null}）视同 null：先归一，真有值才严格校验
   let errorCause: ErrorCauseRef | null = null;
-  if (record.errorCause != null) {
+  if (record.errorCause != null && !isEmptyCauseRef(record.errorCause)) {
     const parsed = parseCauseRef(record.errorCause);
     if ('error' in parsed) return { ok: false, reason: `主错因非法：${parsed.error}` };
     errorCause = parsed;
@@ -169,8 +193,9 @@ export function parseSubmission(raw: unknown): SubmissionParseResult {
     return { ok: false, reason: 'L1 提交不得带 errorCause（不硬编错因）' };
   }
 
+  // 次错因同一口径：空壳视同未提供
   let secondaryErrorCause: ErrorCauseRef | undefined;
-  if (record.secondaryErrorCause != null) {
+  if (record.secondaryErrorCause != null && !isEmptyCauseRef(record.secondaryErrorCause)) {
     const parsed = parseCauseRef(record.secondaryErrorCause);
     if ('error' in parsed) return { ok: false, reason: `次错因非法：${parsed.error}` };
     secondaryErrorCause = parsed;

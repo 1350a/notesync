@@ -125,6 +125,35 @@ describe('parseSubmission / buildDiagnosisResult', () => {
     expect(result.strategy).toBeNull();
     expect(result.notes).toBe('未提供作答');
   });
+
+  it('空壳错因归一：L1 空对象视同 null，L2 空对象仍拒绝，真非法错因不放宽', () => {
+    const emptyCause = { code: null, confidence: null };
+
+    // L1 + {code:null,confidence:null}：归一为 null 后通过（不再报"code 不在枚举表"）
+    const l1 = parseSubmission({ level: 'L1', knowledgePoints: ['函数'], errorCause: emptyCause });
+    expect(l1.ok).toBe(true);
+    if (!l1.ok) return;
+    expect(l1.value.errorCause).toBeNull();
+
+    // 次错因同一口径：code 空串 + confidence 缺失也视同未提供
+    const l1Secondary = parseSubmission({
+      level: 'L1',
+      knowledgePoints: ['函数'],
+      secondaryErrorCause: { code: '  ', confidence: null },
+    });
+    expect(l1Secondary.ok).toBe(true);
+    if (!l1Secondary.ok) return;
+    expect(l1Secondary.value.secondaryErrorCause).toBeUndefined();
+
+    // L2 空壳视同未给错因 → 仍拒绝
+    expect(parseSubmission({ level: 'L2', knowledgePoints: ['函数'], errorCause: emptyCause }).ok).toBe(false);
+
+    // 真有值的非法错因不许放宽：code 写错字 / confidence 越界仍拒绝
+    expect(parseSubmission({ level: 'L2', knowledgePoints: ['函数'], errorCause: { code: 'hiden_cond', confidence: 0.8 } }).ok).toBe(false);
+    expect(parseSubmission({ level: 'L2', knowledgePoints: ['函数'], errorCause: { code: 'hidden_cond', confidence: 1.5 } }).ok).toBe(false);
+    // code 缺失但 confidence 是有效数值 → 不算空壳，照常拒绝
+    expect(parseSubmission({ level: 'L2', knowledgePoints: ['函数'], errorCause: { confidence: 0.8 } }).ok).toBe(false);
+  });
 });
 
 describe('resolveOutcome / advanceAfterResponse 推进矩阵', () => {
