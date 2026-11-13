@@ -183,3 +183,25 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* 搜索命中跳转（doc/chat-history.md §7.4）：命中词 mark 标记 + 命中消息短暂闪烁。
+   覆盖 UA 默认黄底，用主题色保证明暗两套主题都可读 */
+mark.search-hit {
+  background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.search-hit-flash {
+  animation: search-hit-flash 1.5s ease-out 1;
+}
+
+@keyframes search-hit-flash {
+  from {
+    background-color: color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
