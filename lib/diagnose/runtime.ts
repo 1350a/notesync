@@ -212,6 +212,10 @@ export function parseSubmission(raw: unknown): SubmissionParseResult {
       hints.push({ level: hint.level, content: hint.content.trim().slice(0, MAX_FIELD_CHARS) });
     }
   }
+  // L1 是题目画像，提示阶梯属 explain 态逐级产出：L1 自带 hints 会一次性把三级提示摆到卡片上
+  if (level === 'L1' && hints.length > 0) {
+    return { ok: false, reason: 'L1 提交不得带 hints（提示阶梯由讲解阶段逐级给出）' };
+  }
 
   const notes = typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim().slice(0, MAX_FIELD_CHARS) : undefined;
   const isMath = record.isMath === false ? false : true; // 缺省按数学处理；reject 靠 intake 阶段显式传 false

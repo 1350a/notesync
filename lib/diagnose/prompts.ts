@@ -53,7 +53,8 @@ function intakePrompt(): string {
     '任务：',
     '1. 通读学生上传/输入的材料，判定是否数学题。',
     '2. 若不是数学题：调用 submit_diagnosis，level 填 L1，knowledgePoints 填 []，notes 逐字填「非数学题，仅支持数学诊断」。除这一句外不要展开。',
-    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象）。',
+    '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象；hints 一律省略——提示阶梯留给讲解阶段逐级给出，L1 带非空 hints 会被直接拒绝）。',
+    '常见错法清单只写「这题可能怎么错 + 对应 code」，不得逐条判定学生在这道题上的具体表现，也不得给「可能优先级」这类自造列——L1 的定义是不做错因归因，归因是归因阶段的职责。',
     '4. completeness 是可选的对象字段，一旦填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且一个不能少；禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要把这些判定写进 notes。四布尔按材料实际具备情况如实填写：没有分类标签的聊天输入（贴图、打字）也算数——图里是题目就 hasProblem=true，文字/图里看得出学生作答就 hasStudentAnswer=true。',
     '学生已提供作答时，画像里要引用其作答内容；尚未提供时，画像末尾自然过渡到「常见错法」问句，为下一轮补问做铺垫。',
     renderErrorCauseTable(),
@@ -119,7 +120,7 @@ function l1OnlyPrompt(): string {
   return [
     '当前处于【仅画像】阶段：未能进行错因归因（未提供作答、追问预算耗尽或未能定位断点）。',
     '输出 L1 题目画像（考点清单、常见错法清单、自查清单），末尾声明「未提供作答，本次不做错因归因。」或与实际原因相符的声明；不硬编错因。',
-    '然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象，notes 写实际原因）。',
+    '然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象，notes 写实际原因；hints 一律省略——提示阶梯留给讲解阶段逐级给出）。',
     'completeness 可选：若填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且齐全，禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要写进 notes。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,

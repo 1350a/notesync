@@ -68,6 +68,11 @@ AIGC:
 | **L1 题目画像** | 只有原题（或无作答） | 考点清单、常见错法清单、自查清单 | 即使没作答也有价值；且「常见错法」本身就是最好的补问话术 |
 | **L2 错因归因** | 有学生作答（或学生自行描述错法） | 具体错因、策略卡、分级提示 | 完整诊断 |
 
+**L1 的两条边界**（实测中模型在 L1 常越权，故写进提示词并落到校验上）：
+
+- **不产出提示阶梯**：`hints` 属 explain 态逐级产出。L1 提交不得自带 hints——`parseSubmission` 对 L1 非空 hints 直接拒绝（空数组等同未提供），否则「点继续逐级下降」形同虚设。
+- **不做错因归因**：常见错法清单只写「这题可能怎么错 + 对应 `code`」，禁止逐条判定学生在这道题上的具体表现，也不设「可能优先级」这类自造列。归因是 L2 的职责，L1 只画题目画像。
+
 ### 2.1 L1 的补问话术
 
 不要问「请提供你的答案」，要问：
@@ -153,6 +158,8 @@ interface StrategyCard {
 
 **默认停在哪一级**：L1，由用户点「继续」逐级下降。任何一级都允许用户直接要答案，但系统必须先完成 L1/L2 的诊断输出。
 
+**产出方**：三级提示均由 explain 态按 `ctx.hintLevel` 生成，不在提交里预先填好（L1 边界见 §2）。
+
 ## 6. 输出结构
 
 ```ts
@@ -172,7 +179,7 @@ interface DiagnosisResult {
   } | null                                        // L1 时为 null
   secondaryErrorCause?: { code: string; confidence: number }
   strategy: StrategyCard | null                   // L2 才有
-  hints: Array<{ level: 1 | 2 | 3; content: string }>
+  hints: Array<{ level: 1 | 2 | 3; content: string }>   // L1 恒为空；逐级提示由 explain 态产出
   notes?: string                                  // 如「未提供作答，本次不做错因归因」
   strategyVersion: number                         // 与 §4.1 的 version 对齐
 }

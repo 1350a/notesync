@@ -24,7 +24,7 @@ export function createSubmitDiagnosisTool(store: SubmissionStore): ToolDefinitio
       '提交结构化诊断结果，诊断模式每个阶段结束时必须调用一次。' +
       '参数：isMath（是否数学题，intake 判学科时必填）、level（L1 题目画像 / L2 错因归因）、' +
       'knowledgePoints（1~3 条考点）、errorCause（主错因 {code, confidence}，code 必须取自错因枚举表，L2 必填；L1 无错因时传字面 null）、' +
-      'secondaryErrorCause（可选次错因）、hints（提示阶梯 [{level: 1|2|3, content}]）、' +
+      'secondaryErrorCause（可选次错因）、hints（提示阶梯 [{level: 1|2|3, content}]，仅 L2 可用；L1 提交一律省略，否则被拒）、' +
       'completeness（材料完整度四布尔，可选但填则四个键齐全）、notes（如「未提供作答，本次不做错因归因」）。',
     inputSchema: {
       type: 'object',
@@ -64,7 +64,7 @@ export function createSubmitDiagnosisTool(store: SubmissionStore): ToolDefinitio
         hints: {
           type: 'array',
           items: { type: 'object' },
-          description: '提示阶梯 [{level: 1|2|3, content}]',
+          description: '提示阶梯 [{level: 1|2|3, content}]；L1 提交一律省略（提示阶梯由讲解阶段逐级给出，L1 带非空 hints 会被拒绝）',
         },
         notes: { type: 'string', description: '声明性备注，如降级原因' },
       },

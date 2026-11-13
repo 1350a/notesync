@@ -154,6 +154,21 @@ describe('parseSubmission / buildDiagnosisResult', () => {
     // code 缺失但 confidence 是有效数值 → 不算空壳，照常拒绝
     expect(parseSubmission({ level: 'L2', knowledgePoints: ['函数'], errorCause: { confidence: 0.8 } }).ok).toBe(false);
   });
+
+  it('L1 带非空 hints → 拒绝（提示阶梯归讲解阶段逐级给出），L2 不受影响', () => {
+    const l1WithHints = parseSubmission({
+      level: 'L1',
+      knowledgePoints: ['二次方程'],
+      hints: [{ level: 1, content: '这题考求根公式。' }],
+    });
+    expect(l1WithHints.ok).toBe(false);
+    if (!l1WithHints.ok) expect(l1WithHints.reason).toContain('L1 提交不得带 hints');
+
+    // 空数组等同未提供，不拦
+    expect(parseSubmission({ level: 'L1', knowledgePoints: ['二次方程'], hints: [] }).ok).toBe(true);
+    // L2 提交仍可带提示阶梯
+    expect(parseSubmission(l2).ok).toBe(true);
+  });
 });
 
 describe('resolveOutcome / advanceAfterResponse 推进矩阵', () => {
