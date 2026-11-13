@@ -55,7 +55,9 @@ function intakePrompt(): string {
     '2. 若不是数学题：调用 submit_diagnosis，level 填 L1，knowledgePoints 填 []，notes 逐字填「非数学题，仅支持数学诊断」。除这一句外不要展开。',
     '3. 若是数学题：先输出 L1 题目画像——考点清单（1~3 条）、常见错法清单（从错因表选 2~4 条最可能的，引用 code）、自查清单；然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象；hints 一律省略——提示阶梯留给讲解阶段逐级给出，L1 带非空 hints 会被直接拒绝）。',
     '常见错法清单只写「这题可能怎么错 + 对应 code」，不得逐条判定学生在这道题上的具体表现，也不得给「可能优先级」这类自造列——L1 的定义是不做错因归因，归因是归因阶段的职责。',
-    '4. completeness 是可选的对象字段，一旦填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且一个不能少；禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要把这些判定写进 notes。四布尔按材料实际具备情况如实填写：没有分类标签的聊天输入（贴图、打字）也算数——图里是题目就 hasProblem=true，文字/图里看得出学生作答就 hasStudentAnswer=true。',
+    '4. completeness 本轮必须填写（收题阶段它是判级的唯一依据），用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且一个不能少；禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要把这些判定写进 notes。没有分类标签的聊天输入（贴图、打字）同样算数——图里是题目就 hasProblem=true。',
+    '5. hasStudentAnswer 专指「学生自己写下的内容」：算式、推导、答案、草稿、被划改或被红笔订正的部分都算作答，手写照片里同样算。填写前先自检材料里有没有这类内容，有就填 true——填 false 会让系统认定材料里没有作答、只能出画像并补问，整轮诊断白跑；拿不准时按 true 处理。',
+    '6. 正文不得出现 completeness、hasStudentAnswer、hasCorrectAnswer 这类内部字段名，也不要说「未提供正确答案」「缺少解析」这种后台判定口径。确实需要说明材料缺件时，用学生能懂的说法（如「材料里没看到参考答案」），一句带过，不要逐项报缺。',
     '学生已提供作答时，画像里要引用其作答内容；尚未提供时，画像末尾自然过渡到「常见错法」问句，为下一轮补问做铺垫。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,
@@ -122,6 +124,7 @@ function l1OnlyPrompt(): string {
     '输出 L1 题目画像（考点清单、常见错法清单、自查清单），末尾声明「未提供作答，本次不做错因归因。」或与实际原因相符的声明；不硬编错因。',
     '然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象，notes 写实际原因；hints 一律省略——提示阶梯留给讲解阶段逐级给出）。',
     'completeness 可选：若填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且齐全，禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要写进 notes。',
+    '正文不得出现 completeness、hasStudentAnswer 这类内部字段名，也不要说「未提供正确答案」这种后台判定口径；声明不出错因归因的原因时，用学生能懂的话。',
     renderErrorCauseTable(),
     DISCIPLINE_BLOCK,
   ].join('\n\n');
@@ -176,7 +179,7 @@ export const GUARD_RETRY_PROMPT = [
 /** 结构化提交缺失时的重试指令 */
 export const SUBMISSION_RETRY_PROMPT = [
   '你上一轮没有调用 submit_diagnosis 提交结构化结果。',
-  '请基于你上面的分析补调用一次 submit_diagnosis（不要重复长篇正文）。',
+  '请直接调用一次 submit_diagnosis 补齐结构化结果：不要重写正文，不要复述上面的分析，不要输出新的段落或标题（正文已按上面的内容交付给学生，重写会让同一段画像出现两遍）。',
 ].join('\n');
 
 /** DiagnosisResult 的紧凑渲染，供 trace/日志与 mock 使用 */

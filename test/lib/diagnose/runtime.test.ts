@@ -320,6 +320,47 @@ describe('finalizeDiagnosis 编排', () => {
     expect(fin.context.state).toBe('diagnose'); // intake + 有作答快进
   });
 
+  it('补交轮静默：不转发正文，且补交段正文不并入 outputText', async () => {
+    // 实测现象：主轮已交付 L1 画像，补交轮又把同一段画像写一遍 → 同一条消息里出现两遍。
+    // 约束：补交轮 silent=true（route 不转发 delta），且 outputText 只保留主轮正文。
+    const store: { args: Record<string, unknown> | null } = { args: null };
+    const silents: Array<boolean | undefined> = [];
+    const seenAssistant: string[] = [];
+    let round = 0;
+    const fin = await finalizeDiagnosis({
+      // diagnose 态 + L2 才走 guard：用于观察重试轮拿到的 outputText 是否被污染
+      session: { context: context({ state: 'diagnose' }), completeness: FULL },
+      baseMessages,
+      mainRun: doneRun('主轮正文：这题考一元二次方程的解法'), // 不引用作答 → guard 必败
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async (messages, opts) => {
+        round += 1;
+        silents.push(opts?.silent);
+        seenAssistant.push(
+          messages
+            .filter((item) => item.role === 'assistant')
+            .map((item) => String(item.content))
+            .join('\n'),
+        );
+        if (round === 1) {
+          store.args = {
+            level: 'L2',
+            knowledgePoints: ['二次方程'],
+            errorCause: { code: 'case_miss', confidence: 0.9 },
+          };
+          return doneRun('补交轮不该出现的重复正文');
+        }
+        return doneRun('（重试仍未引用作答）');
+      },
+    });
+    expect(fin.retried).toBe('guard'); // 首次补交已拿到提交，之后走 guard 重试
+    expect(silents[0]).toBe(true);
+    // guard 重试轮拿到的 assistant 上下文只有主轮正文，补交段被丢弃
+    expect(seenAssistant[1]).toBe('主轮正文：这题考一元二次方程的解法');
+  });
+
   it('guard 两试不过：不交付 L2，上下文降级 L1_only', async () => {
     const store = { args: null as Record<string, unknown> | null };
     const sources = collectStudentSources(attachments, '');

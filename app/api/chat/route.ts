@@ -243,10 +243,14 @@ export async function POST(request: Request) {
       /**
        * 跑一次工具循环并转发流：done 持有不发（诊断后处理可能追加 diagnosis 事件，
        * done 必须保持终止符语义），正文累计供 guard 引用判据比对。
+       * silent=true 时正文/思考增量不转发（补交轮专用：正文已流过一次），其余事件照常转发。
        * totalCalls 累计全部 pump 的循环轮数（含 finalize 重试），供成本计量。
        */
       let totalCalls = 0;
-      const pump = async (messages: ProviderMessage[]): Promise<LoopRunResult> => {
+      const pump = async (
+        messages: ProviderMessage[],
+        runOpts?: { silent?: boolean },
+      ): Promise<LoopRunResult> => {
         let outputText = '';
         let done: LoopRunResult['done'] = null;
         let awaitingUser = false;
@@ -273,9 +277,13 @@ export async function POST(request: Request) {
           if (!ev) continue;
           if (ev.type === 'content') {
             outputText += ev.delta;
-            controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
+            if (!runOpts?.silent) {
+              controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
+            }
           } else if (ev.type === 'reasoning') {
-            controller.enqueue(encoder.encode(sse('reasoning', { delta: ev.delta })));
+            if (!runOpts?.silent) {
+              controller.enqueue(encoder.encode(sse('reasoning', { delta: ev.delta })));
+            }
           } else if (ev.type === 'tool_call') {
             controller.enqueue(
               encoder.encode(
@@ -334,8 +342,8 @@ export async function POST(request: Request) {
       try {
         const mainRun = await pump(providerMessages);
 
-        // 诊断后处理：提交补交 / guard 重试由 finalize 编排（重试段内容照常流式转发），
-        // 随后统一发 diagnosis 与 done；awaiting_user / 失败轮不做后处理
+        // 诊断后处理：提交补交 / guard 重试由 finalize 编排（补交轮正文静默不转发、
+        // guard 重试段照常流式转发），随后统一发 diagnosis 与 done；awaiting_user / 失败轮不做后处理
         if (diagnose && mainRun.done && !mainRun.awaitingUser && !mainRun.failed) {
           const fin = await finalizeDiagnosis({
             session: diagnose,

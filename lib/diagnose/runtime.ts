@@ -248,6 +248,12 @@ export function parseSubmission(raw: unknown): SubmissionParseResult {
   };
 }
 
+/** 完整度日志口径：P/W/C/A 依次对应 problem / studentAnswer / correctAnswer / analysis */
+function formatCompleteness(c: DiagnosisCompleteness): string {
+  const bit = (v: boolean) => (v ? '1' : '0');
+  return `${bit(c.hasProblem)}${bit(c.hasStudentAnswer)}${bit(c.hasCorrectAnswer)}${bit(c.hasAnalysis)}`;
+}
+
 /**
  * 完整度两套链路判别（见文件头设计口径）：
  * 附件链路（/diagnose 页）以服务端附件推导为准；聊天链路采纳模型判定，缺省回落实测基线。
@@ -388,8 +394,12 @@ export interface FinalizeInput {
   /** submit_diagnosis 工具绑定的存储（最后一次提交生效） */
   submissionStore: { args: Record<string, unknown> | null };
   lastUserText: string;
-  /** 由 route 提供：跑一次工具循环并转发流（重试段内容对用户可见） */
-  runLoop: (messages: ProviderMessage[]) => Promise<LoopRunResult>;
+  /**
+   * 由 route 提供：跑一次工具循环并转发流（重试段内容对用户可见）。
+   * silent=true 时只跑循环、不把正文/思考增量转发给前端（补交轮专用：正文已交付过一遍，
+   * 再转发会让同一段画像在一条消息里出现两次），工具调用与结果事件照常转发。
+   */
+  runLoop: (messages: ProviderMessage[], opts?: { silent?: boolean }) => Promise<LoopRunResult>;
 }
 
 export interface FinalizeResult {
@@ -417,12 +427,19 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
   // ① 该交没交：带上下文补一次（模型看得见自己刚输出的内容）
   if (!submissionStore.args && NEEDS_SUBMISSION.has(context.state) && !mainRun.failed) {
     retried = 'submission';
-    const run = await runLoop([
-      ...baseMessages,
-      { role: 'assistant', content: outputText },
-      { role: 'system', content: SUBMISSION_RETRY_PROMPT },
-    ]);
-    outputText += run.outputText;
+    // 补交轮只补结构化提交：正文已在上一次循环里交付给学生，这一段既不转发也不并入 outputText，
+    // 否则前端会在同一条消息里看到两遍画像（实测现象：第二段以「## L1 · 题目画像」原文开头）。
+    // 主轮正文为空（模型直接跳工具、没写画像）时不静默，让补交轮正文成为唯一的那一段。
+    const hasMainText = Boolean(mainRun.outputText.trim());
+    const run = await runLoop(
+      [
+        ...baseMessages,
+        { role: 'assistant', content: outputText },
+        { role: 'system', content: SUBMISSION_RETRY_PROMPT },
+      ],
+      { silent: hasMainText },
+    );
+    if (!hasMainText) outputText = run.outputText;
   }
 
   let diagnosis: DiagnosisResult | null = null;
@@ -437,12 +454,20 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
     console.warn(`[diagnose] 提交校验失败：${parsed.reason}`);
     return { context, diagnosis: null, guardPassed, retried };
   }
-  // 成功路径也留痕：与失败日志配对，服务端日志即可判定 submit_diagnosis 是否真的被调用
+  // 成功路径也留痕：与失败日志配对，服务端日志即可判定 submit_diagnosis 是否真的被调用。
+  // completeness 必须一起打：判级（L1/L2）只由 hasStudentAnswer 决定，缺了它无法解释
+  // 「材料里明明有作答却停在 L1 + 补问」是模型判错还是模型没提交（回落基线全 false）
+  const intakeCompleteness = resolveCompleteness(attachments, parsed.value, session.completeness);
+  if (attachments.length === 0 && !parsed.value.completeness) {
+    console.warn(
+      `[diagnose] 聊天链路提交缺 completeness，回落基线（全 false）→ 判级按 L1 处理（state=${context.state}）`,
+    );
+  }
   console.log(
-    `[diagnose] 已收到结构化提交 level=${parsed.value.level} errorCause=${parsed.value.errorCause?.code ?? 'null'} retried=${retried ?? 'no'}`,
+    `[diagnose] 已收到结构化提交 level=${parsed.value.level} errorCause=${parsed.value.errorCause?.code ?? 'null'} completeness=${formatCompleteness(intakeCompleteness)}(${attachments.length > 0 ? '附件链路' : '聊天链路'}) retried=${retried ?? 'no'}`,
   );
 
-  diagnosis = buildDiagnosisResult(parsed.value, resolveCompleteness(attachments, parsed.value, session.completeness));
+  diagnosis = buildDiagnosisResult(parsed.value, intakeCompleteness);
 
   /**
    * 最终生效的提交。guard 重试后模型可能**重交**，且重交的 level 未必与首次相同；
