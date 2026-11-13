@@ -106,6 +106,8 @@ export default function ChatList({
       {messages.map((m, i) => (
         <div
           key={i}
+          // 搜索命中跳转的定位锚点（doc/chat-history.md §7.4）；ChatMsg 无稳定 id，key 即下标
+          data-msg-index={i}
           className={
             m.role === 'user'
               ? 'group self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
