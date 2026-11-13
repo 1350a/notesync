@@ -133,3 +133,8 @@ ocr: {
   （429「余额不足」经摘要管道正确回显），但账号无 glm-ocr 资源包，转写成功路径被
   拦截，base64/dataUrl 兼容性仍未定论——充值或领取资源包后执行 `npm run smoke:ocr`
   复验并回填 §2。路由侧已实测：非法前缀 → 400、非 JSON → 400、上游 429 → 502 + 摘要。
+  **2026-11-13 充值后复验（已定论）**：裸 base64 被上游按「无扩展名文件路径」拒识
+  （HTTP 400「仅支持PDF、JPG、PNG、JPEG格式」）；`data:image/(png|jpeg);base64,`
+  **带前缀 dataUrl 实测 200**（529ms，md_results 44 字符，公式正确转 LaTeX）。
+  `cloudOcrRecognize` 已改为固定拼接前缀（fix 82c50b7），本条销账，成功路径以
+  `npm run smoke:ocr` 为准持续可验。
