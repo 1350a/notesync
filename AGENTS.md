@@ -54,12 +54,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 6. Git Discipline
 
 - One commit per file. Do not bundle unrelated files in a single commit.
+  Exception: the code + test + doc of one single logical change may share a
+  commit when no part of it stands or passes the gate on its own.
 - Run `git add` and `git commit` as separate commands. Chaining them on one
   line can make the commit silently fail.
-- Commit message format: `<type>: <中文描述>`, where `<type>` is one of
-  `feat` | `fix` | `refactor` | `style` | `docs` | `test` | `chore` | `revert`.
-  Example: `fix: 修复了模型下拉框写死导致无法切换模型的问题`.
+- Commit message format: `<type>(<scope>): <中文描述>`, where `<type>` is one
+  of `feat` | `fix` | `refactor` | `style` | `docs` | `test` | `chore` |
+  `revert`. Example: `fix: 修复了模型下拉框写死导致无法切换模型的问题`.
 - The description states what changed and why.
+- Full rules — type table, scope values, granularity, body and footer
+  keywords, forbidden files — live in `doc/git-commit-convention.md`.
 
 ## 7. Secrets
 
@@ -78,3 +82,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   data models — belong in `doc/`, not here.
 - Changing a protocol requires updating the corresponding doc first,
   then the code.
+
+## 10. Commit Convention Pointer
+
+- The binding commit rules live in `doc/git-commit-convention.md`.
+  Read it before your first commit in this repo.
+- It covers the message format and type prefixes, scope values, commit
+  granularity, body and footer keywords, and the list of files that must
+  never be committed.
+- §6 above is the short form; when the two disagree, the doc wins and §6
+  gets fixed in the same change.
