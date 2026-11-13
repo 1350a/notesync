@@ -82,8 +82,11 @@ export function cloudOcrAvailable(): boolean {
   return Boolean(process.env.ZHIPU_API_KEY);
 }
 
-/** 调 glm-ocr 转写一张图（base64 已去前缀）。上游/网络/解析失败一律抛 CloudOcrError */
-export async function cloudOcrRecognize(base64: string): Promise<CloudOcrResult> {
+/**
+ * 调 glm-ocr 转写一张图。上游/网络/解析失败一律抛 CloudOcrError。
+ * 入参用 parseImageDataUrl 的产物：mime 在拼 dataUrl 前缀时要原样带回（见下方 file 说明）。
+ */
+export async function cloudOcrRecognize(image: ParsedImageDataUrl): Promise<CloudOcrResult> {
   const apiKey = process.env.ZHIPU_API_KEY || "";
   const baseUrl = process.env.ZHIPU_BASE_URL || "https://open.bigmodel.cn/api/paas/v4";
   // 路由层已做 unconfigured 门禁，此处兜底防直接调用（如冒烟脚本）绕过校验
@@ -97,8 +100,12 @@ export async function cloudOcrRecognize(base64: string): Promise<CloudOcrResult>
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      // file 直收 base64：与官方「支持 url 和 base64」口径一致；dataUrl 前缀兼容性以冒烟为准（doc/cloud-ocr.md §8）
-      body: JSON.stringify({ model: ZHIPU_OCR_MODEL, file: base64 }),
+      // file 必须是带前缀的 dataUrl：上游把裸 base64 当作无扩展名的文件路径，
+      // 直接 400「仅支持PDF、JPG、PNG、JPEG格式」；带前缀实测 200（2026-11-13 冒烟，doc/cloud-ocr.md §8）
+      body: JSON.stringify({
+        model: ZHIPU_OCR_MODEL,
+        file: `data:${image.mime};base64,${image.base64}`,
+      }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {

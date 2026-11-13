@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 
   const started = Date.now();
   try {
-    const result = await cloudOcrRecognize(parsed.base64);
+    const result = await cloudOcrRecognize(parsed);
     console.log(`耗时 ${Date.now() - started}ms，md_results ${result.text.length} 字符`);
     console.log("--- md_results ---");
     console.log(result.text || "(空)");

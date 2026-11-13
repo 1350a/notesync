@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await cloudOcrRecognize(parsed.base64);
+    const result = await cloudOcrRecognize(parsed);
     return Response.json(result);
   } catch (err) {
     if (err instanceof CloudOcrError) {
