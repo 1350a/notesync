@@ -8,7 +8,8 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 const THEME_OPTIONS: { value: ThemePreference; icon: string; label: string }[] = [
   { value: 'light', icon: '☀️', label: '浅色' },
   { value: 'dark', icon: '🌙', label: '深色' },
-  { value: 'system', icon: '🖥️', label: '跟随系统' },
+  { value: 'sky', icon: '🌤️', label: '天空' },
+  { value: 'mint', icon: '🍃', label: '薄荷' },
 ];
 
 export default function GeneralSection() {
@@ -20,7 +21,7 @@ export default function GeneralSection() {
 
   return (
     <div>
-      <SettingsRow label="主题" hint="跟随系统时随系统深浅色实时切换">
+      <SettingsRow label="主题" hint="四套配色，切换后立即生效并记住选择">
         <div className="flex w-full gap-2">
           {THEME_OPTIONS.map((option) => {
             const active = theme === option.value;
@@ -29,7 +30,7 @@ export default function GeneralSection() {
                 key={option.value}
                 type="button"
                 onClick={() => updateSettings({ theme: option.value })}
-                className={`flex w-24 flex-col items-center gap-1 rounded-xl border px-2 py-3 text-xs transition-colors max-md:min-w-0 max-md:flex-1 ${
+                className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl border px-2 py-3 text-xs transition-colors ${
                   active
                     ? 'border-foreground/50 bg-muted font-medium'
                     : 'border-border hover:bg-muted/50'

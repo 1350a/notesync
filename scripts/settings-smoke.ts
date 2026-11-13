@@ -35,8 +35,12 @@ check('normalize(数组) 回落默认', eq(normalizeSettings([1, 2]), cloneDefau
 check('normalize(42) 回落默认', eq(normalizeSettings(42), cloneDefaults()));
 
 /* ---------- normalizeSettings：字段收窄 ---------- */
-check('theme 非法值回落 system', normalizeSettings({ theme: 'blue' }).theme === 'system');
+check('theme 非法值回落 light', normalizeSettings({ theme: 'blue' }).theme === 'light');
 check('theme dark 保留', normalizeSettings({ theme: 'dark' }).theme === 'dark');
+check('theme sky 保留', normalizeSettings({ theme: 'sky' }).theme === 'sky');
+check('theme mint 保留', normalizeSettings({ theme: 'mint' }).theme === 'mint');
+check('theme 旧值 system 迁移为 light', normalizeSettings({ theme: 'system' }).theme === 'light');
+check('theme 缺省回落 light', normalizeSettings({}).theme === 'light');
 check('defaultModel 非字符串回落空', normalizeSettings({ defaultModel: 123 }).defaultModel === '');
 check(
   'defaultModel 超长截断',

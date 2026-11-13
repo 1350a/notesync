@@ -41,7 +41,7 @@ function CauseLine({ code, confidence, role }: { code: string; confidence: numbe
         title={`模型自评置信度 ${percent}%（A 级假设，仅供参考）`}
       >
         <span className="inline-block h-1.5 w-16 overflow-hidden rounded-full" style={{ backgroundColor: 'var(--border)' }}>
-          <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: 'var(--accent)' }} />
+          <span className="block h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: 'var(--primary)' }} />
         </span>
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {percent}%

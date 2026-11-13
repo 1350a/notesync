@@ -29,7 +29,7 @@ AIGC:
 
 ```ts
 interface UserSettings {
-  theme: 'light' | 'dark' | 'system'; // 默认 'system'（跟随系统，matchMedia 实时联动）
+  theme: ThemePreference;             // 默认 'light'；四档：light/dark/sky/mint，见 §2.2
   defaultModel: string;               // 默认模型名；'' = 跟随后端推荐（/api/models 首项）
   language: 'system';                 // 【未接线】界面语言，当前仅占位
   systemPrompt: string;               // 【未接线】自定义系统提示词，无 UI，服务端注入待下一轮
@@ -57,11 +57,27 @@ interface UserSettings {
   - **custom**：**不发送**——自定义端点对未知字段可能严格校验（与 user 字段开关同口径），思考由端点自身的模型/参数控制。
 - 思维链（reasoning_content）是否出现由该档位决定：`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（product-vision 理念：思维链是调试设施，不是产品功能）。
 
+### 2.2 主题四档（theme，色值真源 `app/globals.css`）
+
+四档互斥、全局一套色相家族，色值统一用 oklch 书写（构建期再由 Lightning CSS 输出 sRGB 回退）。
+
+| 档位 | `data-theme` | 定位 | 页面底 | 卡片 | 侧栏/次级底 | 边框 | 主色 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 浅色 | `light` | 中性灰蓝（默认） | oklch(0.978 0.002 260) | oklch(1 0 0) | oklch(0.948 0.004 260) | oklch(0.895 0.004 260) | oklch(0.515 0.14 255) |
+| 深色 | `dark` | 中性深灰蓝 | oklch(0.305 0.008 250) | oklch(0.355 0.009 250) | oklch(0.415 0.010 250) | oklch(0.455 0.012 250) | oklch(0.70 0.12 255) |
+| 天空 | `sky` | 浅蓝 235° | oklch(0.972 0.016 235) | oklch(0.993 0.006 235) | oklch(0.945 0.023 235) | oklch(0.880 0.026 235) | oklch(0.520 0.125 240) |
+| 薄荷 | `mint` | 浅绿 160° | oklch(0.972 0.019 160) | oklch(0.993 0.008 160) | oklch(0.945 0.029 160) | oklch(0.880 0.031 160) | oklch(0.510 0.115 162) |
+
+- **对比度实测全达 WCAG AA**：正文/页面底 11.57–16.25:1，次文/页面底 5.60–6.33:1，次文/卡片 4.63–6.72:1，主色/页面底 4.98–5.32:1，主色上的字 5.24–7.27:1。边框/页面底 1.28–1.84:1 属非文本装饰元素，不受 AA 正文阈值约束。
+- 深色正文取 `oklch(0.95 0 0)` 而非纯白（避免 OLED 上过曝刺眼）；深色主色提到 0.70 亮度，保证主色当文字时仍 ≥5:1。
+- **历史变量兼容层**：`--text`、`--text-muted`、`--text-secondary`、`--panel-soft`、`--accent-text` 在 `ChatList` / `DiagnosisCard` / `MessageActions` / `ToolTrace` 中被直接引用却长期无定义（色值回落成继承色），现统一在 `:root` 映射到 `--foreground` / `--muted-foreground` / `--secondary-foreground` / `--muted` / `--accent-foreground`；`--bg-deep`（比页面底深一档的容器底）与 `--danger` 按档位各自定义。
+- **迁移**：`'system'` 档下线，存量用户由 `normalizeSettings` 映射为 `'light'`，不留 matchMedia 订阅分支。
+
 ### normalize 规则（`lib/settings/types.ts` 纯函数，可冒烟）
 
 | 字段 | 非法输入处理 |
 | --- | --- |
-| theme | 非 `'light'/'dark'/'system'` → 回落 `'system'` |
+| theme | 非四档（`light`/`dark`/`sky`/`mint`）→ 回落 `'light'`；旧版 `'system'` 按非法值**一次性迁移**为 `'light'`（system 分支已下线，见 §2.2） |
 | defaultModel | 非字符串 → `''`；超 200 字符截断 |
 | systemPrompt | 非字符串 → `''`；超 8000 字符截断 |
 | generation.temperature | 非有限数字 → 丢弃；越界 → 钳制到 0–2 |
@@ -110,7 +126,7 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题三选卡片（浅色/深色/跟随系统）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
 | 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.preferLocal` + `ocr.engine`，自通用设置迁入）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；重置设备标识（`resetUserId()`，仅清 `notesync-user-id`，不动设置，见 §4.1）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
@@ -121,7 +137,7 @@ interface SettingsStorage {
 > （`components/settings/LocalCapabilitySection.tsx`）。本表按**代码现状**记录，
 > 勿据旧表述判断 UI 位置。
 
-主题消费收口：`AppLayout` 负责水合 + 把 `theme` 应用到 `documentElement`（'system' 时订阅 matchMedia 变化实时联动）；切换入口唯一，在设置「通用」分区的三档选择（浅色 / 深色 / 跟随系统），顶栏不再提供主题按钮。根布局另有防闪烁内联脚本（静态常量，见 `lib/settings/anti-flash.ts`）。
+主题消费收口：`AppLayout` 负责水合 + 调 `applyTheme`（`lib/settings/theme.ts`）把主题写到 `documentElement`——`data-theme` 决定色板，深色额外挂 `.dark` 类供 tailwind `dark:` variant 使用；**已无 `'system'` 档，也就不再有 matchMedia 订阅**。切换入口唯一，在设置「通用」分区的四档选择（浅色 / 深色 / 天空 / 薄荷），顶栏不提供主题按钮。根布局另有防闪烁内联脚本（静态常量，见 `lib/settings/anti-flash.ts`），首帧按同一份规则写 `data-theme`，`<html>` 默认值 `light`。
 
 ## 6. 待实现（挂账）
 

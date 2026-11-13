@@ -1,7 +1,7 @@
 'use client';
 
 import SettingsModal from '@/components/settings/SettingsModal';
-import { isDarkEffective, watchSystemTheme } from '@/lib/settings/theme';
+import { applyTheme } from '@/lib/settings/theme';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useEffect } from 'react';
@@ -20,15 +20,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     hydrateUI();
   }, [hydrate, hydrateUI]);
 
-  // 主题应用到 <html>；'system' 时订阅系统深浅色变化实时联动
+  // 主题应用到 <html>：data-theme 决定色板，.dark 供 dark: variant 使用
   useEffect(() => {
-    const apply = () => {
-      if (isDarkEffective(theme)) document.documentElement.classList.add('dark');
-      else document.documentElement.classList.remove('dark');
-    };
-    apply();
-    if (theme !== 'system') return;
-    return watchSystemTheme(apply);
+    applyTheme(theme);
   }, [theme]);
 
   // dvh 而非 vh：移动浏览器动态工具栏下 100vh ≠ 可视高度（doc/mobile-ux.md §1）

@@ -32,7 +32,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={onCopy}
       className="mt-2 rounded-md px-2 py-1 text-[11px] transition-colors touch:h-9 touch:px-3"
-      style={{ border: '1px solid var(--border)', color: copied ? 'var(--accent)' : 'var(--text-muted)' }}
+      style={{ border: '1px solid var(--border)', color: copied ? 'var(--primary)' : 'var(--text-muted)' }}
       title="复制 Markdown 源文本"
     >
       {copied ? '✓ 已复制' : '复制'}
@@ -116,16 +116,16 @@ export default function ChatList({
           style={
             m.role === 'user'
               ? {
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'var(--accent)',
-                  color: 'var(--accent-text)',
+                  border: '1px solid var(--primary)',
+                  backgroundColor: 'var(--primary)',
+                  color: 'var(--primary-foreground)',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                   maxWidth: '85%',
                 }
               : {
                   border: '1px solid var(--border)',
-                  backgroundColor: 'var(--bg-deep)',
+                  backgroundColor: 'var(--card)',
                   color: 'var(--text)',
                   wordBreak: 'break-word',
                 }
@@ -266,17 +266,17 @@ export default function ChatList({
             className="flex items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3 text-sm"
             style={{
               border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-deep)',
+              backgroundColor: 'var(--card)',
               color: 'var(--text-secondary)',
             }}
           >
             <span
               className="inline-block h-2 w-2 animate-pulse rounded-full"
-              style={{ backgroundColor: 'var(--accent)' }}
+              style={{ backgroundColor: 'var(--primary)' }}
             />
             <span
               className="inline-block h-2 w-2 animate-pulse rounded-full"
-              style={{ backgroundColor: 'var(--accent)' }}
+              style={{ backgroundColor: 'var(--primary)' }}
             />
             <span className="ml-1">模型思考中…</span>
           </div>

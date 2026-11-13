@@ -6,8 +6,13 @@
  * normalize 钳制，UI 与服务端消费按文档 §6 挂账逐步落地。
  */
 
-/** 主题偏好：system 跟随系统（matchMedia 实时联动） */
-export type ThemePreference = 'light' | 'dark' | 'system';
+/**
+ * 主题偏好（doc/user-settings.md §2/§4）：四档互斥。
+ * light/dark 为中性灰蓝底，sky/mint 为带色相的浅色主题。
+ * 旧版 'system'（跟随系统）已下线：存量数据由 normalizeSettings 一次性映射为
+ * 'light'，不再保留 system 分支与 matchMedia 订阅。
+ */
+export type ThemePreference = 'light' | 'dark' | 'sky' | 'mint';
 
 /**
  * 思考强度档位（doc/user-settings.md §2.1，总账 §5 档位映射的落地）：
@@ -65,7 +70,7 @@ export interface UserSettings {
 }
 
 export const DEFAULT_SETTINGS: UserSettings = {
-  theme: 'system',
+  theme: 'light',
   defaultModel: '',
   language: 'system',
   systemPrompt: '',
@@ -83,7 +88,7 @@ export const MAX_TOKENS_MIN = 1;
 /** 防呆上限：实际仍受上游模型的上下文/输出上限约束 */
 export const MAX_TOKENS_MAX = 200_000;
 
-const THEMES: readonly ThemePreference[] = ['light', 'dark', 'system'];
+const THEMES: readonly ThemePreference[] = ['light', 'dark', 'sky', 'mint'];
 
 /** 深拷贝默认值，避免消费方误改共享嵌套对象（generation/ocr/rag） */
 export function cloneDefaults(): UserSettings {
@@ -155,6 +160,7 @@ export function normalizeSettings(raw: unknown): UserSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return cloneDefaults();
   const record = raw as Record<string, unknown>;
 
+  // 旧值 'system' 与任何坏值同样不在 THEMES 内，统一回落默认档 light（一次性迁移）
   const theme = THEMES.includes(record.theme as ThemePreference)
     ? (record.theme as ThemePreference)
     : DEFAULT_SETTINGS.theme;
