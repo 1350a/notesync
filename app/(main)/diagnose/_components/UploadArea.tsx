@@ -574,7 +574,7 @@ export default function UploadArea() {
           {readyRows.length > 0 && !selectedModel && (
             <p className="text-xs text-red-500">
               没有可用模型，无法开始诊断：请在 .env.local 配置任一 Provider（DEEPSEEK_API_KEY /
-              ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL），或确认本地模型服务（如 Ollama）已启动后重启服务。
+              ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL）后重启服务。
             </p>
           )}
         </div>

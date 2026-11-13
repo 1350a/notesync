@@ -1,6 +1,6 @@
 /*
- * 浏览器端 RAG 共享类型（对齐旧服务端 lib/rag/types.ts 设计，见
- * doc/browser-local-inference.md §5；旧文件已注释停用仅作参考）。
+ * 浏览器端 RAG 共享类型（沿用旧服务端设计，见 doc/browser-local-inference.md §5；
+ * 旧服务端实现已于 2026-11 删除）。
  */
 
 /** 知识块类型：知识点卡片 / 典型错题案例 */

@@ -7,7 +7,7 @@
  */
 import type { KnowledgeChunk, RagHit, RagSearchOptions } from "./types";
 
-/** 混合检索权重（对齐旧服务端 lib/rag/store.ts 设计） */
+/** 混合检索权重（沿用旧服务端设计；该服务端实现已于 2026-11 删除） */
 export const VECTOR_WEIGHT = 0.65;
 export const KEYWORD_WEIGHT = 0.35;
 

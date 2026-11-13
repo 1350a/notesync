@@ -2,7 +2,7 @@
  * LLM Provider 层 - 共享类型定义
  *
  * 简易重构版：仅三云端 OpenAI 兼容 Provider（DeepSeek / 智谱 / 自定义），
- * 本地 ollama 与 harness 编排链路已注释停用。
+ * 本地 ollama 与 harness 编排链路已从代码库移除。
  *
  * 【工具调用扩展（P1，仅类型）】
  * ProviderMessage 增加 role="tool" 与 tool_calls/tool_call_id/name；
@@ -13,7 +13,7 @@
  * P1 只扩展类型，不改变现有行为。
  */
 
-/** Provider 名称（ollama 保留仅为类型兼容，已停用） */
+/** Provider 名称（ollama 仅为兼容历史持久化数据的保留值，已无对应实现） */
 export type ProviderName = 'deepseek' | 'zhipu' | 'custom' | 'ollama';
 
 /** 消息角色（tool 为 P1 新增，用于回填工具执行结果） */
