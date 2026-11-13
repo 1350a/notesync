@@ -113,7 +113,7 @@ disposeOcrWorker(): Promise<void>
 ## 6. 聊天/诊断链路接入（imageTexts 契约）
 
 本地 OCR 的第一个业务接入：**图片先在浏览器内转成文字，再随消息发送**，纯文本模型
-（本地 deepseek-local、DeepSeek 文本款等）因此可以"看到"图片内容而不报错。
+（本地 deepseek-local、DeepSeek 的 `deepseek-v4-pro` 等文本款）因此可以"看到"图片内容而不报错。
 
 ### 6.1 图片发送模式与派生规则
 
@@ -158,7 +158,7 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 | Provider | 口径 | 理由 |
 |---|---|---|
 | custom（OpenAI 兼容端点） | `CUSTOM_ALLOW_IMAGES=1` 才直传，默认纯文本 | 端点多为本地 Ollama/vLLM 纯文本模型，默认直传必 400；真多模态端点显式开启 |
-| deepseek | 按模型名：含 `vision` 的别名可直传，其余纯文本 | 官方文本款为主，vision-exp 为过渡别名 |
+| deepseek | 按模型名：名字含 `flash` 或 `vision` 才直传，`deepseek-v4-pro` 等为纯文本 | 官方 Vision 仅支持 `deepseek-flash`，`deepseek-v4-pro` 直传必 400 |
 | zhipu | 维持既有按目录判定 | 已实现 modelAcceptsImages |
 
 ### 6.4 失败语义
