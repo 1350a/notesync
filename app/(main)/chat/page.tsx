@@ -7,6 +7,7 @@ import { useChat } from '@/hooks/useChat';
 import { useModels } from '@/hooks/useModels';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { findFirstHitIndex, normalizeKeyword, normalizeText } from '@/lib/history/search';
 import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -16,6 +17,58 @@ const FOLLOW_BOTTOM_THRESHOLD = 80;
 const NEAR_BOTTOM_THRESHOLD = 16;
 /** 滚动位置较上次向上移动超过此差值即判为用户操作（滚轮/滚动条/键盘/触摸全覆盖） */
 const SCROLL_UP_EPSILON = 4;
+
+/**
+ * 在元素已渲染文本里高亮关键词：逐文本节点包 <mark>。
+ * 纯 DOM 操作（createElement / createTextNode），不走 innerHTML，无注入面，
+ * 也不改 markdown sanitize 白名单；markdown 结构（代码块/链接内部）天然不拆。
+ * 偏移按 normalizeText 等长映射计算（全角→半角 1:1）；极少数小写化展宽字符下
+ * 允许定位偏差，属可接受近似（doc/chat-history.md §7.4）。
+ */
+function highlightKeyword(root: HTMLElement, keyword: string): void {
+  const walker = document.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+  const hits: Array<{ node: Text; ranges: Array<[number, number]> }> = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    // mark 是上次高亮的残留（解包由调用方负责），script/style/textarea 内容一律不碰
+    if (node.parentElement?.closest('mark, script, style, textarea')) continue;
+    const value = node.nodeValue ?? '';
+    if (!value.trim()) continue;
+    const normalized = normalizeText(value);
+    const ranges: Array<[number, number]> = [];
+    let pos = normalized.indexOf(keyword);
+    while (pos >= 0) {
+      ranges.push([pos, pos + keyword.length]);
+      pos = normalized.indexOf(keyword, pos + keyword.length);
+    }
+    if (ranges.length > 0) hits.push({ node: node as Text, ranges });
+  }
+  for (const { node, ranges } of hits) {
+    const value = node.nodeValue ?? '';
+    const frag = document.createDocumentFragment();
+    let cursor = 0;
+    for (const [start, end] of ranges) {
+      if (start > cursor) frag.appendChild(document.createTextNode(value.slice(cursor, start)));
+      const mark = document.createElement('mark');
+      mark.className = 'search-hit';
+      mark.textContent = value.slice(start, end);
+      frag.appendChild(mark);
+      cursor = end;
+    }
+    if (cursor < value.length) frag.appendChild(document.createTextNode(value.slice(cursor)));
+    node.parentNode?.replaceChild(frag, node);
+  }
+}
+
+/** 解包元素内此前的高亮标记：关键词变更或同消息重复跳转时防叠层 */
+function unhighlightKeyword(root: HTMLElement): void {
+  root.querySelectorAll('mark.search-hit').forEach((mark) => {
+    const parent = mark.parentNode;
+    if (!parent) return;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    mark.remove();
+    parent.normalize();
+  });
+}
 
 export default function ChatPage() {
   const { models, providers, loading: modelsLoading, message, error, reload } = useModels();
@@ -71,15 +124,67 @@ export default function ChatPage() {
     setShowBackToBottom(state.interrupted && distance > NEAR_BOTTOM_THRESHOLD);
   };
 
-  // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）
+  // 搜索跳转用到的会话态（声明提前：复位 effect 必须先于吸底 effect 执行）
+  const pendingJump = useChatStore((s) => s.pendingJump);
+  const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const clearPendingJump = useChatStore((s) => s.clearPendingJump);
+
+  // 会话切换复位跟随态：上一会话的打断态（含跳转置位）不带入新会话，
+  // 否则跳转后下一次普通打开会落在顶部而不是最新消息
+  const seenSessionRef = useRef(currentSessionId);
+  useEffect(() => {
+    if (seenSessionRef.current === currentSessionId) return;
+    seenSessionRef.current = currentSessionId;
+    followState.current = { interrupted: false, atBottom: true, lastTop: 0 };
+  }, [currentSessionId]);
+
+  // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）；
+  // 搜索跳转未消费期间让位——视口要停在命中消息处，不能被拽回底部（§7.4）
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const state = followState.current;
-    if (state.interrupted || !state.atBottom) return;
+    if (pendingJump || state.interrupted || !state.atBottom) return;
     el.scrollTop = el.scrollHeight;
     state.lastTop = el.scrollTop;
-  }, [messages, loading]);
+  }, [messages, loading, pendingJump]);
+
+  // 搜索命中跳转（doc/chat-history.md §7.4）：会话加载完成（sessionId 与 messages
+  // 都已就位）后定位首条命中消息，居中滚动 + 闪烁 + 正文内 <mark>；仅标题命中不定位。
+  // 载荷在 openSession 时原子写入、任意后续 openSession 覆盖清除，这里只做消费
+  useEffect(() => {
+    if (!pendingJump) return;
+    if (pendingJump.sessionId !== currentSessionId) return;
+    const keyword = normalizeKeyword(pendingJump.keyword);
+    if (!keyword) {
+      clearPendingJump();
+      return;
+    }
+    const index = findFirstHitIndex(messages, keyword);
+    if (index < 0) {
+      clearPendingJump();
+      return;
+    }
+    const container = scrollRef.current;
+    const target = container?.querySelector<HTMLElement>(`[data-msg-index="${index}"]`);
+    if (!container || !target) {
+      clearPendingJump();
+      return;
+    }
+    // 跳转即视为用户打断：置位后吸底与"回到底部"按钮走既有打断链路
+    const state = followState.current;
+    state.interrupted = true;
+    state.atBottom = false;
+    target.scrollIntoView({ block: 'center', behavior: 'auto' });
+    state.lastTop = container.scrollTop;
+    unhighlightKeyword(target);
+    highlightKeyword(target, keyword);
+    // 重启动画：同消息重复跳转时先摘掉再戴回，强制重排确保 keyframes 重新播放
+    target.classList.remove('search-hit-flash');
+    void target.offsetWidth;
+    target.classList.add('search-hit-flash');
+    clearPendingJump();
+  }, [pendingJump, currentSessionId, messages, clearPendingJump]);
 
   const handleBackToBottom = () => {
     const el = scrollRef.current;

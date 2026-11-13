@@ -5,6 +5,7 @@ import {
   SEARCH_BODY_SCAN_LIMIT,
   SEARCH_DEBOUNCE_MS,
   SEARCH_HIT_LIMIT,
+  SEARCH_SCAN_BATCH,
   matchMessages,
   matchMeta,
   mergeHits,
@@ -53,6 +54,7 @@ function SidebarContent() {
   const removeSession = useChatStore((s) => s.removeSession);
   const renameSession = useChatStore((s) => s.renameSession);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
+  const refreshSessions = useChatStore((s) => s.refreshSessions);
   const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [keyword, setKeyword] = useState('');
@@ -65,8 +67,14 @@ function SidebarContent() {
   const cancelRenameRef = useRef(false);
   const query = normalizeKeyword(keyword);
 
-  // 搜索：防抖 200ms；先标题过滤（零 IO），标题命中不足再逐条回读正文补齐。
-  // 正文扫描上限 SEARCH_BODY_SCAN_LIMIT 条，命中够数或扫完即停（§7.4）
+  // 列表首次挂载即刷新（§7.4）：store 快照原本只在 /chat 的 useChat 里刷，直接进
+  // /diagnose、/local 时快照为空，列表与搜索会整体空转，故收口到侧栏自身挂载
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
+
+  // 搜索：防抖 200ms；标题过滤（零 IO）立即出结果，标题命中不足再按 SEARCH_SCAN_BATCH
+  // 条/批并行回读正文补齐，逐批合并刷新（§7.4）；命中满 SEARCH_HIT_LIMIT 提前停止
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -89,15 +97,24 @@ function SidebarContent() {
       void (async () => {
         const storage = getHistoryStorage();
         const bodyHits: SessionMeta[] = [];
-        for (const item of rest) {
+        for (let start = 0; start < rest.length; start += SEARCH_SCAN_BATCH) {
           if (cancelled) return;
           if (titleHits.length + bodyHits.length >= SEARCH_HIT_LIMIT) break;
-          const record = await storage.loadSession(item.id);
-          if (record && matchMessages(record.messages as ChatMsg[], current)) bodyHits.push(item);
+          // loadSession 把读库错误吞成 null，Promise.all 不会 reject；同批并行互不拖累
+          const batch = rest.slice(start, start + SEARCH_SCAN_BATCH);
+          const results = await Promise.all(
+            batch.map(async (item) => {
+              const record = await storage.loadSession(item.id);
+              return record && matchMessages(record.messages as ChatMsg[], current) ? item : null;
+            })
+          );
+          if (cancelled) return;
+          for (const hit of results) if (hit) bodyHits.push(hit);
+          // 渐进刷新：每批合并写一次，长扫描先给出部分结果
+          setHits(mergeHits(titleHits, bodyHits));
         }
         if (cancelled) return;
         setSearching(false);
-        setHits(mergeHits(titleHits, bodyHits));
       })();
     }, SEARCH_DEBOUNCE_MS);
     return () => {
@@ -111,10 +128,11 @@ function SidebarContent() {
 
   const handleOpen = useCallback(
     (id: string) => {
-      openSession(id);
+      // 带搜索关键词打开：聊天页据此定位首条命中消息（§7.4 搜索命中跳转）
+      openSession(id, query || undefined);
       if (isMobile) setSidebarOpen(false);
     },
-    [openSession, isMobile, setSidebarOpen]
+    [openSession, query, isMobile, setSidebarOpen]
   );
 
   const handleNewChat = useCallback(() => {

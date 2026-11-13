@@ -5,6 +5,13 @@ import { createLocalStorageUIStorage } from '@/lib/ui/storage.ts';
 import { create } from 'zustand';
 
 // 主题偏好已迁移至 useSettingsStore（持久化 + 三态），本 store 只留会话级 UI 态
+
+/** 搜索命中跳转的待消费载荷：侧栏带关键词打开会话时写入，聊天页定位完成后清除（§7.4） */
+export interface PendingJump {
+  sessionId: string;
+  keyword: string;
+}
+
 interface ChatState {
   isSettingsOpen: boolean;
   isSidebarOpen: boolean;
@@ -28,6 +35,11 @@ interface ChatState {
   pendingSessionId: string | null;
   openSessionSignal: number;
   /**
+   * 搜索命中跳转（doc/chat-history.md §7.4）：openSession 带关键词时原子写入，
+   * 聊天页在消息加载完成后消费（定位 + 高亮）并清除；sessionId 与当前会话不符视为过期
+   */
+  pendingJump: PendingJump | null;
+  /**
    * 改名广播（doc/chat-history.md §8.1）：useChat 的 sessionMetaRef 是内存态真源，
    * 侧栏改名后必须让它同步，否则下一次 flushSession 会用旧标题把库里的新标题覆盖回去
    */
@@ -42,10 +54,12 @@ interface ChatState {
   startNewChat: () => void;
   /** 重读历史列表（meta 表）并同步环境能力 */
   refreshSessions: () => Promise<void>;
-  /** 请求打开某个历史会话：由聊天页消费信号后调 useChat 载入 */
-  openSession: (id: string) => void;
+  /** 请求打开某个历史会话：由聊天页消费信号后调 useChat 载入；keyword 非空时同时携带跳转载荷 */
+  openSession: (id: string, keyword?: string) => void;
   /** 请求丢弃当前会话（不落盘）：用于"当前会话已被删除"场景 */
   requestNewChat: () => void;
+  /** 清除跳转载荷：聊天页消费完成后调用；过期载荷（sessionId 不符）也由此兜底清除 */
+  clearPendingJump: () => void;
   clearPendingSession: () => void;
   setCurrentSessionId: (id: string | null) => void;
   /** 删除会话：若删的是当前会话，先切断归属再删库，避免随后的落盘把它重建 */
@@ -67,6 +81,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   pendingSessionId: null,
   openSessionSignal: 0,
+  pendingJump: null,
   renamedSession: null,
   renameSignal: 0,
 
@@ -95,9 +110,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ sessions });
   },
 
-  openSession: (id) =>
+  // 数据与跳转载荷随信号原子写入：无关键词的普通点击清掉旧载荷，避免残留跳转
+  openSession: (id, keyword) =>
     set((state) => ({
       pendingSessionId: id,
+      pendingJump: keyword ? { sessionId: id, keyword } : null,
       openSessionSignal: state.openSessionSignal + 1,
     })),
 
@@ -108,6 +125,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       pendingSessionId: null,
       openSessionSignal: state.openSessionSignal + 1,
     })),
+
+  clearPendingJump: () => set({ pendingJump: null }),
 
   clearPendingSession: () => set({ pendingSessionId: null }),
 

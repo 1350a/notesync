@@ -53,22 +53,6 @@ export default function AppHeader() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  disabled
-                  className="touch:h-11 touch:w-11 hidden h-8 w-8 text-muted-foreground opacity-50 cursor-not-allowed md:inline-flex"
-                  title="搜索尚未接入：当前没有可检索的历史会话数据"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
                   onClick={handleNewChat}
                   className="touch:h-11 touch:w-11 h-8 w-8 text-muted-foreground"
                   title="新建对话（清空当前会话）"
