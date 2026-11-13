@@ -124,11 +124,22 @@ export default function ChatPage() {
     setShowBackToBottom(state.interrupted && distance > NEAR_BOTTOM_THRESHOLD);
   };
 
-  // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）；
-  // 搜索跳转未消费期间让位——视口要停在命中消息处，不能被拽回底部（§7.4）
+  // 搜索跳转用到的会话态（声明提前：复位 effect 必须先于吸底 effect 执行）
   const pendingJump = useChatStore((s) => s.pendingJump);
   const currentSessionId = useChatStore((s) => s.currentSessionId);
   const clearPendingJump = useChatStore((s) => s.clearPendingJump);
+
+  // 会话切换复位跟随态：上一会话的打断态（含跳转置位）不带入新会话，
+  // 否则跳转后下一次普通打开会落在顶部而不是最新消息
+  const seenSessionRef = useRef(currentSessionId);
+  useEffect(() => {
+    if (seenSessionRef.current === currentSessionId) return;
+    seenSessionRef.current = currentSessionId;
+    followState.current = { interrupted: false, atBottom: true, lastTop: 0 };
+  }, [currentSessionId]);
+
+  // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）；
+  // 搜索跳转未消费期间让位——视口要停在命中消息处，不能被拽回底部（§7.4）
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
