@@ -20,13 +20,6 @@ const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "";
  */
 export const DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro"];
 
-/**
- * 旧模型名：deepseek-chat / deepseek-reasoner 已于 2026-07-24 弃用；
- * deepseek-v4-flash / deepseek-v4-flash-vision-exp 为过渡别名，仍可调用但已非主推。
- * 仅保留导出以兼容历史引用，不进入白名单。
- */
-export const DEEPSEEK_LEGACY_MODELS = ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"];
-
 /** 配置了 key 才认为 DeepSeek 可用 */
 export function deepseekAvailable(): boolean {
   return Boolean(DEEPSEEK_API_KEY);

@@ -39,7 +39,7 @@ function badJsonRequest(url: string): Request {
   return new Request(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-client-id': 'unit-test' },
-    body: '{ "model": "deepseek-v4-flash", ',
+    body: '{ "model": "deepseek-flash", ',
   });
 }
 
