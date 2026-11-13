@@ -12,7 +12,13 @@
  * 语义详见 doc/tool-protocol.md §3.1 与 §8。
  */
 import { getTool } from './registry.ts';
-import type { ToolContext, ToolHandler, ToolHandlerReturn, ToolInvocation } from './types.ts';
+import type {
+  ToolContext,
+  ToolDefinition,
+  ToolHandler,
+  ToolHandlerReturn,
+  ToolInvocation,
+} from './types.ts';
 import { validateArguments } from './validate.ts';
 
 /** 单工具默认执行超时（ms） */
@@ -27,11 +33,21 @@ export interface InvokeOptions {
   args: Record<string, unknown>;
   /** 执行上下文（可选） */
   ctx?: ToolContext;
+  /**
+   * 本轮可用工具集（可选）。
+   *
+   * 解析优先级：先在本数组中按 `name` 精确匹配，未命中再回落 `getTool(name)` 查全局注册表。
+   * 用于承接**逐请求工厂件**（如 `submit_diagnosis`：由 route 每次请求经
+   * `createSubmitDiagnosisTool(store)` 创建并直接拼入 tools 数组，不走注册表），
+   * 否则这类工具会因注册表中不存在而被误判为"未知工具"。
+   */
+  defs?: ToolDefinition[];
 }
 
 /** 执行单个工具，永不抛 */
 export async function invokeTool(opts: InvokeOptions): Promise<ToolInvocation> {
-  const def = getTool(opts.name);
+  // 工具解析优先级：本轮 defs（逐请求工厂件）精确匹配 → 回落全局注册表
+  const def = opts.defs?.find((d) => d.name === opts.name) ?? getTool(opts.name);
   if (!def) {
     const msg = `未知工具：${opts.name}`;
     return { kind: 'result', ok: false, error: msg, summary: msg };

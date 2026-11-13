@@ -177,6 +177,8 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         name: call.name,
         args: call.arguments,
         ctx: { signal, timeoutMs: 15000 },
+        // 传入本轮工具集：承接 submit_diagnosis 等逐请求工厂件（不在注册表中）
+        defs: tools,
       });
       const ms = Date.now() - startMs;
 
