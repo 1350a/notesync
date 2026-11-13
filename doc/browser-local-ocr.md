@@ -170,7 +170,8 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 ## 7. 后续挂账（不属于本协议）
 
 - 接入 diagnose 图片诊断链路（替代已停用的服务端 `lib/ocr.ts`）。
-- 云 OCR 选项（用户显式选择，走设备边界规则提示）。
-- 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7），
-  云端档位待云 OCR 时一并落地。
-*（内容由AI生成，仅供参考）*
+- ~~云 OCR 选项（用户显式选择，走设备边界规则提示）~~ **已实装（2026-11-12）**：
+  转写引擎维度落地为 `ocr.engine`，智谱 glm-ocr 经 `/api/ocr` 代理接入，
+  独立协议见 doc/cloud-ocr.md（本文件保持"本地引擎"口径不变）。
+- 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7）；
+  云端引擎开关同分区相邻行，与 `preferLocal` 正交。

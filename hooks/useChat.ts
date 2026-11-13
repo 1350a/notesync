@@ -393,10 +393,23 @@ export function useChat(selectedModel: string) {
       setLoading(true);
 
       // 诊断负载组装：回路事件优先；无会话但用户开启诊断模式则以空 payload 开新题；
-      // 会话已 done 视为结束，开启着开关就自动开下一题（省一次手动重开）
+      // 会话已 done 视为结束，开启着开关就自动开下一题（省一次手动重开）。
+      // 回答 ask_user 面板时必须带 clarify_done：ask_user 是中断语义，服务端无从从
+      // 历史判断"这条消息是补问的回答"（toolCalls 不上行），缺了它状态机会卡死在 clarify。
+      // 判定读 history 的倒数第二条——倒数第一条是刚拼进去的 userMsg
+      const prevLast = history[history.length - 2];
+      const answeredAskUser =
+        diagnoseContext?.state !== 'done' &&
+        prevLast?.role === 'assistant' &&
+        (prevLast.awaitingQuestions?.length ?? 0) > 0;
       let diagnose: Record<string, unknown> | undefined;
       if (options?.diagnoseEvent) {
         diagnose = { ...(diagnoseContext ? { context: diagnoseContext } : {}), event: options.diagnoseEvent };
+      } else if (answeredAskUser) {
+        diagnose = {
+          ...(diagnoseContext ? { context: diagnoseContext } : {}),
+          event: { type: 'clarify_done', hasAnswer: Boolean(text.trim() || images.length || files.length), refused: false },
+        };
       } else if (options?.startDiagnosis) {
         diagnose = diagnoseContext && diagnoseContext.state !== 'done' ? { context: diagnoseContext } : {};
       } else if (diagnoseContext && diagnoseContext.state !== 'done') {

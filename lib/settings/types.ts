@@ -19,6 +19,15 @@ export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['off', 'low', 'medium', 'high'];
 
 /**
+ * OCR 转写引擎（doc/cloud-ocr.md §4）：与档位偏好 preferLocal 正交——
+ * preferLocal 决定「要不要转写」，engine 决定「谁来转写」。
+ * cloud 档图片像素上行至智谱 glm-ocr，默认保守档为 local（P4 约束③）。
+ */
+export type OcrEngine = 'local' | 'cloud';
+
+export const OCR_ENGINES: readonly OcrEngine[] = ['local', 'cloud'];
+
+/**
  * 档位类型守卫：把「外部输入是否属于档位集合」从布尔判断升级为类型收窄，
  * 供服务端校验请求体时替代 `THINKING_EFFORTS.includes(v as never)` 一类的断言逃逸。
  */
@@ -46,10 +55,11 @@ export interface UserSettings {
   /** 生成参数（未接线占位，无 UI） */
   generation: GenerationSettings;
   /**
-   * OCR 偏好（已接线，doc/browser-local-ocr.md §6.1）：
-   * 默认档为「全本地」（product-vision.md P4 约束③）——true=图片一律先本地转文字，原图不出端
+   * OCR 偏好（已接线，doc/browser-local-ocr.md §6.1 + doc/cloud-ocr.md §4）：
+   * preferLocal 默认档为「全本地」（P4 约束③）——true=图片一律先转文字；
+   * engine 为转写引擎，cloud=智谱 glm-ocr（图片像素出端，显式开启）
    */
-  ocr: { preferLocal: boolean };
+  ocr: { preferLocal: boolean; engine: OcrEngine };
   /** 本地知识检索（已接线，doc/browser-local-inference.md §7）：true=发送前浏览器内检索并注入命中片段 */
   rag: { enabled: boolean };
 }
@@ -61,7 +71,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   systemPrompt: '',
   generation: {},
   // 保守档默认：图片先本地转文字，原图不出端（product-vision.md P4 约束③）
-  ocr: { preferLocal: true },
+  ocr: { preferLocal: true, engine: 'local' },
   rag: { enabled: false },
 };
 
@@ -113,14 +123,22 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
 }
 
 /**
- * OCR 偏好规整：默认档是「全本地」（图片先转文字，原图不出端）。
+ * OCR 偏好规整：默认档是「全本地 + 本地引擎」（图片先转文字，原图不出端）。
  * 与 normalizeRag 的「只有显式 true 才生效」相反——这里的保守侧是 true，
  * 因此只有 **显式 false** 才关闭；缺省、'false' 字符串、坏值一律回落到默认档。
  * （宁可多一次本地识别，也不误把图片外发。）
+ * engine 同理保守：非合法枚举值（含旧存储缺字段）一律回落 'local'——
+ * 云端引擎意味着图片像素出端，必须由显式合法值开启（doc/cloud-ocr.md §4）。
  */
 function normalizeOcr(raw: unknown): UserSettings['ocr'] {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { preferLocal: true };
-  return { preferLocal: (raw as Record<string, unknown>).preferLocal !== false };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { preferLocal: true, engine: 'local' };
+  }
+  const record = raw as Record<string, unknown>;
+  const engine = (OCR_ENGINES as readonly string[]).includes(record.engine as string)
+    ? (record.engine as OcrEngine)
+    : 'local';
+  return { preferLocal: record.preferLocal !== false, engine };
 }
 
 function normalizeRag(raw: unknown): UserSettings['rag'] {
