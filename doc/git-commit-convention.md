@@ -1,3 +1,14 @@
+---
+AIGC:
+    Label: "1"
+    ContentProducer: 001191440300708461136T1XGW3
+    ProduceID: 0389a83fdf2fd477e56fb14bde9a8feb_eb9d4eaedf3211f19919525400638852
+    ReservedCode1: cGE71YzacdIov+1eo3JHJPLbnyQ8uST5QkNn7z0SZkvE8gtGQ8rZTZteQNfIObQHsIKjSb1eJxuNxREvxWMzwWFQl4xungJ1U85bMfGkcU/o1xSFuMFv65SqWEz1OiDjn4xbticFwJC5waau3WzAe2M7O7GPwGCcZIACCUwg3ehJsbn+t8NFr5gHcAQ=
+    ContentPropagator: 001191440300708461136T1XGW3
+    PropagateID: 0389a83fdf2fd477e56fb14bde9a8feb_eb9d4eaedf3211f19919525400638852
+    ReservedCode2: cGE71YzacdIov+1eo3JHJPLbnyQ8uST5QkNn7z0SZkvE8gtGQ8rZTZteQNfIObQHsIKjSb1eJxuNxREvxWMzwWFQl4xungJ1U85bMfGkcU/o1xSFuMFv65SqWEz1OiDjn4xbticFwJC5waau3WzAe2M7O7GPwGCcZIACCUwg3ehJsbn+t8NFr5gHcAQ=
+---
+
 # Git 提交规范（v1）
 
 > **状态：已定稿并生效**（2026-11-13 补齐）。
@@ -101,3 +112,4 @@ scope 取**改动落点所在目录或领域**，小写，不带路径分隔符�
 3. 标题符合 `<type>(<scope>): <中文描述>`，type 在 §1 白名单内。
 4. 没有 §5 列出的禁提交项混入。
 5. 破坏性变更已在 footer 标注；文档与代码在同一次逻辑变更内保持一致。
+*（内容由AI生成，仅供参考）*
