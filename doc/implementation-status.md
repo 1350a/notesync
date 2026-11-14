@@ -85,6 +85,7 @@ AIGC:
 | 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
 | 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
 | 图片上传明示 | 已实装：发送处按派生档标注外发（多模态「图片将上传至模型服务商」；云端 OCR「图片像素上传至智谱」）。2026-11-14 起档位全自动派生、不再提供手选 | ✅ | `components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx` |
+| OCR 引擎标记与文案分流 | 已实装（2026-11-14）：发送时刻引擎随消息落库（`ChatMsg.ocrEngine`，sanitize 白名单放行）与随附件上行（`DiagnoseAttachment.ocrEngine`，parseAttachments 严格判型）；气泡徽章、导出 Markdown、服务端组装标签按引擎区分「云端/本地」，无字段旧数据中性兜底不写死引擎（原「已本地OCR转文字·原图未离开浏览器」在云端引擎下失真） | ✅ | `components/chat/ChatList.tsx`、`lib/history/export.ts`、`lib/history/sanitize.ts`、`lib/diagnose/assemble.ts` |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
 
