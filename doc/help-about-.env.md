@@ -15,10 +15,11 @@ AIGC:
 
 # 环境变量说明（help-about-.env）
 
-> 状态：v1（已与 `dev` 分支 HEAD 代码逐条核对）｜最后更新：2026-11-13
+> 状态：v1（已与 `dev` 分支 HEAD 代码逐条核对）｜最后更新：2026-11-14
 > 对应代码：`lib/provider/deepseek.ts`、`lib/provider/zhipu.ts`、`lib/provider/custom.ts`、
 > `lib/provider/openaiCompat.ts`、`lib/provider/index.ts`、`app/api/chat/route.ts`、
-> `app/api/diagnose-paper/route.ts`、`app/api/ocr/route.ts`、`lib/chat/trim.ts`、`lib/mock/chat.ts`
+> `app/api/diagnose-paper/route.ts`、`app/api/ocr/route.ts`、`app/api/parse-doc/route.ts`、
+> `lib/chat/trim.ts`、`lib/mock/chat.ts`、`scripts/copy-local-models.mjs`
 > 对应模板：`.env.example`（只保留极简标注，语义以本文件为准）
 
 本文是 notesync 全部环境变量的**唯一说明来源**。`.env.example` 只保留变量名、示例值与分组标题，
@@ -45,7 +46,7 @@ AIGC:
 
 ## 2. 变量总表
 
-`.env.example` 共 27 个变量：18 个生效（含 3 个 MOCK 调试开关）+ 9 个已停用的历史遗留（注释保留）。
+`.env.example` 共 20 个变量：19 个运行时生效（含 4 个 MOCK 调试开关）+ 1 个仅资产准备脚本读取（`HF_MIRROR`）。
 
 | 变量 | 分组 | 必填性 | 默认值 | 取值 / 示例 |
 | --- | --- | --- | --- | --- |
@@ -67,6 +68,8 @@ AIGC:
 | `MOCK_MODEL` | 调试 | 可选 | 关闭 | 仅 `1` 开启 |
 | `MOCK_IMAGE_MODE` | 调试 | 可选 | 空（自动） | `text-only` 强制降级 |
 | `MOCK_OCR` | 调试 | 可选 | 关闭 | 仅 `1` 开启 |
+| `MOCK_PARSE_DOC` | 调试 | 可选 | 关闭 | 仅 `1` 开启 |
+| `HF_MIRROR` | 资产准备 | 可选 | `https://huggingface.co` | 镜像基址，如 `https://hf-mirror.com` |
 | 其余 9 个（`OCR_MODE` 等） | 历史遗留 | 不生效 | — | 见 §7 |
 
 ## 3. Provider 配置
@@ -192,7 +195,7 @@ AIGC:
 
 ## 6. 零 token 调试开关
 
-三个 MOCK 开关都是为了"不烧 token 验证接线"，默认全关；生产演示前务必确认已关。
+四个 MOCK 开关都是为了"不烧 token 验证接线"，默认全关；生产演示前务必确认已关。
 
 ### 6.1 `MOCK_MODEL`（默认 `0`）
 
@@ -218,10 +221,18 @@ AIGC:
 （`doc/cloud-ocr.md` §5）。注意它的判断在可用性校验之前，因此"没配 Key 也能通"是这个开关的预期行为，
 不代表云端 OCR 真的可用。
 
-## 7. 历史遗留参数（已注释停用）
+### 6.4 `MOCK_PARSE_DOC`（默认 `0`）
+
+置 `1` 时 `/api/parse-doc` 不碰 `word-extractor`，直接返回占位文本
+`[MOCK]doc 解析占位（MOCK_PARSE_DOC=1，未调用解析库）：<文件名>`（`app/api/parse-doc/route.ts`），
+用于零依赖验证「上传旧版 `.doc` → 服务端解析 → 回填」接线。它的判断在 `dataUrl` 入参校验**之后**，
+因此非法请求仍照常返回 `invalid_request`，不会因为开了 MOCK 就吞掉参数错误（协议见 `doc/file-intake.md` §8）。
+注意它只对 `.doc` 端点生效，PDF / DOCX 走各自链路，不受此开关影响。
+
+## 7. 历史遗留参数（已停用，模板中已移除）
 
 `harness` / `agent` / `rag` / 旧 OCR / 旧 PDF 链路对应的源码已删除，下列变量**全仓无任何读取点**，
-`.env.example` 仅以注释保留原文便于恢复。填入值不会有任何效果。
+也已从 `.env.example` 移除，本表是它们仅存的说明。填入值不会有任何效果。
 
 | 变量 | 原含义 | 现在怎么办 |
 | --- | --- | --- |
@@ -302,7 +313,7 @@ MOCK_OCR=1
 | `CUSTOM_TOOL_MODE` | 严格 `text` 切文本协议 | `TEXT`、`Text` |
 | `CUSTOM_ALLOW_IMAGES` | 严格 `1` | `true`、`yes`、`2`（仍关闭） |
 | `USER_FIELD_ENABLED` | 值 ≠ `0` 即开启 | `false`、`no`（仍开启） |
-| `MOCK_MODEL` / `MOCK_OCR` | 严格 `1` | `true`、`yes` |
+| `MOCK_MODEL` / `MOCK_OCR` / `MOCK_PARSE_DOC` | 严格 `1` | `true`、`yes` |
 | `MOCK_IMAGE_MODE` | 严格 `text-only` | `text`、`text_only` |
 | `TRIM_BUDGET_CHARS` | 非负整数（`0` = 禁用） | 负数、`12k`、带单位写法 |
 | `DEEPSEEK_MODEL` | 填 `/models` 枚举内的名字（`deepseek-flash` / `deepseek-v4-pro`） | `deepseek-v4-flash`（过渡别名，不在枚举与白名单内，下拉不显示，见 §3.1） |
@@ -312,16 +323,29 @@ MOCK_OCR=1
 - `.env` 里不要给值加引号或行内注释以外的修饰；`MOCK_IMAGE_MODE=` 留空表示"自动"，不是"关闭"。
 - 修改后必须重启进程。`next dev` 下改动 `.env*` 会自动重启，`next start` 下不会。
 
-## 10. 未被 `.env.example` 收录但仍被代码读取的变量
+## 10. 非运行时变量
 
-| 变量 | 读取位置 | 作用 | 默认 |
-| --- | --- | --- | --- |
-| `HF_MIRROR` | `scripts/copy-local-models.mjs` | 本地模型权重下载源，需可访问 huggingface.co 时切镜像 | `https://huggingface.co` |
-| `NODE_ENV` | 框架内置 | 运行环境判定 | 由启动方式决定 |
+### 10.1 `HF_MIRROR`（默认 `https://huggingface.co`）
 
-`HF_MIRROR` 只在资产准备脚本（`npm run` 脚本链）里读取，不影响运行时行为，因此未进模板。
-需要内网/镜像环境时在 shell 里临时设置即可：`HF_MIRROR=https://hf-mirror.com npm run <脚本>`
-（资产分发协议见 `doc/browser-local-inference.md` §3）。
+只在资产准备脚本 `scripts/copy-local-models.mjs`（`npm run local:assets`）里读取，用于下载
+`onnx-community/bge-small-zh-v1.5-ONNX` 权重，**不影响运行时行为**：服务端与浏览器端都不读它，
+权重下载完即固化在 `public/models/`（派生目录不入库）。
+
+- 默认值就是代码里的回落值（`process.env.HF_MIRROR || "https://huggingface.co"`，第 17 行），
+  模板里写 `HF_MIRROR=https://huggingface.co` 与不设置等价，只是把默认值显式化。
+- 直连 huggingface.co 慢或不通时改镜像，例如 `HF_MIRROR=https://hf-mirror.com`；脚本按
+  `{HF_MIRROR}/{仓库名}/resolve/main/...` 拼地址，镜像需完整复制仓库目录结构，否则会命中 HTML
+  错误页被体积下限拦截。
+- 只需在跑资产准备时临时设置，不必写进 `.env.local`：
+  `HF_MIRROR=https://hf-mirror.com npm run local:assets`（资产分发协议见
+  `doc/browser-local-inference.md` §3）；下载失败时脚本报错会打印当前生效的 BASE 地址
+  （`scripts/copy-local-models.mjs:123`）。
+
+### 10.2 `NODE_ENV`（默认由启动方式决定，未进模板）
+
+Next.js 框架内置的运行环境判定（`next dev` 为 `development`、`next build` / `next start` 为
+`production`）。仓内只有构建配置 `next.config.ts:22` 读它做 dev/prod 分支，请求链路不依赖它，
+因此不写进 `.env.example`，也不建议手动指定——写死会与 `npm run dev` / `npm run build` 的实际模式错配。
 
 ## 11. 排障对照
 
@@ -342,7 +366,8 @@ MOCK_OCR=1
 
 - 新增/删除环境变量时，三处同步：代码读取点 → 本文件 §2 总表与对应分节 → `.env.example` 一行。
 - `.env.example` 只写"变量名 + 示例值 + 分组标题"，不写语义说明；语义一律落本文件，避免两处漂移。
-- 变量总数核对口径：`.env.example` 中有效的 `KEY=` 行数 + 注释掉的历史遗留行数，与 §2 表格行数一致。
+- 变量总数核对口径：`.env.example` 中有效的 `KEY=` 行数，等于 §2 表格逐条列出的变量行数
+  （「其余 9 个」这类历史遗留汇总行不计）；当前为 20 行 = 20 个变量。
 *（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
