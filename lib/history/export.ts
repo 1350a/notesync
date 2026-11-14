@@ -118,7 +118,15 @@ export function buildSessionMarkdown(
     if (images.length > 0) lines.push(`图片：${images.join(' ')}`, '');
 
     if (message.ocrTexts && message.ocrTexts.length > 0) {
-      lines.push(`- 本地 OCR 产物：${message.ocrTexts.length} 张（原图未上行）`);
+      // 与气泡徽章同口径（doc/browser-local-ocr.md §6.2）：按发送时刻引擎区分去向，
+      // 无引擎字段的旧消息中性兜底，不写死「本地」（云端引擎下原表述失真）
+      const ocrLine =
+        message.ocrEngine === 'cloud'
+          ? `云端 OCR 产物：${message.ocrTexts.length} 张（图片像素已外发至云端 OCR 服务）`
+          : message.ocrEngine === 'local'
+            ? `本地 OCR 产物：${message.ocrTexts.length} 张（原图未上行）`
+            : `OCR 产物：${message.ocrTexts.length} 张`;
+      lines.push(`- ${ocrLine}`);
     }
 
     const files = renderFiles(message);
