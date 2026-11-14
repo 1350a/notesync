@@ -6,6 +6,8 @@
  * 由诊断模式的 route 按请求组装（见 app/api/chat/route.ts）。
  * 真正的提交校验在 lib/diagnose/runtime.ts parseSubmission，工具层只收件。
  */
+import { RETRY_HINTS } from '../../diagnose/prompts.ts';
+import { detectSubmissionLeak } from '../../diagnose/submission-guard.ts';
 import type { ToolDefinition } from '../types.ts';
 
 /** 逐请求提交存储：最后一次 submit 生效 */
@@ -71,7 +73,15 @@ export function createSubmitDiagnosisTool(store: SubmissionStore): ToolDefinitio
       required: ['level', 'knowledgePoints'],
     },
     handler: async (args) => {
-      // 只收件不校验：校验统一在 parseSubmission，校验失败的纠正提示由 finalize 编排
+      // 提交前校验（C1）：学生可见文本里出现英文 code 或内部字段名，就在落地前拦回。
+      // 命中即抛错 → invoke 包成 ok=false 回填模型；正文此时还没定稿，模型在同一轮 loop
+      // 内改一个点重交即可。store 不写入，保证脏提交不会被 finalize 读到。
+      const leak = detectSubmissionLeak(args as Record<string, unknown>);
+      if (leak) {
+        console.warn(`[diagnose] 提交被拦回：${leak.kind} 命中 ${leak.field}（${leak.sample}）`);
+        throw new Error(RETRY_HINTS[leak.kind]);
+      }
+      // 其余字段的必填/取值校验统一在 parseSubmission，校验失败的纠正提示由 finalize 编排
       store.args = args;
       return { kind: 'result', data: { ok: true }, summary: '已收到结构化诊断提交' };
     },

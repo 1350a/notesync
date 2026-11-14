@@ -36,27 +36,65 @@ export const CONFIDENCE_THRESHOLD = 0.7;
 
 const STATES = new Set<DiagnoseState>(['intake', 'clarify', 'diagnose', 'explain', 'L1_only', 'reject', 'done']);
 
-/** 客户端回传上下文严格解析：任一字段非法 → null（调用方回落初始 intake 重新收题） */
+/** 追问预算上限（与 transition 的状态机口径一致） */
+export const MAX_CLARIFY_USED = 2;
+
+/** 追问次数钳位：非有限数按 0、负数按 0、超预算按上限，不做整单拒绝 */
+function normalizeClarifyUsed(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return 0;
+  const int = Math.trunc(raw);
+  if (int < 0) return 0;
+  return Math.min(int, MAX_CLARIFY_USED);
+}
+
+/** 提示级别钳位：非法值一律回到第 1 级（讲解从最低级起，不会跳级把答案漏出去） */
+function normalizeHintLevel(raw: unknown): 1 | 2 | 3 {
+  if (raw === 2) return 2;
+  if (raw === 3) return 3;
+  return 1;
+}
+
+/**
+ * 客户端回传上下文解析：字段级宽容，只有「根本不是对象」才判非诊断模式。
+ *
+ * 旧实现是「任一字段非法 → null」，调用方据此回落初始 intake 重新收题。实测这是
+ * 最伤的误伤形态：讲解阶段只要 clarifyUsed 或 hintLevel 带一个脏值（旧本地快照、
+ * 客户端未校验就上行），整条上下文被丢弃，用户明明在问第 3 级提示，却收到一句
+ * 「请把题目发我」。
+ *
+ * 现在单字段脏值只降级该字段并留日志，其余字段照常使用——宁可带着保守默认值继续，
+ * 也不把整轮对话打断。真正的脏数据（非对象）仍然拒绝。
+ */
 export function parseDiagnoseContext(raw: unknown): DiagnoseContext | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
-  if (record.subject !== 'math') return null; // v1 仅数学；未知学科视为脏数据
-  if (typeof record.state !== 'string' || !STATES.has(record.state as DiagnoseState)) return null;
-  if (
-    typeof record.clarifyUsed !== 'number' ||
-    !Number.isInteger(record.clarifyUsed) ||
-    record.clarifyUsed < 0 ||
-    record.clarifyUsed > 2
-  ) {
-    return null;
+
+  if (record.subject !== 'math') {
+    // v1 仅数学；未知学科按 math 继续跑，但留痕便于定位客户端串数据
+    console.warn(`[diagnose] 上下文学科非预期（${String(record.subject)}），按 math 继续`);
   }
-  if (record.hintLevel !== 1 && record.hintLevel !== 2 && record.hintLevel !== 3) return null;
-  return {
-    subject: 'math',
-    state: record.state as DiagnoseState,
-    clarifyUsed: record.clarifyUsed,
-    hintLevel: record.hintLevel,
-  };
+
+  const state: DiagnoseState =
+    typeof record.state === 'string' && STATES.has(record.state as DiagnoseState)
+      ? (record.state as DiagnoseState)
+      : 'intake';
+  if (state !== record.state) {
+    console.warn(`[diagnose] 上下文状态非法（${String(record.state)}），回落 intake`);
+  }
+
+  const clarifyUsed = normalizeClarifyUsed(record.clarifyUsed);
+  if (clarifyUsed !== record.clarifyUsed) {
+    console.warn(
+      `[diagnose] clarifyUsed 非法（${String(record.clarifyUsed)}），钳位为 ${clarifyUsed}`,
+    );
+  }
+
+  const hintLevel = normalizeHintLevel(record.hintLevel);
+  if (hintLevel !== record.hintLevel) {
+    console.warn(`[diagnose] hintLevel 非法（${String(record.hintLevel)}），钳位为 ${hintLevel}`);
+  }
+
+  return { subject: 'math', state, clarifyUsed, hintLevel };
 }
 
 /** 客户端事件严格解析：白名单外一律 null（不报错，按未携带处理） */

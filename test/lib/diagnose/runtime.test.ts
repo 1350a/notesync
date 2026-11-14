@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   advanceAfterResponse,
   buildDiagnosisResult,
@@ -29,12 +29,54 @@ function context(partial: Partial<DiagnoseContext>): DiagnoseContext {
 }
 
 describe('payload 严格解析', () => {
-  it('合法上下文通过，任一字段脏数据整体拒绝', () => {
-    expect(parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 2, hintLevel: 3 })).not.toBeNull();
-    expect(parseDiagnoseContext({ subject: 'english', state: 'intake', clarifyUsed: 0, hintLevel: 1 })).toBeNull();
-    expect(parseDiagnoseContext({ subject: 'math', state: '飞', clarifyUsed: 0, hintLevel: 1 })).toBeNull();
-    expect(parseDiagnoseContext({ subject: 'math', state: 'intake', clarifyUsed: 9, hintLevel: 1 })).toBeNull();
+  it('字段级钳位：脏字段就地降级，非对象才拒绝', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // 合法上下文原样通过
+    expect(parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 2, hintLevel: 3 })).toEqual({
+      subject: 'math',
+      state: 'explain',
+      clarifyUsed: 2,
+      hintLevel: 3,
+    });
+
+    // 学科非 math：按 math 继续（v1 仅数学），不再整单丢弃
+    expect(
+      parseDiagnoseContext({ subject: 'english', state: 'intake', clarifyUsed: 0, hintLevel: 1 }),
+    ).toEqual({ subject: 'math', state: 'intake', clarifyUsed: 0, hintLevel: 1 });
+
+    // 脏 state：只回落 intake，其余字段保留（旧行为会丢掉整条上下文，导致讲解中被要求重新交题）
+    expect(parseDiagnoseContext({ subject: 'math', state: '飞', clarifyUsed: 1, hintLevel: 2 })).toEqual({
+      subject: 'math',
+      state: 'intake',
+      clarifyUsed: 1,
+      hintLevel: 2,
+    });
+
+    // clarifyUsed 越界钳到上限；负数与非数字落到 0
+    expect(
+      parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 9, hintLevel: 3 })?.clarifyUsed,
+    ).toBe(2);
+    expect(
+      parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: -3, hintLevel: 3 })?.clarifyUsed,
+    ).toBe(0);
+    expect(
+      parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 'two', hintLevel: 3 })?.clarifyUsed,
+    ).toBe(0);
+
+    // hintLevel 非法一律回第 1 级（不跳级，避免把答案漏出去）
+    expect(
+      parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 0, hintLevel: 0 })?.hintLevel,
+    ).toBe(1);
+    expect(
+      parseDiagnoseContext({ subject: 'math', state: 'explain', clarifyUsed: 0, hintLevel: 7 })?.hintLevel,
+    ).toBe(1);
+
+    // 非对象仍然判非诊断模式
     expect(parseDiagnoseContext(null)).toBeNull();
+    expect(parseDiagnoseContext('math')).toBeNull();
+
+    warn.mockRestore();
   });
 
   it('事件白名单：四类放行，伪造服务端事件拒绝', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DISCIPLINE_BLOCK,
+  DISCIPLINE_BRIEF,
   SCOPE_BOUNDARY_LINE,
   buildDiagnoseSystemPrompt,
 } from '@/lib/diagnose/prompts';
@@ -107,28 +108,78 @@ describe('学科边界：三级处置结构', () => {
  */
 const NO_DISCIPLINE_STATES: DiagnoseState[] = ['done'];
 
-describe('七个状态的提示词都注入纪律与边界', () => {
-  it('每个有诊断提示词的状态都带 SCOPE_BOUNDARY_LINE', () => {
-    let built = 0;
-    for (const state of ALL_STATES) {
-      const prompt = promptOf(state);
-      if (prompt === null) continue; // 非诊断态不注入
-      built += 1;
-      expect(prompt, `状态 ${state} 缺少学科边界`).toContain(SCOPE_BOUNDARY_LINE);
-      expect(prompt, `状态 ${state} 的禁令退回旧口径`).not.toContain('不得直接给答案');
-    }
-    expect(built).toBeGreaterThanOrEqual(6);
-  });
-
-  it('除收尾态外，每个状态都带完整 DISCIPLINE_BLOCK', () => {
+describe('七个状态的提示词按态装配', () => {
+  it('每个状态都带边界要点（越权/非数学/无关，前缀只给硬拒）', () => {
     for (const state of ALL_STATES) {
       const prompt = promptOf(state);
       if (prompt === null) continue;
-      if (NO_DISCIPLINE_STATES.includes(state)) {
-        expect(prompt, `收尾态 ${state} 也应保留边界`).toContain(SCOPE_BOUNDARY_LINE);
-        continue;
-      }
-      expect(prompt, `状态 ${state} 缺少输出纪律`).toContain(DISCIPLINE_BLOCK);
+      expect(prompt, `状态 ${state} 缺少边界条款`).toContain('只做数学错题诊断');
+      expect(prompt, `状态 ${state} 缺少越权类处置`).toContain('越权');
+      expect(prompt, `状态 ${state} 缺少非数学学科处置`).toContain('非数学学科');
+      expect(prompt, `状态 ${state} 缺少无关话题处置`).toContain('无关');
+      expect(prompt, `状态 ${state} 的软引导丢失前缀禁令`).toContain('不得带');
+      expect(prompt, `状态 ${state} 的禁令退回旧口径`).not.toContain('不得直接给答案');
     }
+  });
+
+  it('除收尾态外，每个状态都保留三条禁令的判据', () => {
+    for (const state of ALL_STATES) {
+      if (NO_DISCIPLINE_STATES.includes(state)) continue;
+      const prompt = promptOf(state);
+      if (prompt === null) continue;
+      expect(prompt, `状态 ${state} 缺少输出纪律`).toContain('不得只给答案');
+      expect(prompt, `状态 ${state} 失去不复述解法的约束`).toContain('不得整段复述正确解法');
+    }
+  });
+
+  it('收尾态只留最小边界，不重复纪律块', () => {
+    const prompt = promptOf('done');
+    expect(prompt).not.toBeNull();
+    expect(prompt).toContain('只做数学错题诊断');
+    expect(prompt).not.toContain(DISCIPLINE_BLOCK);
+    expect(prompt).not.toContain(DISCIPLINE_BRIEF);
+  });
+
+  it('片段按需装配：低阶态不注入后续阶段的策略卡与归因指引', () => {
+    const intake = promptOf('intake') ?? '';
+    expect(intake).not.toContain('策略卡表');
+    expect(intake).not.toContain('表现 → 错因');
+    const clarify = promptOf('clarify') ?? '';
+    expect(clarify).not.toContain('策略卡表');
+    const diagnose = promptOf('diagnose') ?? '';
+    expect(diagnose).toContain('策略卡表');
+    expect(diagnose).toContain('表现 → 错因');
+  });
+
+  it('同一条禁令在单个提示词里只出现一次', () => {
+    const diagnose = promptOf('diagnose') ?? '';
+    expect(diagnose.split('不得整段复述正确解法')).toHaveLength(2);
+    const intake = promptOf('intake') ?? '';
+    expect(intake.split('hints 一律省略')).toHaveLength(2);
+  });
+
+  it('篇幅预算：按态裁剪后的长度不得回涨', () => {
+    const budget: Record<DiagnoseState, number> = {
+      intake: 1600,
+      clarify: 1100,
+      diagnose: 2700,
+      explain: 950,
+      L1_only: 1250,
+      reject: 470,
+      done: 180,
+    };
+    let total = 0;
+    let counted = 0;
+    for (const state of ALL_STATES) {
+      const prompt = promptOf(state);
+      if (prompt === null) continue;
+      expect(
+        prompt.length,
+        `状态 ${state} 提示词 ${prompt.length} 字符，超预算 ${budget[state]}`,
+      ).toBeLessThanOrEqual(budget[state]);
+      total += prompt.length;
+      counted += 1;
+    }
+    expect(Math.round(total / counted), '七态平均篇幅超预算').toBeLessThanOrEqual(1150);
   });
 });
