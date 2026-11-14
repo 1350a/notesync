@@ -11,7 +11,7 @@ AIGC:
 
 # 用户设置（User Settings）协议
 
-> 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt / 语言 未接线）｜最后更新：2026-11-10
+> 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt 未接线）｜最后更新：2026-11-14
 > 对应代码：`lib/settings/`、`store/useSettingsStore.ts`、`components/settings/`、`lib/client-id.ts`、`components/layout/AppLayout.tsx`（水合与主题收口）
 
 本文件是用户设置的**唯一事实来源**。修改协议必须先改本文件，再改代码（见 `AGENTS.md` §9）。
@@ -31,7 +31,6 @@ AIGC:
 interface UserSettings {
   theme: ThemePreference;             // 默认 'light'；四档：light/dark/sky/mint，见 §2.2
   defaultModel: string;               // 默认模型名；'' = 跟随后端推荐（/api/models 首项）
-  language: 'system';                 // 【未接线】界面语言，当前仅占位
   systemPrompt: string;               // 【未接线】自定义系统提示词，无 UI，服务端注入待下一轮
   generation: {                       // 部分接线：thinkingEffort 已实装，其余仍占位
     thinkingEffort?: ThinkingEffort;  // 【已接线 2026-11-12】思考强度档位，默认 'medium'；映射见 §2.1
@@ -126,7 +125,7 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；语言、朗读音色两行禁用 + "未实装"标注 |
+| 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；朗读音色一行禁用 + "未实装"标注 |
 | 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.preferLocal` + `ocr.engine`，自通用设置迁入）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；重置设备标识（`resetUserId()`，仅清 `notesync-user-id`，不动设置，见 §4.1）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
@@ -144,7 +143,10 @@ interface SettingsStorage {
 - generation / systemPrompt 服务端注入：扩展 `ChatRequestBody` + `/api/chat` 校验读取（参数经 `CompleteOptions` 透传 provider）。
 - OCR `preferLocal` 已接线（2026-11-10，语义见 doc/browser-local-ocr.md §6）；~~云 OCR 选项仍挂账~~ **云 OCR 已实装（2026-11-12）**：`ocr.engine` 落地，契约见 doc/cloud-ocr.md（设备边界规则兑现：引擎默认 local，切云端为显式动作）。
 - RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；查询侧触发阈值 `RAG_MIN_QUERY_CHARS = 8` 已接线（2026-11-12，见同文档 §5.4）；云端 embedding 与对话本地档位挂账（同文档 §8）。
-- 语言（i18n）、朗读音色（TTS）实装。
+- 朗读音色（TTS）实装。
+- ~~界面语言（i18n）~~ **占位已移除（2026-11-14 拍板砍掉多语言方向）**：`language`
+  字段与设置页「语言」行已删，界面仅中文；旧存量里的 `language` 键由 normalize
+  按"未知字段丢弃"自然清除，无需迁移脚本。若将来重启 i18n，需重新走文档先行流程。
 - 自定义模型 + 客户端密钥安全设计（重启时议 `AGENTS.md` §7 是否修订）。
 - 会话历史的服务端方案 `/api/sessions`（复用 X-Client-Id）：当前 UI 已改为浏览器本地 IndexedDB 持久化（`doc/chat-history.md` §7），跨设备同步仍未做。
 - ~~CSP 响应头~~ **已落地（2026-11-10 复核移出挂账）**：基础版 CSP 由 `next.config.ts`

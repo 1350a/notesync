@@ -2,7 +2,7 @@
  * 用户设置 - 模式定义与校验（纯函数，无副作用，可被脚本零依赖直跑冒烟）。
  *
  * 协议见 doc/user-settings.md §2：修改字段前先改文档。
- * 声明但未接线的字段（language/systemPrompt/generation）仅做类型占位与
+ * 声明但未接线的字段（systemPrompt/generation）仅做类型占位与
  * normalize 钳制，UI 与服务端消费按文档 §6 挂账逐步落地。
  */
 
@@ -53,8 +53,6 @@ export interface UserSettings {
   theme: ThemePreference;
   /** 默认模型名；'' = 跟随后端推荐（/api/models 首项） */
   defaultModel: string;
-  /** 界面语言（未接线占位，当前仅中文） */
-  language: 'system';
   /** 自定义系统提示词（未接线占位，无 UI） */
   systemPrompt: string;
   /** 生成参数（未接线占位，无 UI） */
@@ -72,7 +70,6 @@ export interface UserSettings {
 export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'light',
   defaultModel: '',
-  language: 'system',
   systemPrompt: '',
   generation: {},
   // 保守档默认：图片先本地转文字，原图不出端（product-vision.md P4 约束③）
@@ -168,8 +165,7 @@ export function normalizeSettings(raw: unknown): UserSettings {
     typeof record.defaultModel === 'string'
       ? record.defaultModel.slice(0, DEFAULT_MODEL_MAX_CHARS)
       : DEFAULT_SETTINGS.defaultModel;
-  // 语言当前只有唯一取值；引入 i18n 时在此按语言包清单收窄
-  const language: UserSettings['language'] = 'system';
+  // 语言占位已删（2026-11-14 砍掉多语言方向）；旧存量 language 键由"未知字段丢弃"自然清除
   const systemPrompt =
     typeof record.systemPrompt === 'string'
       ? record.systemPrompt.slice(0, SYSTEM_PROMPT_MAX_CHARS)
@@ -178,7 +174,6 @@ export function normalizeSettings(raw: unknown): UserSettings {
   return {
     theme,
     defaultModel,
-    language,
     systemPrompt,
     generation: normalizeGeneration(record.generation),
     ocr: normalizeOcr(record.ocr),

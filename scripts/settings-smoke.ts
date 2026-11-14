@@ -76,7 +76,7 @@ check("rag.enabled 'true' 字符串视为否", normalizeSettings({ rag: { enable
 check('rag 非对象回落默认', normalizeSettings({ rag: 'on' }).rag.enabled === false);
 check('rag 缺省回落 false', normalizeSettings({}).rag.enabled === false);
 
-check('未知字段一律丢弃', eq(Object.keys(normalizeSettings({ theme: 'dark', hacked: 1 })), ['theme', 'defaultModel', 'language', 'systemPrompt', 'generation', 'ocr', 'rag']));
+check('未知字段一律丢弃（含旧存量 language 键）', eq(Object.keys(normalizeSettings({ theme: 'dark', hacked: 1, language: 'system' })), ['theme', 'defaultModel', 'systemPrompt', 'generation', 'ocr', 'rag']));
 
 /* ---------- 默认值不可变性 ---------- */
 const before = JSON.stringify(cloneDefaults());

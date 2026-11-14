@@ -64,13 +64,8 @@ export default function GeneralSection() {
       </SettingsRow>
 
       {/* 未实装占位：仅展示不可交互（诚实接线，协议 doc/user-settings.md §5/§6）。
-          图片处理行已迁入「本地能力」分区（doc/browser-local-inference.md §7） */}
-      <SettingsRow label="语言" badge={<NotWiredBadge />} hint="多语言界面尚未接入">
-        <select disabled className={DISABLED_SELECT_CLASS}>
-          <option>跟随系统</option>
-        </select>
-      </SettingsRow>
-
+          图片处理行已迁入「本地能力」分区（doc/browser-local-inference.md §7）；
+          语言行已删（2026-11-14 砍掉多语言方向，见 doc/user-settings.md §6） */}
       <SettingsRow label="朗读音色" badge={<NotWiredBadge />} hint="TTS 能力尚未接入">
         <select disabled className={DISABLED_SELECT_CLASS}>
           <option>暂不可选</option>
