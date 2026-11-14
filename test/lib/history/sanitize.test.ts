@@ -177,4 +177,36 @@ describe('历史回读的结构化字段清洗', () => {
       });
     });
   });
+
+  describe('ocrEngine', () => {
+    const userWithOcr = (extra: Record<string, unknown>): Record<string, unknown> => ({
+      role: 'user',
+      content: '这题怎么错的？',
+      images: ['data:image/png;base64,AAAA'],
+      ocrTexts: ['识别文本'],
+      ...extra,
+    });
+
+    it('合法引擎值随消息保留', () => {
+      const out = sanitizeMessages([userWithOcr({ ocrEngine: 'cloud' })]);
+      expect(out[0].ocrEngine).toBe('cloud');
+      const local = sanitizeMessages([userWithOcr({ ocrEngine: 'local' })]);
+      expect(local[0].ocrEngine).toBe('local');
+    });
+
+    it('非法值丢弃该字段，不影响其余字段', () => {
+      const out = sanitizeMessages([
+        userWithOcr({ ocrEngine: 'zhipu' }),
+        userWithOcr({ ocrEngine: 1 }),
+      ]);
+      expect(out[0].ocrEngine).toBeUndefined();
+      expect(out[0].ocrTexts).toEqual(['识别文本']);
+      expect(out[1].ocrEngine).toBeUndefined();
+    });
+
+    it('缺省不写字段（旧消息中性兜底）', () => {
+      const out = sanitizeMessages([userWithOcr({})]);
+      expect(out[0].ocrEngine).toBeUndefined();
+    });
+  });
 });
