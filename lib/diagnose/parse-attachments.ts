@@ -62,6 +62,8 @@ export function parseAttachments(raw: unknown): DiagnoseAttachment[] {
       dataUrl,
       text,
       warning: typeof record.warning === 'string' ? record.warning : undefined,
+      // 引擎标记严格判型：非法值丢弃该字段但不丢附件，缺省走中性「OCR」标签
+      ocrEngine: record.ocrEngine === 'local' || record.ocrEngine === 'cloud' ? record.ocrEngine : undefined,
     });
   }
 
