@@ -1,67 +1,55 @@
 /**
- * 诊断模式文件接入 - 类型判定（纯函数，无运行时依赖）
+ * 诊断模式文件接入 - 类型判定
  *
- * 判定顺序：扩展名 → 传入 MIME → 无法识别。
- * 扩展名优先是因为浏览器给的 MIME 在 Windows 上经常是空串或
- * `application/octet-stream`，靠它判不出图片/PDF。
+ * 2026-11-14 起委派 `lib/intake/detect.ts`（doc/file-intake.md §3）：魔数判定、
+ * 编码与图片契约在聊天/诊断两个入口统一，本文件只负责映射到诊断侧的
+ * DiagnoseKind 与组装用户可读的拒收原因。判定细则（魔数表、iOS HEIC 转码
+ * 陷阱、Office 按扩展名的原因）见 intake 模块与协议文档。
  */
-import type { DetectResult, DiagnoseKind } from './types.ts';
+import { classifyIntake, detectIntake, type IntakeDetection } from '../intake/detect.ts';
+import type { DetectResult } from './types.ts';
 
-/** 扩展名 → MIME（覆盖本轮链路支持与需要明确拒收的类型） */
-const EXT_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-  pdf: 'application/pdf',
-  txt: 'text/plain',
-  md: 'text/markdown',
-  markdown: 'text/markdown',
-  csv: 'text/csv',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  wps: 'application/vnd.ms-works',
-};
-
-/** MIME → 文件种类 */
-function kindOfMime(mime: string): DiagnoseKind {
-  if (mime.startsWith('image/')) return 'image';
-  if (mime === 'application/pdf') return 'pdf';
-  if (mime.startsWith('text/')) return 'text';
-  if (
-    mime === 'application/msword' ||
-    mime === 'application/vnd.ms-works' ||
-    mime.includes('wordprocessingml')
-  ) {
-    return 'doc';
+/** intake 判定 → 诊断侧 DetectResult；rejected 时拼接文件名成完整原因 */
+function toDetectResult(detection: IntakeDetection, name: string): DetectResult {
+  switch (detection.category) {
+    case 'image':
+      return { kind: 'image', supported: true, mime: `image/${detection.format}`, format: detection.format };
+    case 'pdf':
+      return { kind: 'pdf', supported: true, mime: 'application/pdf', format: 'pdf' };
+    case 'text':
+      return { kind: 'text', supported: true, mime: 'text/plain', format: detection.format };
+    case 'office':
+      return {
+        kind: 'office',
+        supported: true,
+        mime: `application/${detection.format}`,
+        format: detection.format,
+      };
+    case 'doc':
+      return { kind: 'doc', supported: true, mime: 'application/msword', format: 'doc' };
+    case 'rejected':
+      return {
+        kind: 'unsupported',
+        supported: false,
+        mime: '',
+        reason: `${name}：${detection.reason ?? '无法识别的文件类型'}`,
+      };
   }
-  return 'unsupported';
 }
 
-/** 拒收原因：直接决定前端提示文案，不要在这里泛化成"暂不支持" */
-function rejectReason(kind: DiagnoseKind, name: string): string | undefined {
-  if (kind === 'doc') return `${name}：本轮暂不支持 Word 文档，请另存为 PDF 或截图后上传`;
-  if (kind === 'unsupported') return `${name}：无法识别的文件类型，仅支持图片 / PDF / 纯文本`;
-  return undefined;
+/** File → 判定结果（读前 32 字节做魔数嗅探）；UploadArea 的唯一入口 */
+export async function detectFile(file: File): Promise<DetectResult> {
+  return toDetectResult(await detectIntake(file), file.name);
 }
 
-/** 按文件名与可选 MIME 判定文件种类 */
-export function detectFile(name: string, mime?: string): DetectResult {
-  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
-  const byExt = ext ? EXT_MIME[ext] : undefined;
-  const normalizedMime = (byExt ?? mime ?? '').trim().toLowerCase();
-
-  if (!normalizedMime) {
-    return {
-      kind: 'unsupported',
-      supported: false,
-      mime: '',
-      reason: `${name}：无法识别的文件类型，仅支持图片 / PDF / 纯文本`,
-    };
-  }
-
-  const kind = kindOfMime(normalizedMime);
-  const reason = rejectReason(kind, name);
-  return { kind, supported: !reason, mime: normalizedMime, reason };
+/**
+ * 同步判定入口：冒烟/单测没有 File 对象，直接喂 (name, mime, head)。
+ * head 缺省 null 时退化为扩展名/MIME 判定（与 intake 的 classifyIntake 同口径）。
+ */
+export function detectFileSync(
+  name: string,
+  mime: string,
+  head: Uint8Array | null = null
+): DetectResult {
+  return toDetectResult(classifyIntake(name, mime, head), name);
 }
