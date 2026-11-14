@@ -54,7 +54,7 @@ AIGC:
 
 | 条目 | 现状 | 状态 | 落点 |
 |---|---|---|---|
-| 本地 OCR（tesseract.js chi_sim） | 已实装，`/ocr` 有自检面板 | ✅ | `lib/ocr.ts` |
+| 本地 OCR（tesseract.js chi_sim） | 已实装，`/ocr` 有自检面板 | ✅ | `lib/ocr/local.ts` |
 | OCR 资产复制脚本 | 已实装，幂等 | ✅ | `scripts/copy-ocr-assets.mjs` |
 | 图片模式派生（direct / ocr-text，按模型能力自动路由） | 已实装 | ✅ | `lib/ocr/image-handling.ts` |
 | 本地嵌入引擎（bge-small-zh-v1.5） | 已实装 | ✅ | `lib/local/engine.ts` |
