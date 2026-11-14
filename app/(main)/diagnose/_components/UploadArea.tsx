@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
+import UploadPrivacyNotice from '@/components/upload/UploadPrivacyNotice';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
@@ -10,6 +11,7 @@ import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
 import { generateId, getUserId } from '@/lib/client-id';
 import { FILE_ACCEPT, FILE_ACCEPT_NO_IMAGE } from '@/lib/intake/detect';
+import { filePrivacyDetail } from '@/lib/ui/notices';
 // 单题结果与聊天同为模型输出（受上传文件抽出文本影响），必须走同一套渲染+净化管线，
 // 插件顺序约束见 lib/markdown/sanitize.ts 头注
 import ReactMarkdown from 'react-markdown';
@@ -449,6 +451,17 @@ export default function UploadArea() {
         <p className="text-sm text-muted-foreground mt-2">
           支持图片 / PDF / 纯文本 / Word / PPT / Excel（仅旧版 .doc 需上传服务器解析）
         </p>
+        {/*
+          上传前隐私提醒（区域常驻，不用弹窗打断）：把「什么会被上传、本站是否留存、
+          怎么关掉」三点写在这里，用户在选择文件之前就能看到。
+          图片行随「模型能力 × OCR 引擎」派生（云端 OCR / 原图直传 / 本地识别各不相同）。
+        */}
+        <div className="mt-3 w-full max-w-xl space-y-1 text-left">
+          <UploadPrivacyNotice mode={imageMode} engine={ocrEngine} variant="detail" />
+          <p className="px-2 text-xs leading-snug text-muted-foreground">
+            {filePrivacyDetail(rows.some((row) => row.kind === 'doc') ? 'doc' : 'other')}
+          </p>
+        </div>
         {pickerOpen && (
           <>
             {/* 透明点击层：点列表外任意处收起（stopPropagation 防止冒泡回上传区重新展开） */}

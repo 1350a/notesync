@@ -37,6 +37,18 @@ export function formatOcrBlock(text: string): string {
   return `【图片OCR】\n${text.trim()}\n【/图片OCR】`;
 }
 
+/**
+ * 该「模式 × 引擎」组合是否会把图片像素发往云端（第三方服务商）。
+ *
+ * 为什么放在发送管线里而不是 UI 里：隐私提示必须与真实发送路径同源，否则文案
+ * 「本地识别、图片不出设备」和实现会各改各的（云端引擎 + ocr-text 时像素其实上行
+ * 至智谱，只有 local 才真的不出设备）。上传入口的提醒行与用例共用本函数判定
+ * （lib/ui/notices.ts 的 imagePrivacyShort / imagePrivacyDetail 按同一语义分支）。
+ */
+export function imageLeavesDevice(mode: ImageSendMode, engine: OcrEngine): boolean {
+  return mode === "direct" || engine !== "local";
+}
+
 /** 已有文本与 OCR 文本合并（诊断附件 text 字段复用） */
 export function mergeOcrText(existing: string | undefined, ocrText: string): string {
   return [existing?.trim(), formatOcrBlock(ocrText)].filter(Boolean).join("\n\n");

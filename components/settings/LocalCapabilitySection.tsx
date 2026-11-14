@@ -99,8 +99,8 @@ export default function LocalCapabilitySection() {
         label="图片处理（OCR）"
         hint={
           ocr.engine === 'cloud'
-            ? '默认将文件交由云端模型处理，若选择了纯文本模型，则图片交由视觉模型glm-ocr处理'
-            : '图片文件全程在浏览器内转写，对复杂版面识别效果较弱'
+            ? '默认把图片交云端视觉模型 glm-ocr 转写（经本站代理上传，本站不保存；是否留存或用于训练以服务商条款为准）；换成本地后图片不出设备'
+            : '图片全程在浏览器内转写，原图不出设备，对复杂版面识别效果较弱'
         }
       >
         <div className="flex w-full gap-2">

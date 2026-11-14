@@ -2,9 +2,11 @@
 
 import ModelSelect from '@/components/ModelSelect';
 import AiGeneratedNotice from '@/components/chat/AiGeneratedNotice';
+import UploadPrivacyNotice from '@/components/upload/UploadPrivacyNotice';
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
+import { filePrivacyDetail, imagePrivacyDetail } from '@/lib/ui/notices';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
 import { decodeTextBuffer } from '@/lib/intake/decode-text';
 import {
@@ -136,6 +138,12 @@ export default function ChatInput({
    * 列表（列表式非弹窗）；桌面点按钮直开文件选择，该状态不参与
    */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /**
+   * 首次选文件是否已给过隐私提醒（本次会话一次即可）。
+   * 用 ref 不用 state：提醒内容是「一次性告知」，不需要驱动任何渲染分支，
+   * 放进 state 只会多一次无意义的重渲染。
+   */
+  const privacyNotified = useRef(false);
   /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，product-vision.md §3.3） */
   const [diagnosisMode, setDiagnosisMode] = useState(false);
   /** OCR 回显确认草稿：非 null 时输入区上方出现确认面板，阻断直接发送 */
@@ -280,6 +288,19 @@ export default function ChatInput({
     if (fileInputRef.current) fileInputRef.current.value = '';
     for (const file of picked) {
       const detected = await detectIntake(file);
+      /**
+       * 首次选文件的一次性隐私提醒（按实际类型给具体去向，doc/file-intake.md §1 隐私口径）。
+       * 只给一次：常驻行（UploadPrivacyNotice）负责长期可见，这里补「详细三点说明」，
+       * 每次上传都弹会变成打断式弹窗，反而被用户无视。
+       */
+      if (!privacyNotified.current) {
+        privacyNotified.current = true;
+        pushHint(
+          detected.category === 'image'
+            ? imagePrivacyDetail(imageMode, ocrEngine)
+            : filePrivacyDetail(detected.category === 'doc' ? 'doc' : 'other'),
+        );
+      }
       if (detected.category === 'image') {
         await addImageFile(file);
       } else if (detected.category === 'text') {
@@ -303,6 +324,11 @@ export default function ChatInput({
     for (const item of Array.from(items)) {
       if (item.type.indexOf('image') !== -1) {
         const file = item.getAsFile();
+        // 粘贴图片同样会把像素发往云端（或本地识别），首次粘贴也要给一次性提醒
+        if (file && !privacyNotified.current) {
+          privacyNotified.current = true;
+          pushHint(imagePrivacyDetail(imageMode, ocrEngine));
+        }
         if (file) void addImageFile(file);
       }
     }
@@ -503,6 +529,13 @@ export default function ChatInput({
           {hint}
         </div>
       )}
+
+      {/*
+        常驻隐私提醒（上传前可见，不打断）：图片是否出设备随「模型能力 × OCR 引擎」
+        派生，文案与发送路径同源（lib/ocr/image-handling.ts imageLeavesDevice）。
+        放输入框外一行小字——放进底栏会被窄屏 flex 压成竖排（同上一条教训）。
+      */}
+      <UploadPrivacyNotice mode={imageMode} engine={ocrEngine} />
 
       {/*
         大外框容器：这是一个带有边框和背景的整体
