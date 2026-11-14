@@ -189,6 +189,7 @@ notesync/
 | [doc/diagnosis-model.md](./doc/diagnosis-model.md) | 诊断业务中间结构：错因表（14 条）、完整度四要素、策略卡、提示阶梯、输出纪律三条禁令 |
 | [doc/agent-workflow.md](./doc/agent-workflow.md) | 诊断工作流协议：七状态迁移表、追问预算、掌握度回路、整卷四步划分与降级语义 |
 | [doc/safety-protocol.md](./doc/safety-protocol.md) | 安全协议：三级处置、上游拦截归一、拦截后历史回滚、输入侧词表、设备标识 `user`、图片上传明示 |
+| [doc/safety-design.md](./doc/safety-design.md) | 安全设计说明：三层纵深、不做关键词黑名单的决策与理由、trace 证据字段、演示路径与已知局限 |
 | [doc/implementation-status.md](./doc/implementation-status.md) | 实施状态总账：逐条 ✅ / 🟡 / ❌ / 🧊 与代码落点、文档同步清单、交付顺序、待决策 |
 | [doc/mobile-ux.md](./doc/mobile-ux.md) | 移动端适配协议：断点、触屏热区、键盘与安全区、发送区与滚动行为 |
 | [doc/wrong-answer-set-template.md](./doc/wrong-answer-set-template.md) | 错题集录入模板：字段定义与示例 |
