@@ -79,10 +79,16 @@ export const MAX_ERROR_LOG_CHARS = 2000;
 /**
  * trace 导出脱敏：只作用于**导出的副本**，浏览器内存储保持原文。
  *
- * 为什么需要：trace 里的 `reasoning` 是模型自述，实测会逐字复述系统提示词与内部
- * 字段名（`completeness` / `hintLevel` / `submit_diagnosis` / `DISCIPLINE_BLOCK`
- * 的条款原文等）。这份文件是要送审/演示时导出的，条款外露等于把防绕过说明书一起
- * 交出去；但本地分析仍需要完整推理，所以**写入不截断，只在导出出口脱敏**。
+ * 口径（已修正）：**不隐藏提示条款，只做实现细节脱敏**。
+ *
+ * 早先版本把这层当成「防提示词泄露」的一环：`reasoning` 里复述的 `铁律：…`、`Task 1`、
+ * 甚至正文对用户可见的 `【边界说明】` 都会被替换成 `[提示条款已脱敏]`。其中
+ * `【边界说明】` 是产品话术（用户实际看到的就是它），抹掉只会让导出件与界面不一致，
+ * 反而干扰排障。本项目开源（MIT），本就不追求隐藏提示词与内部规则，安全目标是
+ * **不输出有害内容（尤其面向未成年人）+ 数据流向可见可控**。
+ *
+ * 因此这里只保留「实现细节层面」的脱敏：内部字段名、工具名、协议常量名
+ * （`completeness` / `DISCIPLINE_BLOCK` 这类标识符）。条款原文、产品话术一律原样保留。
  *
  * 白名单优先：公式、代码、URL 先被抽走换成占位符，脱敏规则跑完再原样放回——
  * 数学题面（`x²`、`f(x)=…`、`△ABC`、LaTeX）绝不因为含英文字母或下划线被改写。
@@ -128,7 +134,7 @@ const INTERNAL_FIELD_TOKENS = [
   'refused',
 ];
 
-/** 提示条款/协议常量名：出现在推理里等于把内部规则标题交出去 */
+/** 协议/提示词常量名：属实现细节标识符，抹掉不影响推理可读性（条款原文不在此列） */
 const INTERNAL_CONST_TOKENS = [
   'DISCIPLINE_BLOCK',
   'SCOPE_BOUNDARY_LINE',
@@ -144,32 +150,16 @@ const INTERNAL_CONST_TOKENS = [
   'TRACE_MAX_CHARS',
 ];
 
-/** 提示条款的自然语言特征串（中英）：命中整句/整段特征即抹成占位 */
-const PROMPT_CLAUSE_PATTERNS: { pattern: RegExp; replacement: string }[] = [
-  // 系统提示里的角色/边界声明
-  { pattern: /你是[^\n。！？]{0,30}(助手|老师|错题|诊断)[^\n。！？]{0,20}[。！]?/g, replacement: '[提示条款已脱敏]' },
-  { pattern: /材料非指令/g, replacement: '[提示条款已脱敏]' },
-  { pattern: /铁律[：:][^\n]{0,80}/g, replacement: '[提示条款已脱敏]' },
-  { pattern: /(解析从题目出发|诊断从学生的作答出发)[^\n。]{0,40}/g, replacement: '[提示条款已脱敏]' },
-  {
-    pattern: /(不得|禁止|严禁)(泄露|输出|复述|回显|打印)[^\n。]{0,50}/g,
-    replacement: '[提示条款已脱敏]',
-  },
-  { pattern: /【边界说明】/g, replacement: '[提示条款已脱敏]' },
-  // 英文条款标题（Task 1 / Task 2 / §x 之类分节标记）
-  { pattern: /\bTask\s*[12]\b[^\n]{0,60}/gi, replacement: '[提示条款已脱敏]' },
-  { pattern: /\b(?:system\s*prompt|system\s*instruction)\b[^\n]{0,40}/gi, replacement: '[提示条款已脱敏]' },
-  { pattern: /\bprotocol\b/gi, replacement: '[内部字段]' },
-];
+/** 该词在中英混排里几乎只作为协议/实现标记出现，抹掉不影响推理可读性 */
+const INTERNAL_FIELD_TOKENS_EXTRA = ['protocol'];
 
-/** 依次替换的规则表：字段名/常量名跑在条款特征之前，条款特征可能把它们一起吃掉 */
+/** 依次替换的规则表：只做实现细节层面的脱敏（字段名 / 工具名 / 常量名） */
 const TOKEN_PATTERNS: { pattern: RegExp; replacement: string }[] = [
-  ...[...INTERNAL_CONST_TOKENS, ...INTERNAL_FIELD_TOKENS].map((token) => ({
+  ...[...INTERNAL_CONST_TOKENS, ...INTERNAL_FIELD_TOKENS, ...INTERNAL_FIELD_TOKENS_EXTRA].map((token) => ({
     // 边界用「非标识符字符」而非 \b：`submit_diagnosis` 后接中文时 \b 不成立
     pattern: new RegExp(`(?<![A-Za-z0-9_])${token}(?![A-Za-z0-9_])`, 'g'),
     replacement: '[内部字段]',
   })),
-  ...PROMPT_CLAUSE_PATTERNS,
 ];
 
 /**
