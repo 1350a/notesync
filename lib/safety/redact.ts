@@ -73,3 +73,137 @@ export function extractUpstreamMessage(raw: string): string {
 
 /** 日志侧最多留存的原文长度：够定位问题，又不至于把整段响应体写进日志 */
 export const MAX_ERROR_LOG_CHARS = 2000;
+
+/* ============================ trace 导出脱敏（批次 3-C） ============================ */
+
+/**
+ * trace 导出脱敏：只作用于**导出的副本**，浏览器内存储保持原文。
+ *
+ * 为什么需要：trace 里的 `reasoning` 是模型自述，实测会逐字复述系统提示词与内部
+ * 字段名（`completeness` / `hintLevel` / `submit_diagnosis` / `DISCIPLINE_BLOCK`
+ * 的条款原文等）。这份文件是要送审/演示时导出的，条款外露等于把防绕过说明书一起
+ * 交出去；但本地分析仍需要完整推理，所以**写入不截断，只在导出出口脱敏**。
+ *
+ * 白名单优先：公式、代码、URL 先被抽走换成占位符，脱敏规则跑完再原样放回——
+ * 数学题面（`x²`、`f(x)=…`、`△ABC`、LaTeX）绝不因为含英文字母或下划线被改写。
+ */
+
+/** 白名单占位符：用不可见控制符包住序号，避免与正文中任何真实字符冲突 */
+const SEGMENT_OPEN = '\u0001';
+const SEGMENT_CLOSE = '\u0002';
+
+/**
+ * 需要原样保护的白名单片段类型。顺序即抽取顺序：长片段优先（代码块先于行内代码，
+ * `$$…$$` 先于 `$…$`），否则内层会被外层提前吃掉导致还原错位。
+ */
+const PROTECTED_SEGMENT_PATTERNS: RegExp[] = [
+  /```[\s\S]*?```/g, // 围栏代码块
+  /~~~[\s\S]*?~~~/g,
+  /`[^`\n]*`/g, // 行内代码
+  /\$\$[\s\S]*?\$\$/g, // 块级公式
+  /\$[^$\n]+\$/g, // 行内公式
+  /\\\[[\s\S]*?\\\]/g, // \[ … \]
+  /\\\([\s\S]*?\\\)/g, // \( … \)
+  /https?:\/\/[^\s"'<>）)]+/g, // 链接：脱敏不该改地址
+];
+
+/** 内部字段名与工具名：命中即替换，避免把实现细节写进送审材料 */
+const INTERNAL_FIELD_TOKENS = [
+  'completeness',
+  'hintLevel',
+  'submit_diagnosis',
+  'lookup_strategy',
+  'ask_user',
+  'diagnoseState',
+  'errorCause',
+  'strategyCard',
+  'masteryLevel',
+  'awaitingQuestions',
+  'systemPrompt',
+  'thinkingEffort',
+  'maxTokens',
+  'ragMinQueryChars',
+  'maxAttachments',
+  'completenessResult',
+  'refused',
+];
+
+/** 提示条款/协议常量名：出现在推理里等于把内部规则标题交出去 */
+const INTERNAL_CONST_TOKENS = [
+  'DISCIPLINE_BLOCK',
+  'SCOPE_BOUNDARY_LINE',
+  'CHAT_BASE_SYSTEM_PROMPT',
+  'REFUSAL_PREFIX',
+  'INJECTION_PATTERNS',
+  'BLOCKED_USER_PLACEHOLDER',
+  'BLOCK_COOLDOWN_MS',
+  'PSYCH_SUPPORT_MESSAGE',
+  'CONTENT_BLOCKED_MESSAGE',
+  'HARD_BLOCK_MESSAGE',
+  'RAG_MIN_QUERY_CHARS',
+  'TRACE_MAX_CHARS',
+];
+
+/** 提示条款的自然语言特征串（中英）：命中整句/整段特征即抹成占位 */
+const PROMPT_CLAUSE_PATTERNS: { pattern: RegExp; replacement: string }[] = [
+  // 系统提示里的角色/边界声明
+  { pattern: /你是[^\n。！？]{0,30}(助手|老师|错题|诊断)[^\n。！？]{0,20}[。！]?/g, replacement: '[提示条款已脱敏]' },
+  { pattern: /材料非指令/g, replacement: '[提示条款已脱敏]' },
+  { pattern: /铁律[：:][^\n]{0,80}/g, replacement: '[提示条款已脱敏]' },
+  { pattern: /(解析从题目出发|诊断从学生的作答出发)[^\n。]{0,40}/g, replacement: '[提示条款已脱敏]' },
+  {
+    pattern: /(不得|禁止|严禁)(泄露|输出|复述|回显|打印)[^\n。]{0,50}/g,
+    replacement: '[提示条款已脱敏]',
+  },
+  { pattern: /【边界说明】/g, replacement: '[提示条款已脱敏]' },
+  // 英文条款标题（Task 1 / Task 2 / §x 之类分节标记）
+  { pattern: /\bTask\s*[12]\b[^\n]{0,60}/gi, replacement: '[提示条款已脱敏]' },
+  { pattern: /\b(?:system\s*prompt|system\s*instruction)\b[^\n]{0,40}/gi, replacement: '[提示条款已脱敏]' },
+  { pattern: /\bprotocol\b/gi, replacement: '[内部字段]' },
+];
+
+/** 依次替换的规则表：字段名/常量名跑在条款特征之前，条款特征可能把它们一起吃掉 */
+const TOKEN_PATTERNS: { pattern: RegExp; replacement: string }[] = [
+  ...[...INTERNAL_CONST_TOKENS, ...INTERNAL_FIELD_TOKENS].map((token) => ({
+    // 边界用「非标识符字符」而非 \b：`submit_diagnosis` 后接中文时 \b 不成立
+    pattern: new RegExp(`(?<![A-Za-z0-9_])${token}(?![A-Za-z0-9_])`, 'g'),
+    replacement: '[内部字段]',
+  })),
+  ...PROMPT_CLAUSE_PATTERNS,
+];
+
+/**
+ * 抽走白名单片段 → 跑脱敏 → 放回片段。
+ *
+ * 占位符用 `\u0001序号\u0002`：控制符不会出现在正常文本里，且还原时按序号精确回填，
+ * 不会因为多次替换导致错位。
+ */
+function withProtectedSegments(text: string, transform: (body: string) => string): string {
+  const segments: string[] = [];
+  let masked = text;
+  for (const pattern of PROTECTED_SEGMENT_PATTERNS) {
+    masked = masked.replace(pattern, (match) => {
+      segments.push(match);
+      return `${SEGMENT_OPEN}${segments.length - 1}${SEGMENT_CLOSE}`;
+    });
+  }
+  const processed = transform(masked);
+  return processed.replace(
+    new RegExp(`${SEGMENT_OPEN}(\\d+)${SEGMENT_CLOSE}`, 'g'),
+    (whole, index: string) => segments[Number(index)] ?? whole,
+  );
+}
+
+/**
+ * trace 导出前的文本脱敏（幂等，可安全重复调用）。
+ *
+ * 只做「抹掉内部痕迹」，不做长度截断——保住长推导的可分析性。
+ * 正常数学文本（公式/代码/链接）走白名单，原样保留。
+ */
+export function redactTraceText(text: string): string {
+  if (!text) return '';
+  return withProtectedSegments(text, (body) =>
+    TOKEN_PATTERNS.reduce((acc, { pattern, replacement }) => acc.replace(pattern, replacement), body),
+  );
+}
+

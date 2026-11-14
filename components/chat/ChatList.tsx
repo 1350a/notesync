@@ -32,8 +32,34 @@ function AbortedMark() {
   );
 }
 
+/** 思考过程预览字数：展开后先只看开头，避免大段推理性内容一次铺满屏幕 */
+const THINKING_PREVIEW_CHARS = 400;
+
+/**
+ * 思考过程三级展示（批 3-B）：
+ * ① 默认折叠，只有「思考过程」一行；
+ * ② 展开后先显示前 {@link THINKING_PREVIEW_CHARS} 字 + 省略号 + 「共 N 字」；
+ * ③ 超过预览字数时再给「展开完整推理」，点过才显示全文。
+ * 折叠时重置全文态，下次展开仍从预览进入，不留下「一次点开永远全展开」的跳级。
+ */
 function ThinkingBlock({ reasoning }: { reasoning: string }) {
   const [open, setOpen] = useState(false);
+  const [fullyOpen, setFullyOpen] = useState(false);
+  const total = reasoning.length;
+  const collapsible = total > THINKING_PREVIEW_CHARS;
+
+  const toggleOpen = () => {
+    if (open) {
+      setFullyOpen(false);
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+  };
+
+  const collapsed = collapsible && !fullyOpen;
+  const shown = collapsed ? reasoning.slice(0, THINKING_PREVIEW_CHARS) : reasoning;
+
   return (
     <div
       className="mb-2 rounded-xl px-3 py-2"
@@ -41,19 +67,41 @@ function ThinkingBlock({ reasoning }: { reasoning: string }) {
     >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
+        aria-expanded={open}
         className="text-xs font-medium outline-none"
         style={{ color: 'var(--text-muted)' }}
       >
         {open ? '▾' : '▸'} 思考过程
+        {collapsible && !open ? `（共 ${total} 字）` : null}
       </button>
       {open && (
-        <pre
-          className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          {reasoning}
-        </pre>
+        <>
+          <pre
+            className="mt-2 whitespace-pre-wrap break-words text-xs leading-relaxed"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {shown}
+            {collapsed ? '…' : ''}
+          </pre>
+          {collapsible && (
+            <div className="mt-1 flex items-center gap-2">
+              {collapsed && (
+                <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  共 {total} 字，已显示前 {THINKING_PREVIEW_CHARS} 字
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setFullyOpen((v) => !v)}
+                className="text-[11px] font-medium outline-none"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {fullyOpen ? '收起完整推理' : '展开完整推理'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

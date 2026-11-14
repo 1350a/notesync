@@ -20,6 +20,7 @@
  * v1 单键数据在首次读写时做一次性迁移（写入分片 + 建索引 + 删源键），迁移失败不影响新链路。
  */
 import type { ThinkingEffort, TokenUsage } from '@/lib/provider/types';
+import { redactTraceText } from '@/lib/safety/redact';
 
 /** 保留最近条数（条 = 一次请求的完整事件流） */
 export const TRACE_KEEP = 20;
@@ -332,10 +333,39 @@ export function clearTraces(): void {
   }
 }
 
+/**
+ * 导出前的脱敏副本（批次 3-C）：只复制、不改原对象，浏览器内存储保持完整推理。
+ *
+ * 递归只处理「值」不处理「键」——键名是 trace 结构契约，改了会让下游读不懂；
+ * 字符串值统一走 {@link redactTraceText}（公式/代码/链接有白名单保护）。
+ */
+function redactExportValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactTraceText(value);
+  if (Array.isArray(value)) return value.map(redactExportValue);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = redactExportValue(item);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** 单条 trace 的导出副本（供导出与单测复用） */
+export function redactTraceForExport(trace: Trace): Trace {
+  return redactExportValue(trace) as Trace;
+}
+
+/** 导出 payload（脱敏后的副本，`null, 2` 美化） */
+export function buildTraceExportPayload(traces: Trace[]): string {
+  return JSON.stringify(traces.map(redactTraceForExport), null, 2);
+}
+
 /** 导出为可下载的 JSON 文件（设置页入口） */
 export function downloadTraces(): void {
   const traces = loadTraces();
-  const blob = new Blob([JSON.stringify(traces, null, 2)], { type: 'application/json' });
+  const blob = new Blob([buildTraceExportPayload(traces)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
