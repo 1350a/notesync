@@ -89,6 +89,7 @@ interface DiagnoseAttachment {
   dataUrl?: string;                          // 图片，data:image/...;base64
   text?: string;                             // PDF / 纯文本提取结果
   warning?: string;                          // 提取阶段降级原因
+  ocrEngine?: 'local' | 'cloud';             // 产出该 OCR 文本的引擎；缺省视为旧客户端，组装按中性「OCR」标注
 }
 ```
 
@@ -99,6 +100,7 @@ interface DiagnoseAttachment {
 - `dataUrl` 不以 `data:image/` 开头 → 丢弃该字段（若同时带 `text` 则保留 `text`）。
 - `dataUrl` 长度 > 12MB → 丢弃该项，防止请求体撑爆内存。
 - 既无 `dataUrl` 也无 `text` → 丢弃该项。
+- `ocrEngine` 不为 `local` / `cloud` → 丢弃该字段（不影响该项其余字段）。
 
 ## 6. 组装产物（assemble）
 
@@ -121,8 +123,8 @@ interface DiagnoseAttachment {
 | 档位 | 判定条件 | 组装行为 | 外发内容 |
 |---|---|---|---|
 | `multimodal` 直传 | 模型支持图片，附件只带 `dataUrl` | 按四类标签分组直发 `image_url`，超 4 张降级为文字占位 | 原图 |
-| `mixed` 混合（**仅兼容**） | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text` | 先发 `[文件 X · 本地OCR]` 文本块打底，再发原图 | 原图 + OCR 文本 |
-| `text-only` 降级 | 模型不支持图片输入 | 带 OCR 文本的项发文本块，无文本的项发文字占位；均不占图片配额 | 仅文本 |
+| `mixed` 混合（**仅兼容**） | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text` | 先发 `[文件 X · OCR]` 文本块打底（带 `ocrEngine` 时标注「云端OCR/本地OCR」），再发原图 | 原图 + OCR 文本 |
+| `text-only` 降级 | 模型不支持图片输入 | 带 OCR 文本的项发文本块（`[文件 X · 云端OCR/本地OCR/OCR]`，按附件 `ocrEngine` 标注，缺省中性），无文本的项发文字占位；均不占图片配额 | 仅文本 |
 
 判定统一由 `lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode(attachments, allowImages)`
 完成，**客户端不传档位字段**。2026-11-14 起客户端只产出两种形态（product-vision.md P4
