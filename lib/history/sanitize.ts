@@ -266,6 +266,11 @@ function sanitizeMessage(raw: unknown): HistoryMessage | null {
   const ocrTexts = sanitizeOcrTexts(record.ocrTexts, images.length);
   if (ocrTexts) message.ocrTexts = ocrTexts;
 
+  // OCR 引擎标记与 ocrTexts 同生命周期：严格判型放行，缺省/非法即丢弃（旧消息中性兜底）
+  if (record.ocrEngine === 'local' || record.ocrEngine === 'cloud') {
+    message.ocrEngine = record.ocrEngine;
+  }
+
   if (record.imageSendMode === 'local-only' || record.imageSendMode === 'mixed') {
     message.imageSendMode = record.imageSendMode;
   }
