@@ -113,7 +113,7 @@ AIGC:
 | trace 导出脱敏 | 已实装：`reasoning` 写入不截断（保留完整分析能力），仅导出出口经 `redactTraceText()` 处理副本——过滤内部字段名（`completeness`/`hintLevel`/`submit_diagnosis` 等）、提示词常量名（`DISCIPLINE_BLOCK` 等）与条款特征串（`Task 1`/`Task 2`/铁律/材料非指令/不得泄露…），公式、行内代码、围栏代码块与 URL 走白名单原样保留，`x²`/`f(x)`/`△ABC` 不被改写；`downloadTraces()` 经 `buildTraceExportPayload()` 导出脱敏副本，浏览器内存储保持原文 | ✅ | `lib/safety/redact.ts`、`lib/chat/trace.ts`、`test/lib/safety/redact-trace.test.ts`、`test/lib/chat/trace-export.test.ts` |
 | 思考面板三级展示 | 已实装：默认折叠；展开后先显示前 400 字 + 省略号与「共 N 字」；超过 400 字再给「展开完整推理」按钮显示全文，折叠时重置全文态 | ✅ | `components/chat/ChatList.tsx` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 42 文件 / 457 用例（2026-11-14 实测，原记 40 文件 / 431 用例、36 文件 / 400 用例、30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 42 文件 / 468 用例（2026-11-14 实测，原记 42 文件 / 457 用例、40 文件 / 431 用例、36 文件 / 400 用例、30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
