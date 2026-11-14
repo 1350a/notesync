@@ -9,6 +9,13 @@
 
 /** pdfjs worker 走本地静态资源，避免运行时依赖 CDN */
 const PDF_WORKER_SRC = '/pdfjs/pdf.worker.min.mjs';
+/**
+ * 预定义 CMap 与标准字体也走本地静态资源（public/pdfjs/，自 node_modules/pdfjs-dist
+ * 全量拷入）。缺 cMapUrl 时，用预定义 CMap 编码的中文 PDF（未嵌入字体：WPS 导出、
+ * 试卷下载站等常见来源）文字层解码失败、getTextContent 返回空，会被误判成扫描件。
+ */
+const PDF_CMAP_URL = '/pdfjs/cmaps/';
+const PDF_STANDARD_FONTS_URL = '/pdfjs/standard_fonts/';
 
 /** 单份 PDF 最多解析页数，防止超大文档卡死主线程 */
 export const MAX_PDF_PAGES = 80;
@@ -21,7 +28,12 @@ export async function extractPdfText(file: File, maxChars: number): Promise<stri
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
 
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const doc = await pdfjs.getDocument({
+    data: await file.arrayBuffer(),
+    cMapUrl: PDF_CMAP_URL,
+    cMapPacked: true,
+    standardFontDataUrl: PDF_STANDARD_FONTS_URL,
+  }).promise;
   try {
     const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
     let text = '';

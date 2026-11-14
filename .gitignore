@@ -23,6 +23,9 @@
 # 本地推理模型资产（由 npm run local:assets 从 HF/依赖内派生，见 doc/browser-local-inference.md）
 /public/models/
 
+# PDF 运行时资产（由 npm run pdfjs:assets 从依赖内派生，见 doc/file-intake.md §7）
+/public/pdfjs/
+
 # production
 /build
 

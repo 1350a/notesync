@@ -21,7 +21,9 @@
     "smoke:ocr": "node --experimental-strip-types scripts/cloud-ocr-smoke.ts",
     "smoke:rag": "node --experimental-strip-types scripts/rag-smoke.ts",
     "ocr:assets": "node scripts/copy-ocr-assets.mjs",
-    "local:assets": "node scripts/copy-local-models.mjs"
+    "local:assets": "node scripts/copy-local-models.mjs",
+    "pdfjs:assets": "node scripts/copy-pdfjs-assets.mjs",
+    "postinstall": "node scripts/copy-pdfjs-assets.mjs"
   },
   "overrides": {
     "onnxruntime-web": "1.31.0-dev.20260914-8d85527a0",
