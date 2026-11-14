@@ -83,7 +83,7 @@ AIGC:
 - `p-8` → `px-4 py-6 md:p-8`（diagnose / local / ocr）；diagnose 标题区 `mb-10` → `mb-6 md:mb-10`。
 - UploadArea 拖放区 `p-6 md:p-12`。
 - 顶栏 `AppHeader` 窄屏收口（360px 视口零横向溢出）：
-  - `<md` 隐藏已禁用的搜索占位按钮（`search` 尚未接入），左侧品牌区允许收缩（容器 `min-w-0`、Logo 文本 `truncate`）；
+  - `<md` 顶栏不设搜索入口（全局搜索未接入，侧栏历史搜索也已下线），左侧品牌区允许收缩（容器 `min-w-0`、Logo 文本 `truncate`）；
   - 右侧操作组 `shrink-0`，44px 触控热区不被压缩（§4）；`≥md` 尺寸与位置完全不变。
   - 判定口径：`document.documentElement.scrollWidth ≤ clientWidth`；修复前右侧组右边缘 368 > 360（溢出 8px），
     `/ocr` 等带 `overflow-hidden` 祖先的页面会被裁掉这 8px。
