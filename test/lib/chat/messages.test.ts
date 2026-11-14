@@ -14,6 +14,7 @@ import {
   formatRagBlock,
   parseRagContexts,
   buildUserContent,
+  stripAbortedSuffix,
   type RagContext,
 } from '@/lib/chat/messages';
 import type { ProviderMessage } from '@/lib/provider/types';
@@ -251,5 +252,38 @@ describe('system 角色消息不透传', () => {
       ],
     });
     expect(messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+});
+
+/*
+ * 中止标记剥离用例（doc/chat-history.md §8.3）：渲染徽标与上行组装共用同一口径。
+ */
+describe('stripAbortedSuffix', () => {
+  it('当前文案「已中止」命中并剥离', () => {
+    const { text, aborted } = stripAbortedSuffix('答到一半\n\n*[已中止]*');
+    expect(aborted).toBe(true);
+    expect(text).toBe('答到一半');
+  });
+
+  it('旧文案「已停止生成」同样命中（旧库兼容）', () => {
+    const { text, aborted } = stripAbortedSuffix('旧会话正文\n\n*[已停止生成]*');
+    expect(aborted).toBe(true);
+    expect(text).toBe('旧会话正文');
+  });
+
+  it('未命中时原样返回且不标记', () => {
+    expect(stripAbortedSuffix('正常回答')).toEqual({ text: '正常回答', aborted: false });
+    // 标记出现在正文中间不算（只认结尾全匹配）
+    expect(stripAbortedSuffix('[已中止] 开头误写')).toEqual({
+      text: '[已中止] 开头误写',
+      aborted: false,
+    });
+  });
+
+  it('空串与纯标记边界', () => {
+    expect(stripAbortedSuffix('')).toEqual({ text: '', aborted: false });
+    const { text, aborted } = stripAbortedSuffix('*[已中止]*');
+    expect(aborted).toBe(true);
+    expect(text).toBe('');
   });
 });
