@@ -11,7 +11,7 @@ AIGC:
 
 # 用户设置（User Settings）协议
 
-> 状态：P1（抽象层 + 侧栏 UI 落地；generation / systemPrompt 未接线）｜最后更新：2026-11-14
+> 状态：P1（抽象层 + 侧栏 UI 落地；generation.thinkingEffort / generation.maxTokens 已接线，systemPrompt / temperature 未接线）｜最后更新：2026-11-14
 > 对应代码：`lib/settings/`、`store/useSettingsStore.ts`、`components/settings/`、`lib/client-id.ts`、`components/layout/AppLayout.tsx`（水合与主题收口）
 
 本文件是用户设置的**唯一事实来源**。修改协议必须先改本文件，再改代码（见 `AGENTS.md` §9）。
@@ -32,10 +32,11 @@ interface UserSettings {
   theme: ThemePreference;             // 默认 'light'；四档：light/dark/sky/mint，见 §2.2
   defaultModel: string;               // 默认模型名；'' = 跟随后端推荐（/api/models 首项）
   systemPrompt: string;               // 【未接线】自定义系统提示词，无 UI，服务端注入待下一轮
-  generation: {                       // 部分接线：thinkingEffort 已实装，其余仍占位
+  generation: {                       // 部分接线：thinkingEffort / maxTokens 已实装，temperature 仍占位
     thinkingEffort?: ThinkingEffort;  // 【已接线 2026-11-12】思考强度档位，默认 'medium'；映射见 §2.1
     temperature?: number;             //   【未接线】钳制 0–2
-    maxTokens?: number;               //   【未接线】钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
+    maxTokens?: number;               //   【已接线 2026-11-14】钳制 1–200_000 整数（防呆上限，实际受上游模型约束）；
+                                      //   经 mapMaxTokens 下发 max_tokens，custom provider 不下发（未知字段严格校验）
   };
   ocr: {                              // 【已接线】
     engine: 'local' | 'cloud';        //   转写引擎：cloud=智谱 glm-ocr（默认）；local=tesseract.js（doc/cloud-ocr.md §4）。

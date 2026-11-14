@@ -200,7 +200,7 @@ notesync/
 
 - 本地小模型对话（v2，Qwen3-0.6B / Qwen2.5-0.5B-Instruct ONNX 待评测）、云端 embedding、云 OCR 两段管线。
 - `disposeLocalEngine()` 已接线：走 `lib/local/engine-lease.ts` 的租约引用计数，`acquireLocalEngine` / `releaseLocalEngine` 归零时释放，能力页、设置分区与聊天链路共用同一份租约；OCR 侧 `disposeOcrWorker()` 已在 `/ocr` 页面接入。
-- 设置中的 `generation` / `systemPrompt` / 语言 / 朗读音色未接线（服务端注入待做）；会话历史已改为浏览器本地持久化（`doc/chat-history.md`），服务端 `/api/sessions` 与跨设备同步不做。
+- 设置中的 `generation.thinkingEffort` / `generation.maxTokens` 已接线：前者按 provider 映射为 `reasoning_effort` / `thinking.type`（custom 不发），后者映射为 `max_tokens`（custom 不发；设置页三档预设 1024 / 4096 / 8192 或跟随模型默认）；`generation.temperature`、`systemPrompt`、语言、朗读音色仍未接线（服务端注入待做）。会话历史已改为浏览器本地持久化（`doc/chat-history.md`），服务端 `/api/sessions` 与跨设备同步不做。
 - 工具调用：多工具并行、外部 MCP server 注册未实现。
 - Safari WebGPU EP 内存问题（onnxruntime #26827）跟踪中，届时可能对 Safari 强制 q8/WASM。
 

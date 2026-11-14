@@ -14,7 +14,7 @@ AIGC:
 > **状态：持续更新。** 本文件是唯一的总账，所有「已实装 / 未实装 / 挂账」以本文为准。
 > 更新规则：每次合并涉及下列任一条目的改动，同步更新本表的状态列。
 > **定位：本文已转正为正式协议**（原文 `wip-implementation-status.md`，2026-11-12 去 `wip-` 前缀）。记录事实状态不等于放宽 `AGENTS.md §8`（Wiring Honesty）——界面上仍不得出现未实装能力。
-> 相关协议：`product-vision.md`、`diagnosis-model.md`、`agent-workflow.md`、`safety-protocol.md`
+> 相关协议：`product-vision.md`、`diagnosis-model.md`、`agent-workflow.md`、`safety-protocol.md`、`safety-design.md`
 > **约束强度**：分级说明见 `product-vision.md` §0。本文记录的是**事实状态**而非约束——表里标 ❌ 的条目，实现方式可以完全不同于对应协议章节，只要该条目的目标达成即可把状态改为 ✅。
 
 图例：✅ 已实装 · 🟡 部分实装 · ❌ 未实装 · ⏳ 待决策 · 🧊 挂账（v1 不做）
@@ -75,7 +75,12 @@ AIGC:
 | `content_blocked` 错误码 | 已实装（`/api/chat` 与 `/api/diagnose-paper` 同码同文案） | ✅ | `lib/safety/block-detect.ts`、`lib/safety/messages.ts` |
 | 拦截信号归一（两条路径） | 已实装：`finishReason` + 文本双侧判定收敛为同一函数 | ✅ | 同上 |
 | 拦截后本轮历史回滚 | 已实装：已流出片段丢弃，被拒内容不入下一轮历史 | ✅ | `hooks/useChat.ts`、`lib/chat/messages.ts` |
-| 输入侧本地词表过滤 | 机制已实装（结构规则默认启用）；**默认词表为空**，实际词表走配置注入 | 🟡 | `lib/safety/wordlist.ts` |
+| 输入侧本地词表过滤 | 机制已实装（结构规则默认启用，含超长/乱码/刷屏顺序判定）；**默认词表为空**，实际词表走配置注入 | 🟡 | `lib/safety/wordlist.ts` |
+| 服务端输入兜底（`input_blocked`） | 已实装：`/api/chat` 在 MOCK 分支前用同一纯函数复判本轮用户输入，`level==='hard'` 直接返回 `errorStream`，绕不开发包/旧前端/直连接口；心理困扰级别不硬拦（关怀优先） | ✅ | `app/api/chat/route.ts`、`lib/safety/wordlist.ts` |
+| 提示注入特征库 | 已实装：结构句式特征判定（`InputSafetyCategory` 增 `injection`），不做关键词黑名单，决策与理由见 `doc/safety-design.md` | ✅ | `lib/safety/injection-patterns.ts` |
+| 边界拒答前缀 | 已实装：`REFUSAL_PREFIX`（「【边界说明】」）统一话术前缀，自家拒答文本不被误判为上游拦截 | ✅ | `lib/safety/messages.ts`、`lib/safety/block-detect.ts` |
+| 拦截打标与冷却 | 已实装：被拦 user 消息打 `blocked`，上行历史改占位文本、被拦 assistant 消息不回传；连续两次拦截进 60s 冷却（`BLOCK_COOLDOWN_MS`） | ✅ | `hooks/useChat.ts`、`lib/safety/messages.ts` |
+| 安全链路回归脚本 | 已实装：`npm run smoke:safety`，拦 3 条放 3 条对照表 | ✅ | `scripts/safety-smoke.ts` |
 | 三级处置话术 | 已实装：硬拦截 / 软引导（system prompt 承载）/ 关怀转介 | ✅ | `lib/safety/messages.ts` |
 | 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
 | 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
@@ -93,7 +98,8 @@ AIGC:
 | 取消首次引导，改默认档 | 已实装：不弹首次引导，冷启即保守档（图片默认先本地转文字，原图不出端；只有显式 `false` 才切外发） | ✅ | `lib/settings/types.ts`、`test/lib/settings/defaults.test.ts` |
 | 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板可选 | ✅ | `lib/settings/types.ts` |
 | 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 不发参数 | ✅ | `lib/provider/openaiCompat.ts` |
-| `systemPrompt` / `temperature` / `maxTokens` | 协议标注未接线 | 🧊 | `doc/user-settings.md` |
+| 思考预算 `maxTokens` | 已实装：`normalizeMaxTokens` 归一（≤0/NaN/非数值视为未设置，超上限钳制），`mapMaxTokens` 按 Provider 分流下发 `max_tokens`（**custom 恒不发**，未知字段严格校验风险），经工具循环与收敛请求一并透传；设置页「思考预算」下拉提供跟随模型默认 / 1024 / 4096 / 8192 | ✅ | `lib/settings/types.ts`、`lib/provider/openaiCompat.ts`、`lib/tools/loop.ts` |
+| `systemPrompt` / `temperature` | 未接线（协议标注未接，服务端注入待做） | 🧊 | `doc/user-settings.md` |
 
 ## 6. 工程与质量
 
@@ -101,9 +107,10 @@ AIGC:
 |---|---|---|---|
 | 三家 Provider 路由 | 已实装 | ✅ | `lib/provider/index.ts` |
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
-| DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
+| DeepSeek 流式 `usage` 消费 | 已实装：`stream_options.include_usage=true`，`usage` 解析进 `Trace.usage` 并在调试面板可导出 | ✅ | `lib/provider/openaiCompat.ts`、`lib/chat/trace.ts` |
+| trace 观测面留档 | 已实装：本地事件流按条分片存储（索引键 `notesync-trace-v2-index` + 分片键 `notesync-trace-v2-<id>`），索引只存 `startedAt`/`route`/`model`/`size` 等元数据；单条超 200k 字符截断 `events` 尾部并打 `truncated` 标记；按条数（`TRACE_KEEP=20`）加单条上限淘汰；首次写入做 v1 单键 → v2 一次性迁移，坏片跳过不整库丢弃 | ✅ | `lib/chat/trace.ts`、`test/lib/chat/trace-store.test.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 36 文件 / 400 用例（2026-11-14 实测，原记 30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 40 文件 / 431 用例（2026-11-14 实测，原记 36 文件 / 400 用例、30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
