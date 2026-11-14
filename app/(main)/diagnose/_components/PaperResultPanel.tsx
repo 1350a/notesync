@@ -35,15 +35,15 @@ const GROUP_LABEL: Record<string, string> = {
 export default function PaperResultPanel({ view }: { view: PaperViewState }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="mb-2 font-semibold text-slate-800">处理进度</h3>
-        <ol className="space-y-1 text-sm text-slate-600">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <h3 className="mb-2 font-semibold text-foreground">处理进度</h3>
+        <ol className="space-y-1 text-sm text-muted-foreground">
           {view.steps.map((stepItem, i) => (
             <li key={i}>
-              <span className="mr-1 text-slate-400">{i + 1}.</span>
+              <span className="mr-1 text-muted-foreground/70">{i + 1}.</span>
               {stepItem.text}
               {stepItem.current !== undefined && stepItem.total !== undefined && (
-                <span className="ml-1 text-xs text-slate-400">
+                <span className="ml-1 text-xs text-muted-foreground/70">
                   ({stepItem.current}/{stepItem.total})
                 </span>
               )}
@@ -53,8 +53,8 @@ export default function PaperResultPanel({ view }: { view: PaperViewState }) {
       </div>
 
       {view.results.map((group, i) => (
-        <div key={i} className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="mb-2 text-sm font-medium text-slate-700">
+        <div key={i} className="rounded-2xl border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-medium text-foreground">
             {GROUP_LABEL[group.groupCode] ?? `组别：${group.groupCode}`} · 题号{' '}
             {group.questionNumbers.join('、')}
           </p>
@@ -63,9 +63,9 @@ export default function PaperResultPanel({ view }: { view: PaperViewState }) {
       ))}
 
       {view.summary && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h3 className="mb-2 font-semibold text-slate-800">整卷汇总</h3>
-          <div className="markdown-body text-sm text-slate-700">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <h3 className="mb-2 font-semibold text-foreground">整卷汇总</h3>
+          <div className="markdown-body text-sm text-foreground">
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
               {view.summary}
             </ReactMarkdown>
