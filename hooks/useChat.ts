@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMsg, ChatTextFile, RagContext } from '@/lib/chat/messages';
-import { RAG_SNIPPET_MAX_CHARS } from '@/lib/chat/messages';
+import { ABORTED_SUFFIX, RAG_SNIPPET_MAX_CHARS, stripAbortedSuffix } from '@/lib/chat/messages';
 import { CLIENT_ID_HEADER, getClientId, getUserId } from '@/lib/client-id';
 import type { DiagnoseContext, DiagnoseRequestEvent, DiagnosisResult } from '@/lib/diagnose/types';
 import { acquireLocalEngine } from '@/lib/local/engine-lease';
@@ -9,7 +9,6 @@ import { searchKnowledge } from '@/lib/local/rag/store';
 import {
   mergeExpiredRefs,
   refreshMeta,
-  shiftExpiredRefsOnDelete,
   trimExpiredRefs,
 } from '@/lib/history/contract';
 import { deriveTitleFromMessages } from '@/lib/history/title';
@@ -28,12 +27,9 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
 /**
- * 用户主动中止生成的标记后缀（唯一文案出口）。
- *
- * 统一为「已中止」，并由 sendMessage 的 abort 分支**只追加一次**；
- * 旧文案「已停止生成」已废弃，避免同一条消息里出现两种表述。
+ * 用户主动中止生成的标记后缀已下沉到 lib/chat/messages（唯一文案出口，doc/chat-history.md §8.3）：
+ * abort 分支只追加一次；渲染层与上行组装用 stripAbortedSuffix 剥离并转「已中止」徽标。
  */
-const ABORTED_SUFFIX = '\n\n*[已中止]*';
 
 function parseSseEvent(chunk: string) {
   const lines = chunk.split('\n');
@@ -462,7 +458,8 @@ export function useChat(selectedModel: string) {
               .filter((m) => !m.localOnly && !m.blocked)
               .map((m) => ({
                 role: m.role,
-                content: m.content,
+                // 中止标记是纯展示态：剥掉后再上行，标记文本不进模型上下文（§8.3）
+                content: stripAbortedSuffix(m.content).text,
                 // 【legacy 分支保留】旧混合档消息（imageSendMode==='mixed'）重发时原图仍随行，
                 // 不丢历史内容；新发送不再产出该形态。全本地：仅 imageTexts（图片仅本地展示）；
                 // 直传：仅原图（doc/browser-local-ocr.md §6.2）
@@ -614,40 +611,10 @@ export function useChat(selectedModel: string) {
   );
 
   /**
-   * 删除单条消息（doc/chat-history.md §8.3）。
-   *
-   * 三件事必须同批：消息数组移除 → expiredImages 下标左移 → 落库。
-   * 漏掉第二步会把过期标记挪到下一条消息上（好图被显示成「图片已过期」）。
-   * 删空即视为放弃这段对话：清内存态并删库，不留"点开就复活"的空壳会话。
+   * 消息级删除已停用（2026-11-14，doc/chat-history.md §8.3）：入口从 UI 撤下，
+   * 本 hook 不再提供 deleteMessage。底层坐标收缩契约（shiftExpiredRefsOnDelete）
+   * 保留在 lib/history/contract.ts 并维持单测，供将来恢复或导出侧复用。
    */
-  const deleteMessage = useCallback(
-    (index: number) => {
-      if (loading) return;
-      const current = messagesRef.current;
-      if (index < 0 || index >= current.length) return;
-
-      const next = current.filter((_, i) => i !== index);
-      const nextExpired = shiftExpiredRefsOnDelete(expiredRefsRef.current, index);
-
-      if (next.length === 0) {
-        const sessionId = sessionMetaRef.current?.id ?? null;
-        sessionMetaRef.current = null;
-        expiredRefsRef.current = [];
-        messagesRef.current = [];
-        setMessages([]);
-        setDiagnoseContext(null);
-        setCurrentSessionId(null);
-        if (sessionId) void useChatStore.getState().removeSession(sessionId);
-        return;
-      }
-
-      expiredRefsRef.current = nextExpired;
-      messagesRef.current = next;
-      setMessages(next);
-      scheduleSave();
-    },
-    [loading, scheduleSave, setCurrentSessionId]
-  );
 
   /**
    * 重新生成：截断最后一条 user 消息之后的全部内容，用它自己再发一次。
@@ -716,8 +683,6 @@ export function useChat(selectedModel: string) {
     loadSession,
     /** 丢弃当前会话且不落盘（当前会话被删除时调用） */
     discardSession,
-    /** 删除单条消息（§8.3）；删除后为空则整段会话作废 */
-    deleteMessage,
     /** 重新生成最后一条回答（§8.3） */
     regenerate,
     /** 编辑某条 user 消息并重发（§8.3） */
