@@ -5,6 +5,12 @@ import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
+import { decodeTextBuffer } from '@/lib/intake/decode-text';
+import { detectIntake, TEXT_EXTENSIONS, type OfficeFormat } from '@/lib/intake/detect';
+import { extractImageIntake } from '@/lib/intake/extract-image';
+import { extractOfficeText } from '@/lib/intake/extract-office';
+import { extractPdfText } from '@/lib/intake/extract-pdf';
+import { parseDocViaServer } from '@/lib/intake/parse-doc-client';
 import { THINKING_EFFORTS, type OcrEngine, type ThinkingEffort } from '@/lib/settings/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import {
@@ -15,28 +21,16 @@ import {
 import type { ProviderModel, ProviderStatus } from '@/lib/provider/types';
 import { useEffect, useRef, useState } from 'react';
 
-/** 允许上传的纯文本扩展名（二进制文档如 pdf/doc/docx 不在此列，避免读成乱码） */
-const TEXT_EXTENSIONS = [
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'log',
-  'json', 'jsonl', 'yaml', 'yml', 'xml', 'html', 'htm', 'css', 'scss',
-  'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'vue', 'svelte',
-  'py', 'ipynb', 'java', 'kt', 'c', 'h', 'cpp', 'hpp', 'cs', 'go', 'rs',
-  'rb', 'php', 'swift', 'lua', 'pl', 'r', 'm', 'sql',
-  'sh', 'bash', 'bat', 'ps1', 'ini', 'toml', 'conf', 'properties', 'tex', 'gitignore',
-];
-
-/** 文件选择框的 accept：图片 + 上述纯文本扩展名 */
-const ACCEPT = ['image/*', ...TEXT_EXTENSIONS.map((ext) => `.${ext}`)].join(',');
-
-function extOf(name: string): string {
-  const i = name.lastIndexOf('.');
-  return i > 0 ? name.slice(i + 1).toLowerCase() : '';
-}
-
-function isTextFile(file: File): boolean {
-  if (file.type.startsWith('image/')) return false;
-  return TEXT_EXTENSIONS.includes(extOf(file.name)) || file.type.startsWith('text/');
-}
+/** 文件选择框的 accept：图片 + 纯文本白名单 + PDF + Office
+ *  （ppt/xlsx/xls 不进白名单，强选仍拒收并给指引，doc/file-intake.md §2） */
+const ACCEPT = [
+  'image/*',
+  ...TEXT_EXTENSIONS.map((ext) => `.${ext}`),
+  '.pdf',
+  '.docx',
+  '.doc',
+  '.pptx',
+].join(',');
 
 export interface ChatInputProps {
   /** ocrTexts：OCR 产物（经回显确认后的最终文本）；options 见 SendOptions */
@@ -132,6 +126,8 @@ export default function ChatInput({
   const [hint, setHint] = useState('');
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 移动端快速拍照入口（capture 属性直调系统相机，doc/file-intake.md §9） */
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 触屏（虚拟键盘）Enter 应为换行，发送只靠按钮，避免选字回车误发（doc/mobile-ux.md §4）
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
@@ -185,44 +181,113 @@ export default function ChatInput({
     }
   }, [input]);
 
-  const readFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (typeof e.target?.result === 'string') {
-        setImages((prev) => [...prev, e.target!.result as string]);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  /** 纯文本文件：读出字符串随消息上行，由服务端拼进正文（纯文本模型同样可用） */
-  const readTextFile = (file: File) => {
-    file
-      .text()
-      .then((text) => {
-        if (!text.trim()) {
-          pushHint(`${file.name} 是空文件，已跳过`);
-          return;
-        }
-        const truncated = text.length > MAX_TEXT_FILE_CHARS;
-        setFiles((prev) => [
-          ...prev,
-          { name: file.name, text: truncated ? text.slice(0, MAX_TEXT_FILE_CHARS) : text },
-        ]);
-        if (truncated) pushHint(`${file.name} 超过 ${MAX_TEXT_FILE_CHARS} 字符，已截断后添加`);
-      })
-      .catch(() => pushHint(`读取 ${file.name} 失败，请重试`));
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      Array.from(e.target.files).forEach((file) => {
-        if (file.type.startsWith('image/')) readFile(file);
-        else if (isTextFile(file)) readTextFile(file);
-        else pushHint(`暂不支持 ${file.name}：目前仅支持图片与纯文本文件`);
-      });
+  /** 图片：走 intake 规范化（heic 三级阶梯 / 缩放 / 格式转换，doc/file-intake.md §5~§6） */
+  const addImageFile = async (file: File) => {
+    const result = await extractImageIntake(file);
+    if (!result.ok) {
+      pushHint(`${file.name}：${result.reason}`);
+      return;
     }
+    setImages((prev) => [...prev, result.dataUrl]);
+    if (result.format !== result.originalFormat) {
+      pushHint(
+        `${file.name}：${result.originalFormat.toUpperCase()} 已转为 ${result.format.toUpperCase()} 后添加`
+      );
+    } else if (result.resized) {
+      pushHint(`${file.name} 尺寸较大，已压缩后添加`);
+    }
+  };
+
+  /** 纯文本文件：编码探测后读出字符串随消息上行（doc/file-intake.md §4），由服务端拼进正文 */
+  const readTextFile = async (file: File) => {
+    try {
+      const decoded = decodeTextBuffer(await file.arrayBuffer());
+      if (!decoded.ok) {
+        pushHint(`${file.name}：${decoded.reason}`);
+        return;
+      }
+      const text = decoded.text;
+      if (!text.trim()) {
+        pushHint(`${file.name} 是空文件，已跳过`);
+        return;
+      }
+      const truncated = text.length > MAX_TEXT_FILE_CHARS;
+      setFiles((prev) => [
+        ...prev,
+        { name: file.name, text: truncated ? text.slice(0, MAX_TEXT_FILE_CHARS) : text },
+      ]);
+      if (truncated) pushHint(`${file.name} 超过 ${MAX_TEXT_FILE_CHARS} 字符，已截断后添加`);
+    } catch {
+      pushHint(`读取 ${file.name} 失败，请重试`);
+    }
+  };
+
+  /** Office 文档：客户端解析成文本随消息上行（docx/pptx/xlsx/xls，doc/file-intake.md §7） */
+  const addOfficeFile = async (file: File, format: OfficeFormat) => {
+    const result = await extractOfficeText(file, format, MAX_TEXT_FILE_CHARS);
+    if (!result.text.trim()) {
+      pushHint(`${file.name}：${result.warning ?? '未提取到内容'}`);
+      return;
+    }
+    setFiles((prev) => [...prev, { name: file.name, text: result.text }]);
+    if (result.warning) pushHint(`${file.name}：${result.warning}`);
+  };
+
+  /** .doc：浏览器无法解析，上传至自有服务端解析（UI 明示，doc/file-intake.md §1/§8） */
+  const addDocFile = async (file: File) => {
+    pushHint(`${file.name}：doc 需上传服务器解析，处理中…`);
+    const result = await parseDocViaServer(file);
+    if (!result.ok) {
+      pushHint(`${file.name}：${result.reason}`);
+      return;
+    }
+    if (!result.text.trim()) {
+      pushHint(`${file.name}：服务端未提取到文字内容`);
+      return;
+    }
+    const truncated = result.text.length > MAX_TEXT_FILE_CHARS;
+    setFiles((prev) => [
+      ...prev,
+      { name: file.name, text: truncated ? result.text.slice(0, MAX_TEXT_FILE_CHARS) : result.text },
+    ]);
+    if (truncated) pushHint(`${file.name} 超过 ${MAX_TEXT_FILE_CHARS} 字符，已截断后添加`);
+  };
+
+  /** PDF：与诊断页共用文字层提取（80 页上限，doc/file-intake.md §7）；扫描件无文字层 */
+  const addPdfFile = async (file: File) => {
+    try {
+      const text = await extractPdfText(file, MAX_TEXT_FILE_CHARS);
+      if (!text.trim()) {
+        pushHint(`${file.name}：未提取到文字，可能是扫描件 PDF，请截图后按图片上传`);
+        return;
+      }
+      setFiles((prev) => [...prev, { name: file.name, text }]);
+    } catch {
+      pushHint(`${file.name}：PDF 解析失败，请重试或截图后按图片上传`);
+    }
+  };
+
+  /** 统一分发：魔数判定优先（iOS 相册 HEIC 转码后扩展名会说谎），doc/file-intake.md §3 */
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files ? Array.from(e.target.files) : [];
     if (fileInputRef.current) fileInputRef.current.value = '';
+    for (const file of picked) {
+      const detected = await detectIntake(file);
+      if (detected.category === 'image') {
+        await addImageFile(file);
+      } else if (detected.category === 'text') {
+        await readTextFile(file);
+      } else if (detected.category === 'office') {
+        // category === 'office' 时 format 必为 OFFICE_EXTENSIONS 之一（detect 的出口约定）
+        await addOfficeFile(file, detected.format as OfficeFormat);
+      } else if (detected.category === 'doc') {
+        await addDocFile(file);
+      } else if (detected.category === 'pdf') {
+        await addPdfFile(file);
+      } else {
+        pushHint(`${file.name}：${detected.reason ?? '不支持的文件类型'}`);
+      }
+    }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -231,7 +296,7 @@ export default function ChatInput({
     for (const item of Array.from(items)) {
       if (item.type.indexOf('image') !== -1) {
         const file = item.getAsFile();
-        if (file) readFile(file);
+        if (file) void addImageFile(file);
       }
     }
   };
@@ -502,8 +567,8 @@ export default function ChatInput({
           enterKeyHint={isCoarsePointer ? 'enter' : 'send'}
           placeholder={
             isCoarsePointer
-              ? '输入你的问题，支持上传图片与文本文件'
-              : '输入你的问题，支持上传图片与文本文件，回车发送…'
+              ? '输入你的问题，支持上传图片、PDF、文本与 Office 文档'
+              : '输入你的问题，支持上传图片、PDF、文本与 Office 文档，回车发送…'
           }
           // 关键点：背景透明、无边框、无 resize，去掉所有可能干扰的样式
           // touch 16px：iOS 对 <16px 输入框聚焦时强制放大页面（doc/mobile-ux.md §4）
@@ -524,7 +589,7 @@ export default function ChatInput({
               className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted touch:h-11 touch:w-11"
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
-              title="上传图片或文本文件"
+              title="上传图片、PDF、文本或 Office 文档"
             >
               <input
                 type="file"
@@ -543,6 +608,35 @@ export default function ChatInput({
                 />
               </svg>
             </Button>
+            {/* 快速拍照：仅触屏渲染（capture 在桌面无意义），产物走同一图片链路（file-intake.md §9） */}
+            {isCoarsePointer && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted touch:h-11 touch:w-11"
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={loading}
+                title="拍照上传"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  ref={cameraInputRef}
+                  onChange={handleFileSelect}
+                />
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"
+                  />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              </Button>
+            )}
             {/* 三档选择（product-vision.md P4）：全本地 / 多模态 / 混合。
                 P4 约束②：多模态能力未知或不支持时只呈现全本地一档，不得表现存在选择 */}
             {images.length > 0 && (
