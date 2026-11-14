@@ -59,7 +59,7 @@ AIGC:
 | 图片模式派生（direct / ocr-text，按模型能力自动路由） | 已实装 | ✅ | `lib/ocr/image-handling.ts` |
 | 本地嵌入引擎（bge-small-zh-v1.5） | 已实装 | ✅ | `lib/local/engine.ts` |
 | 混合检索纯函数 | 已实装 | ✅ | `lib/local/rag/search.ts` |
-| 种子知识卡 | 27 条，数学单学科 | 🟡 | `lib/local/rag/seed.ts` |
+| 种子知识卡 | 30 条（数学单学科 27 张 + 应用指南 3 张） | 🟡 | `lib/local/rag/seed.ts` |
 | RAG 触发条件（查询侧阈值） | 已实装：`shouldRetrieve()`，有效字符数 ≥ 8（去空白）才检索，短问候直接跳过 | ✅ | `lib/local/rag/gate.ts` |
 | RAG 触发条件（语料侧阈值） | 未实装：种子卡固定，语料规模阈值随「笔记语料索引化」落地时再定（协议 §5.4） | 🧊 | `doc/browser-local-inference.md` §5.4 |
 | 语义缓存 | 无 | 🧊 | — |
@@ -103,7 +103,7 @@ AIGC:
 | 模型探测 30s 缓存 | 已实装 | ✅ | 同上 |
 | DeepSeek 流式 `usage` 消费 | 未消费 | 🧊 | `lib/provider/openaiCompat.ts` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 30 文件 / 352 用例（2026-11-12 审查整改后实测，原 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 36 文件 / 400 用例（2026-11-14 实测，原记 30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 
