@@ -75,10 +75,12 @@ const careVerdict = checkInputSafety(careInput, loadWordlist());
 const careIsSoft = careVerdict.level === null;
 console.log(
   `[smoke:safety] 关怀路径：该输入判定=${careVerdict.level ?? '放行（不硬拦）'}，` +
-    `话术含热线=${PSYCH_SUPPORT_MESSAGE.includes('12356')}`
+    `话术含 12356/12355=${PSYCH_SUPPORT_MESSAGE.includes('12356') && PSYCH_SUPPORT_MESSAGE.includes('12355')}`
 );
 if (!careIsSoft) failures.push('自伤类输入应走关怀而非硬拦截（默认词表为空）');
 if (!PSYCH_SUPPORT_MESSAGE.includes('12356')) failures.push('关怀话术缺少求助渠道');
+if (!PSYCH_SUPPORT_MESSAGE.includes('12355')) failures.push('关怀话术缺少青少年热线 12355');
+if (!PSYCH_SUPPORT_MESSAGE.includes('18:30–22:30')) failures.push('关怀话术里 4009678920 缺服务时段');
 if (!HARD_BLOCK_MESSAGE.includes('题目')) failures.push('硬拦截话术缺少重新表述引导');
 
 /* ---------- 汇总 ---------- */
