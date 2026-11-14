@@ -90,6 +90,36 @@ export interface ChatMsg {
   blocked?: boolean;
 }
 
+/**
+ * 用户主动中止生成的标记后缀（唯一文案出口，doc/chat-history.md §8.3）。
+ *
+ * 由 useChat 的 abort 分支**只追加一次**；渲染与上行组装都经 stripAbortedSuffix
+ * 剥离后转成「已中止」徽标（2026-11-14 起不再渲染为正文里的斜体行）。
+ */
+export const ABORTED_SUFFIX = '\n\n*[已中止]*';
+
+/** 旧文案兼容：ABORTED_SUFFIX 统一之前落库的会话用的是「已停止生成」 */
+const ABORTED_SUFFIX_LEGACY = '\n\n*[已停止生成]*';
+
+/**
+ * 剥离正文结尾的中止标记，返回 (剥离后的正文, 是否命中中止标记)。
+ * 命中即认为该条消息被用户中止过——渲染层据此展示徽标，上行组装据此净化历史。
+ * 兼容无换行前缀的裸标记（防御正文为空串时的拼接变体），其余位置一概不动。
+ */
+export function stripAbortedSuffix(content: string): { text: string; aborted: boolean } {
+  // 尾部可选拉走一个 \n\n 前缀：正文非空时它是分隔空行，正文为空串时整串就是标记本身
+  for (const marker of [ABORTED_SUFFIX, ABORTED_SUFFIX_LEGACY]) {
+    const bare = marker.slice(2); // 去掉 '\n\n' 的裸标记
+    if (content.endsWith(marker)) {
+      return { text: content.slice(0, content.length - marker.length), aborted: true };
+    }
+    if (content.endsWith(bare)) {
+      return { text: content.slice(0, content.length - bare.length), aborted: true };
+    }
+  }
+  return { text: content, aborted: false };
+}
+
 /** 请求体里与消息相关的字段 */
 export interface ChatRequestBody {
   model?: string;

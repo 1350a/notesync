@@ -6,7 +6,12 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
 import { MAX_TEXT_FILE_CHARS, type ChatTextFile } from '@/lib/chat/messages';
 import { decodeTextBuffer } from '@/lib/intake/decode-text';
-import { detectIntake, TEXT_EXTENSIONS, type OfficeFormat } from '@/lib/intake/detect';
+import {
+  detectIntake,
+  FILE_ACCEPT,
+  FILE_ACCEPT_NO_IMAGE,
+  type OfficeFormat,
+} from '@/lib/intake/detect';
 import { extractImageIntake } from '@/lib/intake/extract-image';
 import { extractOfficeText } from '@/lib/intake/extract-office';
 import { extractPdfText } from '@/lib/intake/extract-pdf';
@@ -21,16 +26,8 @@ import {
 import type { ProviderModel, ProviderStatus } from '@/lib/provider/types';
 import { useEffect, useRef, useState } from 'react';
 
-/** 文件选择框的 accept：图片 + 纯文本白名单 + PDF + Office
- *  （ppt/xlsx/xls 不进白名单，强选仍拒收并给指引，doc/file-intake.md §2） */
-const ACCEPT = [
-  'image/*',
-  ...TEXT_EXTENSIONS.map((ext) => `.${ext}`),
-  '.pdf',
-  '.docx',
-  '.doc',
-  '.pptx',
-].join(',');
+/** 文件选择框的 accept 白名单见 lib/intake/detect.ts 的 FILE_ACCEPT / FILE_ACCEPT_NO_IMAGE
+ *  （doc/file-intake.md §9：移动端文件项不含 image/*，避免系统来源选择层） */
 
 export interface ChatInputProps {
   /** ocrTexts：OCR 产物（经回显确认后的最终文本）；options 见 SendOptions */
@@ -124,6 +121,8 @@ export default function ChatInput({
   const [hint, setHint] = useState('');
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 移动端相册选图入口（accept=image/* 无 capture，直进照片选择器，doc/file-intake.md §9） */
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   /** 移动端快速拍照入口（capture 属性直调系统相机，doc/file-intake.md §9） */
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -161,7 +160,7 @@ export default function ChatInput({
     hintTimer.current = setTimeout(() => setHint(''), 4000);
   };
 
-  /** 附件入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9） */
+  /** 附件入口：桌面直开文件选择；触屏展开列表式三选项（file-intake.md §9） */
   const openPicker = () => {
     if (isCoarsePointer) setPickerOpen((v) => !v);
     else fileInputRef.current?.click();
@@ -598,8 +597,35 @@ export default function ChatInput({
         {/* 底栏：左侧附件入口，右侧思考强度与发送 */}
         <div className="flex items-center justify-between px-1 pt-1">
           <div className="flex items-center gap-2">
-            {/* 附件入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9，2026-11-14 起取消独立相机按钮） */}
+            {/* 附件入口：桌面直开文件选择；触屏展开列表式三选项（file-intake.md §9）。
+                三个 input 的 accept 互不共用：文件项不含 image/*（避免系统来源选择层），
+                相册/拍照项均为 image/*，后者加 capture 直调相机。input 置于 Button 外层
+                （input 嵌在 button 内属无效嵌套） */}
             <div className="relative">
+              <input
+                type="file"
+                accept={isCoarsePointer ? FILE_ACCEPT_NO_IMAGE : FILE_ACCEPT}
+                multiple
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+              />
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                ref={galleryInputRef}
+                onChange={handleFileSelect}
+              />
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                ref={cameraInputRef}
+                onChange={handleFileSelect}
+              />
               <Button
                 variant="ghost"
                 size="icon"
@@ -609,22 +635,6 @@ export default function ChatInput({
                 aria-expanded={pickerOpen}
                 title="上传图片、PDF、文本或 Office 文档"
               >
-                <input
-                  type="file"
-                  accept={ACCEPT}
-                  multiple
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                />
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  ref={cameraInputRef}
-                  onChange={handleFileSelect}
-                />
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
@@ -653,6 +663,17 @@ export default function ChatInput({
                       className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
                     >
                       <span aria-hidden>📄</span> 选择文件
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setPickerOpen(false);
+                        galleryInputRef.current?.click();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+                    >
+                      <span aria-hidden>🖼️</span> 从相册选择
                     </button>
                     <button
                       type="button"
