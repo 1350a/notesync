@@ -200,7 +200,9 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
     }
 
     // 将结果回填到历史
-    adapter.appendResults(currentMessages, pendingCalls, results);
+    // 同时回填本轮 assistant 正文：正文已流式下发过，若这里丢弃，下一轮模型看不到
+    // 自己已输出的内容（如 L1 题目画像）会重写一份，同一气泡内出现两份重复正文。
+    adapter.appendResults(currentMessages, pendingCalls, results, callsData.raw);
     exhausted = true; // 本轮执行了工具，若循环条件不再满足则是轮数耗尽
   }
 

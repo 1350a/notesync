@@ -91,7 +91,8 @@ export class NativeAdapter implements ToolAdapter {
   appendResults(
     messages: ProviderMessage[],
     calls: ExtractedToolCall[],
-    results: ToolInvocation[]
+    results: ToolInvocation[],
+    assistantText?: string
   ): void {
     if (calls.length === 0) return;
 
@@ -105,9 +106,11 @@ export class NativeAdapter implements ToolAdapter {
       },
     }));
 
+    // 本轮正文必须随 tool_calls 一并回填（P0：曾置空导致模型看不到自己已写的画像而重写一份）
+    // 正文已通过 SSE 流式下发过，这里只写历史、不再下发，不会造成前端重复显示。
     messages.push({
       role: 'assistant',
-      content: '', // 工具调用轮通常无正文
+      content: assistantText?.trim() ? assistantText : '',
       tool_calls: providerCalls,
     });
 

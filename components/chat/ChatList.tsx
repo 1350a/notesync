@@ -108,15 +108,16 @@ export default function ChatList({
           key={i}
           // 搜索命中跳转的定位锚点（doc/chat-history.md §7.4）；ChatMsg 无稳定 id，key 即下标
           data-msg-index={i}
+          // 无边框扁平排版：user 只留一块语义主色填充，assistant 完全去壳（无底、无框、无阴影），
+          // 正文直接贴齐内容列左缘；圆角收小到 8px 一类，避免"悬浮卡片"观感
           className={
             m.role === 'user'
-              ? 'group self-end rounded-2xl rounded-br-md px-4 py-3 text-sm'
-              : 'group self-start max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 text-sm shadow-sm'
+              ? 'group self-end rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm'
+              : 'group self-start max-w-[85%] text-sm'
           }
           style={
             m.role === 'user'
               ? {
-                  border: '1px solid var(--primary)',
                   backgroundColor: 'var(--primary)',
                   color: 'var(--primary-foreground)',
                   whiteSpace: 'pre-wrap',
@@ -124,8 +125,7 @@ export default function ChatList({
                   maxWidth: '85%',
                 }
               : {
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'var(--card)',
+                  backgroundColor: 'transparent',
                   color: 'var(--text)',
                   wordBreak: 'break-word',
                 }
@@ -262,13 +262,10 @@ export default function ChatList({
 
       {loading && (
         <div className="flex justify-start">
+          {/* 与消息同一套扁平口径：加载态去掉边框与卡片底色，只留脉动点 + 文案 */}
           <div
-            className="flex items-center gap-2 rounded-2xl rounded-bl-md px-4 py-3 text-sm"
-            style={{
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--card)',
-              color: 'var(--text-secondary)',
-            }}
+            className="flex items-center gap-2 py-1 text-sm"
+            style={{ color: 'var(--text-secondary)' }}
           >
             <span
               className="inline-block h-2 w-2 animate-pulse rounded-full"
