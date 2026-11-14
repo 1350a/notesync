@@ -102,8 +102,6 @@ export default function ChatList({
         return (
           <div
             key={i}
-            // 搜索命中跳转的定位锚点（doc/chat-history.md §7.4）；ChatMsg 无稳定 id，key 即下标
-            data-msg-index={i}
             // 无边框扁平排版：user 只留一块语义主色填充，assistant 完全去壳（无底、无框、无阴影），
             // 正文直接贴齐内容列左缘；圆角收小到 8px 一类，避免"悬浮卡片"观感。
             // 外层 wrapper 承载 group/对齐/宽度，气泡只是其中一块：操作条得以放在气泡外（§8.3）
