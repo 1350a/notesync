@@ -27,6 +27,14 @@ import { finalizeTrace, recordEvent, startTrace } from '@/lib/chat/trace';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
 
+/**
+ * 用户主动中止生成的标记后缀（唯一文案出口）。
+ *
+ * 统一为「已中止」，并由 sendMessage 的 abort 分支**只追加一次**；
+ * 旧文案「已停止生成」已废弃，避免同一条消息里出现两种表述。
+ */
+const ABORTED_SUFFIX = '\n\n*[已中止]*';
+
 function parseSseEvent(chunk: string) {
   const lines = chunk.split('\n');
   let event = 'message';
@@ -569,10 +577,19 @@ export function useChat(selectedModel: string) {
       } catch (err: unknown) {
         const isAbortError = err instanceof Error && err.name === 'AbortError';
         if (isAbortError) {
+          // 注意：这里必须是纯函数式更新。原先 `next[i].content += ...` 原地改的是
+          // prev 里同一个消息对象，StrictMode 下 updater 会被调用两次，导致
+          // 「已停止生成」在气泡里重复渲染成两条；同时按后缀判重，双保险。
           setMessages((prev) => {
             const next = [...prev];
             const i = next.length - 1;
-            if (i >= 0) next[i].content += `\n\n*[已停止生成]*`;
+            if (i >= 0) {
+              const current = next[i];
+              const content = current.content.endsWith(ABORTED_SUFFIX)
+                ? current.content
+                : current.content + ABORTED_SUFFIX;
+              if (content !== current.content) next[i] = { ...current, content };
+            }
             return next;
           });
         } else {
