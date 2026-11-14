@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
@@ -86,6 +87,9 @@ export default function UploadArea() {
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 移动端快速拍照入口（capture 属性直调系统相机，doc/file-intake.md §9） */
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
 
   // 模型清单与聊天页同源（GET /api/models），不再由服务端隐式取首个模型
   const {
@@ -130,27 +134,29 @@ export default function UploadArea() {
   const imageMode: ImageSendMode =
     requestedMode !== 'local-ocr' && !canDirect ? 'local-ocr' : requestedMode;
 
-  /** 加入文件：先判定类型，再把可支持的文件送去提取内容 */
+  /** 加入文件：先判定类型（魔数嗅探，异步），再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
-    const drafts = incoming.map((file) => {
-      const detected = detectFile(file.name, file.type);
-      const row: Row = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        category: 'origin',
-        kind: detected.kind,
-        supported: detected.supported,
-        status: detected.supported ? 'extracting' : 'failed',
-        warning: detected.reason,
-      };
-      return { file, detected, row };
-    });
+    const drafts = await Promise.all(
+      incoming.map(async (file) => {
+        const detected = await detectFile(file);
+        const row: Row = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          category: 'origin',
+          kind: detected.kind,
+          supported: detected.supported,
+          status: detected.supported ? 'extracting' : 'failed',
+          warning: detected.reason,
+        };
+        return { file, detected, row };
+      })
+    );
 
     setRows((prev) => [...prev, ...drafts.map((d) => d.row)]);
 
     for (const { file, detected, row } of drafts) {
       if (!detected.supported) continue;
-      const attachment = await extractAttachment(file, row.category, detected.kind);
+      const attachment = await extractAttachment(file, row.category, detected.kind, detected.format);
       const ready = Boolean(attachment.dataUrl || attachment.text);
       setRows((prev) =>
         prev.map((item) =>
@@ -479,8 +485,30 @@ export default function UploadArea() {
         />
         <div className="text-4xl mb-4">📁</div>
         <p className="text-lg font-medium text-slate-700">点击或拖拽文件到这里</p>
-        <p className="text-sm text-slate-500 mt-2">支持图片 / PDF / 纯文本，Word 暂不支持</p>
+        <p className="text-sm text-slate-500 mt-2">
+          支持图片 / PDF / 纯文本 / Word / PPT / Excel（仅旧版 .doc 需上传服务器解析）
+        </p>
       </div>
+
+      {/* 快速拍照：仅触屏渲染（capture 在桌面无意义），产物走同一 detect/extract 链路（file-intake.md §9） */}
+      {isCoarsePointer && (
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={isSending}
+          className="w-full py-3 bg-white text-slate-700 font-medium rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60 touch:py-3.5"
+        >
+          📷 拍照上传
+        </button>
+      )}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        ref={cameraInputRef}
+        onChange={handleFileSelect}
+      />
 
       {rows.length > 0 && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
