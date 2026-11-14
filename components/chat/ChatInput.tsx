@@ -1,6 +1,7 @@
 'use client';
 
 import ModelSelect from '@/components/ModelSelect';
+import AiGeneratedNotice from '@/components/chat/AiGeneratedNotice';
 import { Button } from '@/components/ui/button';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SendOptions } from '@/hooks/useChat';
@@ -717,6 +718,11 @@ export default function ChatInput({
           )}
         </div>
       </div>
+
+      {/* 常驻 AI 生成提示：输入框正下方单行小字（纯展示，无 state、不发请求）。
+          放输入区之外而不是底栏内：底栏已有附件/思考强度/发送三个控件，
+          窄屏再塞文案会被 flex 压成竖排（doc/mobile-ux.md §7 同款教训） */}
+      <AiGeneratedNotice />
     </div>
   );
 }
