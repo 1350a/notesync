@@ -29,6 +29,24 @@
 | `.doc` | base64 上传到**自有服务端**解析，UI 必须明示"将上传到服务器解析" |
 | 云 OCR / 多模态直传 | 口径不变，见 doc/cloud-ocr.md §3 |
 
+**提醒落点（2026-11-14 补齐，两入口都不得静默上传）**：
+
+| 入口 | 形态 | 落点 |
+|---|---|---|
+| 聊天输入区 | 常驻一行短句（弱化色、单行、不占额外纵向空间）+ **首次**选文件/粘贴图片时的一次性详细说明（`pushHint` 通道，4s 自动收起） | `components/chat/ChatInput.tsx` |
+| 诊断上传区 | 区域内常驻**完整三点说明**（上传什么 → 本站是否留存 → 怎么切本地），空间足够不必折叠 | `app/(main)/diagnose/_components/UploadArea.tsx` |
+| 设置页 | 「图片处理（OCR）」行 hint 随引擎派生，云端档写明经本站代理、本站不保存、留存与训练以服务商条款为准 | `components/settings/LocalCapabilitySection.tsx` |
+
+文案**单一来源**为 `lib/ui/notices.ts`（纯常量 + 纯函数，无状态），组件
+`components/upload/UploadPrivacyNotice.tsx` 只负责摆放。图片是否出设备由
+`lib/ocr/image-handling.ts` 的 `imageLeavesDevice(mode, engine)` 判定，与真实发送
+路径同源；提醒按「模式 × 引擎」派生五档文案（多模态原图直传 / 云端 OCR / 本地 OCR /
+普通文件 / 旧版 `.doc`），不把图片 OCR 与通用文件上传混成一句。红线由
+`test/ui/privacy-notice.test.ts` 锁死。
+
+**不做的事**：不每次上传弹窗打断（首次提示一次 + 常驻可见即可）；不替第三方服务商
+承诺「不用于训练」——本站只能自证"代理转发、不落盘"。
+
 ## 2. 支持格式表
 
 | 类别 | 扩展名 / 格式 | 判定方式 | 入口 | 解析方 |

@@ -67,6 +67,11 @@ AIGC:
 - 可聚焦文本控件（textarea / 文本 input）触屏字号 16px（`touch:text-base`）：
   iOS Safari 对 computed font-size < 16px 的输入框聚焦时会强制放大页面。
   select 与 file input 不触发缩放，disabled 输入框不可聚焦，均无需处理。
+- 输入区常驻提示（AI 生成提示 `components/chat/AiGeneratedNotice.tsx`、上传隐私提醒
+  `components/upload/UploadPrivacyNotice.tsx`）一律用 `text-[10px]` + `leading-tight`
+  + `-mt-1` 的负外边距抵掉自身行高，保证单行小字**不额外占用纵向空间**、不挤压
+  textarea、不遮挡输入框；`text-center` + `px-2` 使长句在窄屏自然折行、不横向溢出。
+  两者均为纯展示（无 state、不发请求），文案取自 `lib/ui/notices.ts`。
 
 ## 5. 内容渲染契约
 

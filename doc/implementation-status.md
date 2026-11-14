@@ -86,6 +86,9 @@ AIGC:
 | 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
 | 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
 | 图片上传明示 | 已实装：发送处按派生档标注外发（多模态「图片将上传至模型服务商」；云端 OCR「图片像素上传至智谱」）。2026-11-14 起档位全自动派生、不再提供手选 | ✅ | `components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx` |
+| 上传前隐私提醒（全入口） | 已实装（2026-11-14）：聊天输入区常驻短句 + 首次上传一次性详细说明；诊断上传区常驻完整三点说明（上传什么 / 本站是否留存 / 怎么切本地）；设置页 hint 随引擎派生。文案按「模式 × 引擎」分五档，不混淆图片 OCR 与通用文件上传；不每次弹窗打断 | ✅ | `lib/ui/notices.ts`、`components/upload/UploadPrivacyNotice.tsx`、`components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx`、`components/settings/LocalCapabilitySection.tsx` |
+| AI 生成内容提示 | 已实装（2026-11-14）：输入区下方常驻单行「回答由 AI 生成，可能存在错误，请核实后使用。」，弱化色、单行、不占额外纵向空间，纯展示无 state | ✅ | `lib/ui/notices.ts`、`components/chat/AiGeneratedNotice.tsx`、`components/chat/ChatInput.tsx` |
+| 提示词契约用例 | 已实装（2026-11-14）：锁死「不得只给答案」（禁回退「不得直接给答案」）、学科边界三级结构、仅越权类带 `REFUSAL_PREFIX`；另锁死各态注入边界条款 | ✅ | `test/lib/diagnose/prompt-contract.test.ts`、`test/ui/privacy-notice.test.ts`、`test/ui/notices.test.ts` |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
 
