@@ -173,7 +173,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | --- | --- | --- |
 | 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 已完成 |
 | 2 | `lib/history/` 工厂与搜索纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
-| 3 | §8 会话与消息级操作：会话重命名、导出 Markdown、消息级删除 / 重新生成 / 编辑重发 | ✅ 已完成 |
+| 3 | §8 会话与消息级操作：会话重命名、导出 Markdown、重新生成 / 编辑重发（消息级删除入口已于 2026-11-14 停用，见 §8.3） | ✅ 已完成 |
 
 ---
 
@@ -249,7 +249,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | --- | --- | --- |
 | 重新生成 | 截断最后一条 user 消息之后的全部内容，重发该条 | 复用 `sendMessage`；上行历史改读 `messagesRef`（见下） |
 | 编辑重发 | 截断到目标 user 消息**之前**，用新正文重发，附件沿用原条 | 只改正文，`images`/`ocrTexts`/`imageSendMode` 原样带回 |
-| 删除单条 | 从 `messages` 移除该条 | 删空即等价"会话作废"：清内存态并 `deleteSession`，不留空壳条目 |
+| ~~删除单条~~ | **已停用（2026-11-14）**：消息级删除入口从 UI 撤下，避免误触破坏上下文 | 底层契约（`shiftExpiredRefsOnDelete` 与坐标收缩）保留在 `lib/history/contract.ts` 并维持单测，供将来恢复或导出侧复用 |
 
 **索引收缩契约（本节唯一新增的硬约束）**：`expiredImages` 的 `msg` 是消息下标，与 blobs 的 `sessionId:msgIndex:imgIndex` 严格对齐。任何改变消息数量的操作都必须同批处理坐标：
 
@@ -262,4 +262,6 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 **落盘与禁用**：三种操作都走 §7.3 的 700ms 合并落库；`loading` 期间全部禁用（生成中改历史会让流式 `appendAssistant` 写到最后一条错位的消息上）。
 
-**UI**：消息气泡悬停/聚焦显示操作条（`components/chat/MessageActions.tsx`）：user 消息给「编辑 / 删除」，assistant 消息给「复制 / 删除」，最后一条 assistant 额外给「重新生成」。触屏常显（同 `doc/mobile-ux.md` §4）。
+**UI**：消息操作条在气泡**外**、正文下方一行（`components/chat/MessageActions.tsx`，2026-11-14 改版）：图标按钮（复制 / 编辑 / 重新生成），悬停/聚焦显形，触屏常显（同 `doc/mobile-ux.md` §4）。user 消息给「复制 / 编辑」，assistant 消息给「复制」，最后一条 assistant 额外给「重新生成」；无正文的消息不给复制。删除入口已停用（见上表）。
+
+**中止标记**：用户主动中止生成的后缀 `*[已中止]*`（`ABORTED_SUFFIX`，`lib/chat/messages.ts` 唯一文案出口）不再以斜体行渲染——渲染层用 `stripAbortedSuffix` 剥离后缀并在正文下展示「已中止」徽标；上行组装历史时同样剥离（标记不再进入模型上下文）。旧库遗留的「已停止生成」后缀（`ABORTED_SUFFIX_LEGACY`）在渲染层一并兼容。
