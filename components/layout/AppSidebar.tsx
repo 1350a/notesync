@@ -1,18 +1,6 @@
 'use client';
 
-import type { ChatMsg } from '@/lib/chat/messages';
-import {
-  SEARCH_BODY_SCAN_LIMIT,
-  SEARCH_DEBOUNCE_MS,
-  SEARCH_HIT_LIMIT,
-  SEARCH_SCAN_BATCH,
-  matchMessages,
-  matchMeta,
-  mergeHits,
-  normalizeKeyword,
-} from '@/lib/history/search';
 import { exportSessionMarkdown } from '@/lib/history/export';
-import { getHistoryStorage } from '@/lib/history/storage';
 import type { SessionMeta } from '@/lib/history/types';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
@@ -20,7 +8,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useChatStore } from '@/store/useChatStore';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const NAV_ITEMS = [
   { name: '单题对话', path: '/chat', icon: '💬' },
@@ -57,82 +45,24 @@ function SidebarContent() {
   const refreshSessions = useChatStore((s) => s.refreshSessions);
   const isMobile = useMediaQuery('(max-width: 767px)');
 
-  const [keyword, setKeyword] = useState('');
-  const [hits, setHits] = useState<SessionMeta[]>([]);
-  const [searching, setSearching] = useState(false);
   // 改名态：只允许一条进入编辑；草稿与提交分开，Esc 取消不写库（§8.1）
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState('');
   /** Esc 取消时 input 会跟着失焦，用它压掉 blur 的提交 */
   const cancelRenameRef = useRef(false);
-  const query = normalizeKeyword(keyword);
 
   // 列表首次挂载即刷新（§7.4）：store 快照原本只在 /chat 的 useChat 里刷，直接进
-  // /diagnose、/local 时快照为空，列表与搜索会整体空转，故收口到侧栏自身挂载
+  // /diagnose、/local 时快照为空，列表会整体空转，故收口到侧栏自身挂载
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
 
-  // 搜索：防抖 200ms；标题过滤（零 IO）立即出结果，标题命中不足再按 SEARCH_SCAN_BATCH
-  // 条/批并行回读正文补齐，逐批合并刷新（§7.4）；命中满 SEARCH_HIT_LIMIT 提前停止
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      const current = normalizeKeyword(keyword);
-      if (!current) {
-        setSearching(false);
-        setHits(sessions);
-        return;
-      }
-      const titleHits = sessions.filter((item) => matchMeta(item, current));
-      setHits(titleHits.slice(0, SEARCH_HIT_LIMIT));
-      const rest = sessions
-        .filter((item) => !titleHits.includes(item))
-        .slice(0, SEARCH_BODY_SCAN_LIMIT);
-      if (titleHits.length >= SEARCH_HIT_LIMIT || rest.length === 0) {
-        setSearching(false);
-        return;
-      }
-      setSearching(true);
-      void (async () => {
-        const storage = getHistoryStorage();
-        const bodyHits: SessionMeta[] = [];
-        for (let start = 0; start < rest.length; start += SEARCH_SCAN_BATCH) {
-          if (cancelled) return;
-          if (titleHits.length + bodyHits.length >= SEARCH_HIT_LIMIT) break;
-          // loadSession 把读库错误吞成 null，Promise.all 不会 reject；同批并行互不拖累
-          const batch = rest.slice(start, start + SEARCH_SCAN_BATCH);
-          const results = await Promise.all(
-            batch.map(async (item) => {
-              const record = await storage.loadSession(item.id);
-              return record && matchMessages(record.messages as ChatMsg[], current) ? item : null;
-            })
-          );
-          if (cancelled) return;
-          for (const hit of results) if (hit) bodyHits.push(hit);
-          // 渐进刷新：每批合并写一次，长扫描先给出部分结果
-          setHits(mergeHits(titleHits, bodyHits));
-        }
-        if (cancelled) return;
-        setSearching(false);
-      })();
-    }, SEARCH_DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [keyword, sessions]);
-
-  // 无关键词时直接吃 store 快照，避免首帧先摆空列表再被搜索结果覆盖
-  const list = useMemo(() => (query ? hits : sessions), [query, hits, sessions]);
-
   const handleOpen = useCallback(
     (id: string) => {
-      // 带搜索关键词打开：聊天页据此定位首条命中消息（§7.4 搜索命中跳转）
-      openSession(id, query || undefined);
+      openSession(id);
       if (isMobile) setSidebarOpen(false);
     },
-    [openSession, query, isMobile, setSidebarOpen]
+    [openSession, isMobile, setSidebarOpen]
   );
 
   const handleNewChat = useCallback(() => {
@@ -206,45 +136,6 @@ function SidebarContent() {
       </div>
 
       <div className="p-4 flex-1 flex flex-col gap-6 overflow-y-auto">
-        {/* 搜索框 (修复了之前只有放大镜没有输入框的问题) */}
-        <div className="relative">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-          <input
-            type="text"
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            disabled={!historySupported}
-            placeholder={historySupported ? '搜索会话标题与内容' : '当前环境不支持本地保存'}
-            title={
-              historySupported
-                ? '子串匹配会话标题与消息正文，最多显示 50 条'
-                : '当前浏览器不支持本地保存，没有可检索的历史会话'
-            }
-            className={`w-full pl-9 pr-3 py-1.5 text-sm bg-muted/40 border border-border rounded-lg outline-none ${
-              historySupported
-                ? 'focus:border-foreground/30 placeholder:text-muted-foreground/70'
-                : 'cursor-not-allowed placeholder:text-muted-foreground/70'
-            }`}
-          />
-          {searching ? (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-              搜索中
-            </span>
-          ) : null}
-        </div>
-
         {/* 导航区 */}
         <div>
           <h3 className="text-xs font-semibold text-muted-foreground mb-2">功能导航</h3>
@@ -286,13 +177,11 @@ function SidebarContent() {
             </p>
           )}
 
-          {list.length === 0 ? (
-            <div className="px-3 text-sm italic text-muted-foreground">
-              {query ? (searching ? '搜索中…' : '没有匹配的会话') : '暂无历史会话'}
-            </div>
+          {sessions.length === 0 ? (
+            <div className="px-3 text-sm italic text-muted-foreground">暂无历史会话</div>
           ) : (
             <ul className="space-y-0.5">
-              {list.map((item) => {
+              {sessions.map((item) => {
                 const active = item.id === currentSessionId;
                 return (
                   <li key={item.id} className="group relative">

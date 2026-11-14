@@ -19,7 +19,7 @@
 **改动后**（批次 2 落地，当前口径）：
 
 - 消息由 `hooks/useChat.ts` 在生成结束/停止后 debounce 落 IndexedDB，切换或新建会话前先 flush。
-- 侧栏「最近记录」读 `meta` 表渲染会话列表，搜索框解禁走 §5 子串过滤；命中项点击即恢复该会话。
+- 侧栏「最近记录」读 `meta` 表渲染会话列表；点击会话项即恢复该会话。
 - 打开历史会话时 `images[i] === ''` 的槽位按 §4.1 渲染「图片已过期」占位块。
 - 设置页「清除全部本地数据」追加 `storage.clearAll()`，与 `localStorage` 清理同批执行。
 
@@ -152,18 +152,21 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 ---
 
-## 5. 搜索口径
+## 5. 搜索口径（已移除）
+
+侧栏会话历史搜索已整体下线，当前**不提供**任何会话检索入口：
 
 | 项 | 结论 |
 | --- | --- |
-| 算法 | `String.includes` 基础子串过滤，**不做分词、不做倒排索引** |
-| 防抖 | 输入后 **200ms** 触发，避免每次按键全量扫描 |
-| 匹配范围 | 会话标题 + 消息正文（`content` / `ocrTexts` / `files[].text`）；`reasoning` 与图片本体不计 |
-| 归一化 | 两端 `toLowerCase()`；全角转半角后匹配（中文无大小写，但模型输出常混英文/数字） |
-| 结果 | 返回命中的 `SessionMeta` 列表，按 `updatedAt` 倒序；命中条数上限 50 |
-| 成本边界 | 标题过滤零 IO 全量覆盖；正文回读覆盖最近 `SEARCH_BODY_SCAN_LIMIT`（500）条会话，`SEARCH_SCAN_BATCH`（8）条/批并行回读、逐批合并渐进刷新，命中满 50 提前停止 |
+| 侧栏 UI | 搜索框已移除，历史区只有「最近记录」列表 + 新建/改名/导出/删除 |
+| 检索能力 | `lib/history/search.ts`（子串匹配、防抖、命中合并、首条命中定位）连同单测一并删除 |
+| 命中消费 | 聊天页不再有 `mark.search-hit` 高亮与 `search-hit-flash` 闪烁，`app/globals.css` 对应样式同步删除 |
+| 跳转载荷 | `store/useChatStore.ts` 不再有 `PendingJump` / `pendingJump` / `clearPendingJump`，`openSession(id)` 只置 `pendingSessionId` 并递增信号 |
+| 知识检索 | 与本文无关的本地 RAG 知识检索（`lib/local/rag/`）**不受影响**，仍在发送前按 `shouldRetrieve()` 门控注入上下文 |
 
-不做索引的理由：会话正文总量以 MB 计，一次全扫在 10ms 量级；为搜索引入倒排索引的复杂度（增量维护、删除清理、版本迁移）远超收益。若将来实测卡顿，再按本表的"成本边界"升级。
+移除理由：历史搜索是"按关键词找旧会话"的辅助入口，实际使用频次低，却要维护防抖扫描、正文回读上限、命中合并、DOM 层高亮与跳转时序一整套链路（正文回读还要按批读库）。下沉为纯列表后，侧栏逻辑只保留读取 `meta` 表，职责更单一，也避免了"跳转后吸底让位"这类跨组件时序耦合。
+
+将来若要恢复检索，按本文件版本历史找回 `lib/history/search.ts` 与对应 UI 即可；会话数据结构（`meta` + `records`）未做任何变更，索引无需迁移。
 
 ---
 
@@ -172,7 +175,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | 批次 | 内容 | 状态 |
 | --- | --- | --- |
 | 1 | 本协议 + `lib/history/` 六个文件（types / title / sanitize / contract / memory / indexeddb）+ 单测 | ✅ 已完成 |
-| 2 | `lib/history/` 工厂与搜索纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表与搜索、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
+| 2 | `lib/history/` 工厂与纯函数、`store/useChatStore` 接入、`useChat` 落盘钩子、侧栏历史列表、过期图片占位渲染、设置页清库扩展 | ✅ 已完成 |
 | 3 | §8 会话与消息级操作：会话重命名、导出 Markdown、消息级删除 / 重新生成 / 编辑重发 | ✅ 已完成 |
 
 ---
@@ -210,9 +213,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 | 元素 | 行为 |
 | --- | --- |
-| 搜索框 | 输入后 200ms 防抖：标题过滤先行（零 IO）立即出结果，标题命中不足再按 `SEARCH_SCAN_BATCH`（8）条/批并行回读正文补齐，逐批合并刷新列表；空查询回落完整列表；扫描期间显示「搜索中」 |
 | 会话项 | 单行标题（`truncate`）+ 相对时间；当前 `currentSessionId` 高亮；点击即 §7.2 流程 |
-| 搜索命中跳转 | 搜索结果点击时若带关键词，`openSession(id, keyword)` 随信号原子携带；聊天页加载完成后定位首条命中消息（`scrollIntoView` 居中 + 消息闪烁），并在该消息**已渲染文本**内以 DOM 层包 `<mark>` 高亮（不改 markdown sanitize 白名单）。边界：`ocrTexts` / `files[].text` 命中的文本不在气泡正文展示（OCR 仅徽章 + title 悬浮全文），这两类命中定位到消息级为止；仅标题命中的点击不跳转 |
 | 删除 | 悬停/聚焦显示删除按钮 → `window.confirm` → `storage.deleteSession(id)` → `refreshSessions()`；删的若是当前会话，一并 `clearMessages()` |
 | 降级提示 | `historySupported === false` 时列表区顶部固定一条「当前浏览器不支持本地保存，本次对话不会留存」，列表区显示空态 |
 

@@ -51,7 +51,8 @@ export default function LocalCapabilitySection() {
   // 探测未完成按不可用处理（宁可禁用，不做乐观假设），zhipu unconfigured 时云端选项置灰
   const { providers, loading: modelsLoading } = useModels();
   const cloudOcrReady =
-    !modelsLoading && Boolean(providers?.some((p) => p.name === 'zhipu' && p.status !== 'unconfigured'));
+    !modelsLoading &&
+    Boolean(providers?.some((p) => p.name === 'zhipu' && p.status !== 'unconfigured'));
 
   const { status: engine, assets, init } = useLocalEngine();
   // starting 提供点击→首帧 loading 间的即时反馈（轮询粒度 800ms，补齐这个空窗）
@@ -98,8 +99,8 @@ export default function LocalCapabilitySection() {
         label="图片处理（OCR）"
         hint={
           ocr.engine === 'cloud'
-            ? '默认云端 glm-ocr：公式/表格/手写识别更好，转写时图片像素将发送至智谱；仅纯文本模型路径生效（多模态模型直传原图）'
-            : '本地 tesseract：全程浏览器内转写（隐私）；手写/公式/复杂版面较弱'
+            ? '默认将文件交由云端模型处理，若选择了纯文本模型，则图片交由视觉模型glm-ocr处理'
+            : '图片文件全程在浏览器内转写，对复杂版面识别效果较弱'
         }
       >
         <div className="flex w-full gap-2">
@@ -125,7 +126,7 @@ export default function LocalCapabilitySection() {
                 : 'border-border hover:bg-muted/50'
             }`}
           >
-            云端·glm-ocr
+            云端
           </button>
         </div>
       </SettingsRow>
