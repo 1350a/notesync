@@ -16,7 +16,7 @@
  * 不依赖真实模型与 API Key，纯进程内验证。
  */
 import { assembleDiagnoseMessage } from '../lib/diagnose/assemble.ts';
-import { detectFile } from '../lib/diagnose/detect.ts';
+import { detectFileSync } from '../lib/diagnose/detect.ts';
 import type { DiagnoseAttachment } from '../lib/diagnose/types.ts';
 import type { ProviderImagePart, ProviderTextPart } from '../lib/provider/types.ts';
 
@@ -58,15 +58,22 @@ function textOf(part: ProviderTextPart | ProviderImagePart): string {
 
 const IMG: DiagnoseAttachment = { name: 'a.png', category: 'origin', dataUrl: 'data:image/png;base64,AAAA' };
 
-console.log('\n[1] detect 判定');
-assertEqual(detectFile('a.JPG', '').kind, 'image', '大写扩展名仍判为图片');
-assertEqual(detectFile('a', 'image/webp').kind, 'image', '无扩展名时用 MIME 兜底');
-assertEqual(detectFile('q.pdf', 'application/pdf').supported, true, 'PDF 可接收');
-assertEqual(detectFile('n.md', '').kind, 'text', 'md 归为纯文本');
-const docResult = detectFile('w.docx', '');
-assertEqual(docResult.supported, false, 'docx 拒收');
-assert(docResult.reason?.includes('w.docx') === true, '拒收原因包含文件名');
-assertEqual(detectFile('x.exe', '').kind, 'unsupported', '未知扩展名判为 unsupported');
+console.log('\n[1] detect 判定（同步入口：扩展名/MIME，无魔数）');
+assertEqual(detectFileSync('a.JPG', '').kind, 'image', '大写扩展名仍判为图片');
+assertEqual(detectFileSync('a', 'image/webp').kind, 'image', '无扩展名时用 MIME 兜底');
+assertEqual(detectFileSync('q.pdf', 'application/pdf').supported, true, 'PDF 可接收');
+assertEqual(detectFileSync('n.md', '').kind, 'text', 'md 归为纯文本');
+const docxResult = detectFileSync('w.docx', '');
+assertEqual(docxResult.supported, true, 'docx 已接入（客户端解析）');
+assertEqual(docxResult.kind, 'office', 'docx 归为 office（mammoth）');
+const docResult = detectFileSync('w.doc', '');
+assertEqual(docResult.supported, true, 'doc 已接入（服务端 /api/parse-doc）');
+const pptResult = detectFileSync('w.ppt', '');
+assertEqual(pptResult.supported, false, 'ppt 拒收（另存 pptx）');
+assert(pptResult.reason?.includes('另存为 pptx') === true, 'ppt 拒收原因给出指引');
+const gifResult = detectFileSync('a.gif', 'image/gif');
+assertEqual(gifResult.supported, false, 'gif 拒收（动图截帧）');
+assertEqual(detectFileSync('x.exe', '').kind, 'unsupported', '未知扩展名判为 unsupported');
 
 console.log('\n[2] 四类标签分组顺序与锚点');
 {
