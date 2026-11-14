@@ -115,21 +115,22 @@ disposeOcrWorker(): Promise<void>
 本地 OCR 的第一个业务接入：**图片先在浏览器内转成文字，再随消息发送**，纯文本模型
 （本地 deepseek-local、DeepSeek 的 `deepseek-v4-pro` 等文本款）因此可以"看到"图片内容而不报错。
 
-### 6.1 图片发送模式与派生规则
+### 6.1 图片发送模式与派生规则（2026-11-14 重写：自动路由，无人工档位）
 
 ```
-ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字）
+ImageSendMode = 'direct'（原图直传，无转写） | 'ocr-text'（OCR 转文字，引擎由 ocr.engine 决定）
 ```
 
-派生优先级（`lib/ocr/image-handling.ts` 的 resolveImageSendMode）：
+派生规则（`lib/ocr/image-handling.ts` 的 resolveImageSendMode，只看模型能力）：
 
-1. 设置 `ocr.preferLocal === true`（设置页"图片处理：优先本地OCR"）→ 一律 `local-ocr`。
-   路由绝对权在使用者：这是显式的隐私/省 token 偏好。
-2. 未开偏好时按模型能力（`/api/models` 的 `acceptsImages`）：
-   `true` → `direct`；`false` 或未知 → `local-ocr`（能力未知时保守转文字，绝不赌上游）。
+1. 模型 `acceptsImages === true` → `direct`：多模态模型直传原图，**不做任何转写**。
+2. `false` / `undefined` / 无模型 → `ocr-text`（能力未知保守转文字，绝不赌上游）。
 
-输入区（聊天/诊断）在有图片时展示当前模式并可**当次切换**（会话级，不落盘）；
-持久偏好只存 `ocr.preferLocal` 一处。
+- 旧 `ocr.preferLocal`（"优先本地OCR"一律转文字）**已删除**；当次切换（三档选择器）
+  **已下线**——路由全自动，输入区只展示派生结果与代价文案，不提供模式控件
+  （product-vision.md P4，2026-11-14 拍板）。
+- 持久偏好只剩 `ocr.engine` 一处（local/cloud，默认 cloud，doc/cloud-ocr.md §4）。
+- 旧档位名 `local-ocr` 更名 `ocr-text`：原名称在云端引擎下成了谎言（转写不再"local"）。
 
 ### 6.2 请求契约（/api/chat messages 元素）
 
@@ -137,21 +138,21 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 { role, content, images?: string[], imageTexts?: string[], files? }
 ```
 
-- `images`：直传 / 混合模式的图片 dataUrl（原语义不变）。
+- `images`：直传模式的图片 dataUrl（原语义不变）。
 - `imageTexts`：OCR 模式产物，与该消息图片一一对应的识别文本（仅非空文本）。
   **服务端组装规则按「是否同时携带 images」区分**：
-  - 仅 `imageTexts`（全本地）：忽略 images 本体，按
+  - 仅 `imageTexts`（ocr-text 档）：忽略 images 本体，按
     `【图片 N OCR】…【/图片 OCR】` 文本块（`formatOcrBlock`）拼进正文，
     任何模型都可安全消费；此类消息不占用 MAX_IMAGE_MESSAGES 图片配额。
-  - `imageTexts` + `images` 同时存在（**混合档**，product-vision.md P4）：
-    OCR 文本块打底 + 原图 image_url 补充，一并组装；此类消息**占用**图片保留配额，
-    且仅当所选模型支持多模态才按混合组装，否则降级为纯 OCR 文本（与直传降级同口径）。
-- 直传路径完全不变；**整卷诊断附件已支持混合形态**：`text` 与 `dataUrl` 可同时存在
-  （`text` 承载本地 OCR 文本），服务端由 `resolveAssembleImageMode` 按附件形态自动判定
-  直传 / 混合 / 纯文本降级三档，客户端无需额外传档位字段；混合档下带 OCR 文本的图片项
-  先投文本、再投原图，与聊天侧同口径。详见 `diagnose-file-intake.md` §6.1。
-- 三档（全本地 / 多模态 / 混合）的呈现约束见 `product-vision.md` P4：
-  未配置多模态模型时界面不得表现存在选择项；全本地的代价必须写在选择处。
+  - `imageTexts` + `images` 同时存在（**混合档，2026-11-14 起客户端不再产出，仅为旧
+    持久化会话的重发保留兼容**）：OCR 文本块打底 + 原图 image_url 补充，一并组装；
+    此类消息**占用**图片保留配额，且仅当所选模型支持多模态才按混合组装，否则降级为
+    纯 OCR 文本（与直传降级同口径）。
+- 直传路径完全不变；**整卷诊断附件的混合形态**（`text` 与 `dataUrl` 同时存在）同上：
+  服务端 `resolveAssembleImageMode` 保留该判定分支只为兼容，新客户端不再产出
+  混合形态附件（详见 `diagnose-file-intake.md` §6.1）。
+- 两档（多模态 / OCR 转文字）的呈现约束见 `product-vision.md` P4：
+  路由全自动、不提供档位控件，外发代价写在发送处。
 
 ### 6.3 Provider 能力默认值（本轮修正）
 
@@ -163,9 +164,11 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 
 ### 6.4 失败语义
 
-- OCR 失败/空结果的图片**阻断发送**并逐张列明原因，由用户决策（移除该图/改直传/重试）；
-  绝不静默丢弃图片内容，也绝不静默改为直传。
-- 本地 OCR 全程数据不出设备，模式切换与识别进度在输入区可见（wiring honesty）。
+- OCR 失败/空结果的图片**阻断发送**并逐张列明原因，由用户决策（移除该图/在设置中
+  切换识别引擎后重试）；绝不静默丢弃图片内容，也绝不静默改为直传或换引擎。
+- （旧混合档"OCR 失败不阻断、仅提示该图只传原图"的分支随混合档下线一并取消——
+  现在转写只发生在纯文本模型路径，识别文本是唯一通道，失败必须阻断。）
+- 识别进度在输入区可见（wiring honesty）；本地引擎下数据全程不出设备。
 
 ## 7. 后续挂账（不属于本协议）
 
@@ -173,5 +176,6 @@ ImageSendMode = 'direct'（原图直传） | 'local-ocr'（本地 OCR 转文字�
 - ~~云 OCR 选项（用户显式选择，走设备边界规则提示）~~ **已实装（2026-11-12）**：
   转写引擎维度落地为 `ocr.engine`，智谱 glm-ocr 经 `/api/ocr` 代理接入，
   独立协议见 doc/cloud-ocr.md（本文件保持"本地引擎"口径不变）。
-- 设置粒度：OCR 偏好档位已归入「本地能力」分区（doc/browser-local-inference.md §7）；
-  云端引擎开关同分区相邻行，与 `preferLocal` 正交。
+- 设置粒度：OCR 引擎选择已归入「本地能力」分区（doc/browser-local-inference.md §7），
+  2026-11-14 起「图片处理（OCR）」一行即引擎选择（本地/云端，默认云端），`preferLocal`
+  档位偏好已删。

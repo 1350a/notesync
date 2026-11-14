@@ -38,8 +38,9 @@ interface UserSettings {
     maxTokens?: number;               //   【未接线】钳制 1–200_000 整数（防呆上限，实际受上游模型约束）
   };
   ocr: {                              // 【已接线】
-    preferLocal: boolean;             //   true=聊天/诊断的图片一律先转文字再发送（隐私/省 token 优先）
-    engine: 'local' | 'cloud';        //   转写引擎：local=tesseract.js（默认）；cloud=智谱 glm-ocr（doc/cloud-ocr.md §4）
+    engine: 'local' | 'cloud';        //   转写引擎：cloud=智谱 glm-ocr（默认）；local=tesseract.js（doc/cloud-ocr.md §4）。
+                                      //   2026-11-14 拍板：preferLocal 档位偏好已删——要不要转写由模型能力自动路由
+                                      //   （多模态直传、纯文本转写，product-vision.md P4），本字段只决定谁来转写
   };
   rag: { enabled: boolean };          // 【已接线】true=发送前浏览器本地检索知识库并注入命中片段（见 doc/browser-local-inference.md §6）
 }
@@ -81,8 +82,8 @@ interface UserSettings {
 | systemPrompt | 非字符串 → `''`；超 8000 字符截断 |
 | generation.temperature | 非有限数字 → 丢弃；越界 → 钳制到 0–2 |
 | generation.maxTokens | 非有限数字 / ≤0 → 丢弃；向下取整并钳制到 1–200_000 |
-| ocr.preferLocal | 严格 `=== true` 才为 true |
-| ocr.engine | 非 `'local'/'cloud'` → 回落 `'local'`（旧存储无此字段同样补默认，doc/cloud-ocr.md §4） |
+| ocr.engine | 非 `'local'/'cloud'` → 回落 `'cloud'`（2026-11-14 起默认档为云端；旧存储无此字段同样补默认，doc/cloud-ocr.md §4）。旧存量 `ocr.preferLocal` 键按未知字段自然丢弃 |
+| ocr.preferLocal | ~~已删除（2026-11-14）~~：不再读取，存量键随 normalize 丢弃 |
 | rag.enabled | 严格 `=== true` 才为 true |
 | 未知字段 | 一律丢弃（前向兼容：新版本读旧数据补默认，旧版本读新数据不崩） |
 
@@ -126,7 +127,7 @@ interface SettingsStorage {
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
 | 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；朗读音色一行禁用 + "未实装"标注 |
-| 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.preferLocal` + `ocr.engine`，自通用设置迁入）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
+| 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.engine`：本地/云端，默认云端；2026-11-14 起取代旧「自动/优先本地OCR」两行）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；重置设备标识（`resetUserId()`，仅清 `notesync-user-id`，不动设置，见 §4.1）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
 | 服务协议 | 静态 | 本地存储声明、无遥测、密钥仅环境变量、数据由所配模型服务商处理 |
@@ -141,7 +142,9 @@ interface SettingsStorage {
 ## 6. 待实现（挂账）
 
 - generation / systemPrompt 服务端注入：扩展 `ChatRequestBody` + `/api/chat` 校验读取（参数经 `CompleteOptions` 透传 provider）。
-- OCR `preferLocal` 已接线（2026-11-10，语义见 doc/browser-local-ocr.md §6）；~~云 OCR 选项仍挂账~~ **云 OCR 已实装（2026-11-12）**：`ocr.engine` 落地，契约见 doc/cloud-ocr.md（设备边界规则兑现：引擎默认 local，切云端为显式动作）。
+- OCR：~~云 OCR 选项挂账~~ **已实装（2026-11-12）**；**2026-11-14 重构**：`preferLocal` 删除、
+  引擎默认档改 `'cloud'`，发送路由改为按模型能力自动派生（多模态直传 / 纯文本转写，
+  混合档下线），契约见 doc/cloud-ocr.md §4 与 product-vision.md P4。
 - RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；查询侧触发阈值 `RAG_MIN_QUERY_CHARS = 8` 已接线（2026-11-12，见同文档 §5.4）；云端 embedding 与对话本地档位挂账（同文档 §8）。
 - 朗读音色（TTS）实装。
 - ~~界面语言（i18n）~~ **占位已移除（2026-11-14 拍板砍掉多语言方向）**：`language`

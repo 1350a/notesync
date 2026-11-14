@@ -241,7 +241,7 @@ type RagContext = { title: string; snippet: string; score: number };
 
 | 行 | 状态 | 内容 |
 | --- | --- | --- |
-| 图片处理（OCR） | **实装** | 开关写 `ocr.preferLocal`（自动 / 优先本地OCR），自通用设置迁入本分区，全站唯一开关 |
+| 图片处理（OCR） | **实装** | 引擎选择写 `ocr.engine`（本地 / 云端·glm-ocr，默认云端；2026-11-14 起取代旧 preferLocal 两行，见 doc/cloud-ocr.md §4） |
 | 知识检索（RAG） | **实装** | 开关写 `rag.enabled`（默认 false）+ 命中口径说明；资产未就绪时「开启」置灰并给修复命令 |
 | 本地引擎 | **实装** | 引擎状态 + 预加载入口（bge-small-zh-v1.5，WebGPU 优先、不可用时回退 WASM），下载进度经单例轮询回显 |
 | 本地对话 | 占位 | v1 仅云端；本地选项禁用 + “未实装”标注（AGENTS.md §8） |
@@ -259,7 +259,7 @@ type RagContext = { title: string; snippet: string; score: number };
 rag: { enabled: boolean };  // 【已接线】true=发送前浏览器本地检索并注入命中片段
 ```
 
-normalize 规则：`rag.enabled` 严格 `=== true` 才为 true（与 `ocr.preferLocal` 同款从严布尔）。
+normalize 规则：`rag.enabled` 严格 `=== true` 才为 true。
 
 代码侧逐项核对（2026-11-10，按当前实现实查）：
 

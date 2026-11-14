@@ -56,7 +56,7 @@ AIGC:
 |---|---|---|---|
 | 本地 OCR（tesseract.js chi_sim） | 已实装，`/ocr` 有自检面板 | ✅ | `lib/ocr.ts` |
 | OCR 资产复制脚本 | 已实装，幂等 | ✅ | `scripts/copy-ocr-assets.mjs` |
-| 图片模式派生（direct / local-ocr） | 已实装 | ✅ | `lib/ocr/image-handling.ts` |
+| 图片模式派生（direct / ocr-text，按模型能力自动路由） | 已实装 | ✅ | `lib/ocr/image-handling.ts` |
 | 本地嵌入引擎（bge-small-zh-v1.5） | 已实装 | ✅ | `lib/local/engine.ts` |
 | 混合检索纯函数 | 已实装 | ✅ | `lib/local/rag/search.ts` |
 | 种子知识卡 | 27 条，数学单学科 | 🟡 | `lib/local/rag/seed.ts` |
@@ -79,7 +79,7 @@ AIGC:
 | 三级处置话术 | 已实装：硬拦截 / 软引导（system prompt 承载）/ 关怀转介 | ✅ | `lib/safety/messages.ts` |
 | 设备标识 `user` 字段 | 已实装：请求体 `user`（纯随机 UUID，localStorage `notesync-user-id`），服务端 ≤64 长度校验后随 Provider 转发；`X-Client-Id` 仅作日志追踪，两者不混用 | ✅ | `lib/client-id.ts`、`app/api/chat/route.ts`、`app/api/diagnose-paper/route.ts` |
 | 重置设备标识入口 | 已实装：设置「数据」分区「重置设备标识」按钮，重置后下次请求生效 | ✅ | `components/settings/DataSection.tsx` |
-| 图片上传明示 | 已实装：聊天输入区三档逐档标注是否外发，整卷上传区对外发档明示「图片将上传至模型服务商」 | ✅ | `components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx` |
+| 图片上传明示 | 已实装：发送处按派生档标注外发（多模态「图片将上传至模型服务商」；云端 OCR「图片像素上传至智谱」）。2026-11-14 起档位全自动派生、不再提供手选 | ✅ | `components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx` |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
 
@@ -155,18 +155,17 @@ AIGC:
 | OCR 低置信强制确认（阈值已定，低置信行标红并阻断直接发送） | 同上 | ✅ |
 | §7 输出纪律三条禁令写入提示词（`lib/diagnose/prompts.ts`） | `diagnosis-model.md` §7 | ✅ |
 | 「必须引用作答片段」后置校验（连续窗口 + bigram 兜底） | 同上 §7.3 | ✅ |
-| 全本地 / 多模态 / 混合三档（`lib/ocr/image-handling.ts`、`components/chat/ChatInput.tsx`、整卷 `UploadArea.tsx`） | `product-vision.md` P4 | ✅ |
+| 图片路径自动路由：多模态直传 / 纯文本 OCR 转写（2026-11-14 重构，混合档下线；`lib/ocr/image-handling.ts`、`components/chat/ChatInput.tsx`、整卷 `UploadArea.tsx`） | `product-vision.md` P4 | ✅ |
 | `explain` 掌握度回路（明白了 / 还不懂） | `agent-workflow.md` §4.3(a) | ✅ |
 | 成本计量口径（每次诊断调用次数、token 区间） | 交付边界 D | ✅ |
 | 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ✅（落点 `doc/demo-script.md`：开场 15s → 单题 55s → 整卷 55s → 本地优先与代价 30s → 收尾 15s，含讲者禁忌表与四类事故兜底） |
 | 首页视觉重构 | 空白 #6 | ✅（结构层级已定稿：删占位卡，改为对话诊断 / 整卷批量 / 本地优先三卖点卡 +「上传 → 追问 → 报告」流程三栏，各带入口；视觉打磨另议） |
 | 上下文裁剪（不设硬边界，长会话只保留当前题相关） | 空白 #5 | ✅ |
 
-> 三档已按模型能力自动派生（`resolveImageSendMode`）、可当次切换，且代价提示写在选择处
-> （全本地：原图不出设备，但图文混排 / 手写可能误识；直传与混合：图片上传至模型服务商）。
-> 模型未声明图片能力时不渲染直传 / 混合两档（P4 约束②）。聊天页与整卷上传区同口径；
-> 整卷的混合档组装由附件形态自动判定（`lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode`），
-> 不再需要客户端额外传档位字段。
+> 2026-11-14 重构：档位不再提供手选，`resolveImageSendMode` 按模型能力自动派生
+> （多模态 → 直传原图；纯文本/未知 → OCR 转写，引擎默认云端）、代价提示写在发送处。
+> 聊天页与整卷上传区同口径；服务端 `resolveAssembleImageMode` 的混合档判定仅为旧数据
+> 兼容保留，UI 不再产出。
 
 ### 9.2 代码审查整改（2026-11-12，分支 `fix/review-hardening`）
 
