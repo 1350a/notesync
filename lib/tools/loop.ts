@@ -75,10 +75,19 @@ export interface RunToolLoopOptions {
   user?: string;
   /** 思考强度档位（随请求透传，doc/user-settings.md §2.1） */
   thinking?: import('@/lib/provider/types.ts').ThinkingEffort;
+  /** 思考/输出预算上限（随请求透传，缺省不携带该参数） */
+  maxTokens?: number;
+}
+
+/** 把本轮选项挂到适配器产出的请求上（适配器只管思考档位，预算在此统一补齐） */
+function withBudget(req: import('@/lib/provider/types.ts').CompleteOptions, maxTokens?: number) {
+  if (maxTokens !== undefined) req.maxTokens = maxTokens;
+  return req;
 }
 
 export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<ToolLoopEvent> {
-  const { model, provider, adapter, tools, signal, blockedDetector, user, thinking } = options;
+  const { model, provider, adapter, tools, signal, blockedDetector, user, thinking, maxTokens } =
+    options;
   const maxRounds = options.maxRounds ?? 3;
   const currentMessages = [...options.messages];
 
@@ -94,7 +103,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
   while (usedRounds < maxRounds) {
     usedRounds++;
-    const req = adapter.buildRequest(model, currentMessages, tools, user, thinking);
+    const req = withBudget(adapter.buildRequest(model, currentMessages, tools, user, thinking), maxTokens);
     req.signal = signal;
 
     const queue = new AsyncQueue<ToolLoopEvent>();
@@ -228,7 +237,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         content: '工具调用轮数已达上限，请不要再调用任何工具，直接回答用户最新的问题。',
       },
     ];
-    const req = adapter.buildRequest(model, convergeMessages, [], user, thinking);
+    const req = withBudget(adapter.buildRequest(model, convergeMessages, [], user, thinking), maxTokens);
     req.signal = signal;
 
     try {

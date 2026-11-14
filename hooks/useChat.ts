@@ -226,6 +226,8 @@ export function useChat(selectedModel: string) {
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
   const thinkingEffort = useSettingsStore((s) => s.settings.generation.thinkingEffort);
+  // 思考/输出预算上限（doc/user-settings.md §2.1）：缺省为 undefined（跟随 provider 默认）
+  const maxTokens = useSettingsStore((s) => s.settings.generation.maxTokens);
 
   // 本地引擎租约（总账 §3）：开 RAG 时检索链路会顺手初始化引擎（searchKnowledge →
   // embedTexts → initLocalEngine），页面卸载要还；与能力页/设置分区共用同一份计数，
@@ -547,6 +549,8 @@ export function useChat(selectedModel: string) {
             user: getUserId() || undefined,
             // 思考强度档位（可能为 undefined：跟随 provider 默认）
             thinkingEffort,
+            // 思考/输出预算上限（可能为 undefined：跟随 provider 默认；custom 侧不下发）
+            maxTokens,
           }),
           signal: abortControllerRef.current.signal,
         });
@@ -730,7 +734,7 @@ export function useChat(selectedModel: string) {
         scheduleSave();
       }
     },
-    [loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave, noteBlock, notePass]
+    [loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, maxTokens, scheduleSave, noteBlock, notePass]
   );
 
   /**

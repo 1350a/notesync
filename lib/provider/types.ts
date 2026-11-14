@@ -89,6 +89,8 @@ export interface CompleteOptions {
   user?: string;
   /** 思考强度档位；custom provider 不发送（未知字段严格校验风险），映射见 mapThinkingParam */
   thinking?: ThinkingEffort;
+  /** 思考/输出预算上限（tokens）；缺省不发送，映射与 provider 分流见 mapMaxTokens */
+  maxTokens?: number;
   /** 工具定义（native 模式）；不传则本次请求无工具调用能力 */
   tools?: NativeToolDef[];
   /** 工具选择策略（默认 "auto"；P1 仅类型预留，P4 接线） */

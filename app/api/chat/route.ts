@@ -47,7 +47,7 @@ import {
 } from '@/lib/chat/messages';
 import { assembleDiagnoseMessage } from '@/lib/diagnose/assemble';
 import { buildDiagnoseSystemPrompt } from '@/lib/diagnose/prompts';
-import { isThinkingEffort } from '@/lib/settings/types';
+import { isThinkingEffort, normalizeMaxTokens } from '@/lib/settings/types';
 import { parseAttachments } from '@/lib/diagnose/parse-attachments';
 import {
   buildVerifyEvidence,
@@ -309,6 +309,9 @@ export async function POST(request: Request) {
           user: typeof body.user === 'string' && body.user.length <= 64 ? body.user : undefined,
           // 思考强度档位（doc/user-settings.md §2.1）：枚举外取值一律按未设置处理
           thinking: isThinkingEffort(body.thinkingEffort) ? body.thinkingEffort : undefined,
+          // 思考/输出预算上限（doc/user-settings.md §2.1）：非法值视作未设置；
+          // provider 级分流（custom 不发送未知字段）在 lib/provider/openaiCompat.ts mapMaxTokens
+          maxTokens: normalizeMaxTokens(body.maxTokens),
         });
 
         for await (const ev of generator) {

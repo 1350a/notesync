@@ -41,11 +41,15 @@ export function isThinkingEffort(value: unknown): value is ThinkingEffort {
   return typeof value === 'string' && (THINKING_EFFORTS as readonly string[]).includes(value);
 }
 
-/** 生成参数：thinkingEffort 已接线；temperature/maxTokens 仍为占位 */
+/** 生成参数：thinkingEffort / maxTokens 已接线；temperature 仍为占位 */
 export interface GenerationSettings {
   /** 思考强度档位；缺省视为 medium（映射时缺省不发参数则视为跟随 provider 默认） */
   thinkingEffort?: ThinkingEffort;
   temperature?: number;
+  /**
+   * 思考/输出预算上限（tokens）：缺省 = 不携带该参数（跟随 provider 默认）。
+   * 设置页只暴露三档预设（1024/4096/8192），落到请求体是 max_tokens，见 mapMaxTokens。
+   */
   maxTokens?: number;
 }
 
@@ -102,6 +106,24 @@ export function cloneDefaults(): UserSettings {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+/**
+ * 思考预算三档预设（设置页下拉口径，doc/user-settings.md §2.1）：
+ * 低 1024 / 中 4096 / 高 8192。UI 与测试共用同一份来源，避免两处硬编码漂移。
+ */
+export const MAX_TOKENS_PRESETS = { low: 1024, medium: 4096, high: 8192 } as const;
+
+/**
+ * maxTokens 归一（设置项与服务端请求体共用同一口径）：
+ * - 只接受有限数值且 ≥ MAX_TOKENS_MIN；≤0/NaN/字符串一律视为未设置（返回 undefined）；
+ * - 超出上限按 MAX_TOKENS_MAX 钳制，小数向下取整（token 无小数语义）。
+ */
+export function normalizeMaxTokens(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < MAX_TOKENS_MIN) {
+    return undefined;
+  }
+  return Math.floor(clamp(value, MAX_TOKENS_MIN, MAX_TOKENS_MAX));
+}
+
 function normalizeGeneration(raw: unknown): GenerationSettings {
   const out: GenerationSettings = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -115,14 +137,9 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
   if (typeof record.temperature === 'number' && Number.isFinite(record.temperature)) {
     out.temperature = clamp(record.temperature, TEMPERATURE_MIN, TEMPERATURE_MAX);
   }
-  if (
-    typeof record.maxTokens === 'number' &&
-    Number.isFinite(record.maxTokens) &&
-    record.maxTokens >= MAX_TOKENS_MIN
-  ) {
-    // 有效性先于钳制：maxTokens 没有有意义的零值（与 temperature 不同），≤0 直接丢弃
-    out.maxTokens = Math.floor(clamp(record.maxTokens, MAX_TOKENS_MIN, MAX_TOKENS_MAX));
-  }
+  // 有效性先于钳制：maxTokens 没有有意义的零值（与 temperature 不同），≤0 直接丢弃
+  const maxTokens = normalizeMaxTokens(record.maxTokens);
+  if (maxTokens !== undefined) out.maxTokens = maxTokens;
   return out;
 }
 

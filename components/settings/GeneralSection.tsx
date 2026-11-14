@@ -2,7 +2,7 @@
 
 import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
 import { useModels } from '@/hooks/useModels';
-import type { ThemePreference } from '@/lib/settings/types';
+import { MAX_TOKENS_PRESETS, type ThemePreference } from '@/lib/settings/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
 const THEME_OPTIONS: { value: ThemePreference; icon: string; label: string }[] = [
@@ -12,12 +12,32 @@ const THEME_OPTIONS: { value: ThemePreference; icon: string; label: string }[] =
   { value: 'mint', icon: '🍃', label: '薄荷' },
 ];
 
+/**
+ * 思考预算下拉选项（doc/user-settings.md §2.1）：三档预设 + 「跟随模型默认」。
+ * 取值直接落 GenerationSettings.maxTokens；空字符串表示不携带该参数。
+ */
+const MAX_TOKENS_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: '跟随模型默认' },
+  { value: String(MAX_TOKENS_PRESETS.low), label: `低（${MAX_TOKENS_PRESETS.low} tokens）` },
+  { value: String(MAX_TOKENS_PRESETS.medium), label: `中（${MAX_TOKENS_PRESETS.medium} tokens）` },
+  { value: String(MAX_TOKENS_PRESETS.high), label: `高（${MAX_TOKENS_PRESETS.high} tokens）` },
+];
+
 export default function GeneralSection() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
+  const generation = useSettingsStore((s) => s.settings.generation);
   const updateSettings = useSettingsStore((s) => s.update);
   // 分区挂载时才拉模型列表（弹窗关闭时本组件不渲染，不产生请求）
   const { models, loading } = useModels();
+
+  // store.update 是浅合并：必须展开现有 generation，否则思考档位等参数会被整体清掉
+  const setMaxTokens = (raw: string) => {
+    const next = { ...generation };
+    if (raw === '') delete next.maxTokens;
+    else next.maxTokens = Number(raw);
+    updateSettings({ generation: next });
+  };
 
   return (
     <div>
@@ -58,6 +78,25 @@ export default function GeneralSection() {
           {models.map((model) => (
             <option key={model.name} value={model.name}>
               {model.name}
+            </option>
+          ))}
+        </select>
+      </SettingsRow>
+
+      {/* 思考预算（doc/user-settings.md §2.1）：三档预设 + 跟随模型默认；
+          落到请求体是 max_tokens，custom provider 不下发（未知字段严格校验） */}
+      <SettingsRow
+        label="思考预算"
+        hint="单轮思考/输出上限；custom 服务商不支持该参数，选择后不生效"
+      >
+        <select
+          value={generation.maxTokens === undefined ? '' : String(generation.maxTokens)}
+          onChange={(e) => setMaxTokens(e.target.value)}
+          className="max-w-56 cursor-pointer truncate rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:max-w-full"
+        >
+          {MAX_TOKENS_OPTIONS.map((option) => (
+            <option key={option.value || 'default'} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>

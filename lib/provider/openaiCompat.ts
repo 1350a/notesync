@@ -58,6 +58,23 @@ export function mapThinkingParam(
 }
 
 /**
+ * 思考/输出预算上限 → Provider 请求体 max_tokens 的映射（doc/user-settings.md §2.1）。
+ * 返回 undefined 表示本次不携带该字段（跟随 provider 默认）。
+ * - deepseek / zhipu：官方 OpenAI 兼容接口支持 max_tokens，按值下发；
+ * - custom：恒不下发——自定义端点对未知字段可能严格校验（与 thinking / user 字段同口径）。
+ */
+export function mapMaxTokens(
+  name: 'deepseek' | 'zhipu' | 'custom',
+  maxTokens: number | undefined,
+): number | undefined {
+  if (name === 'custom') return undefined;
+  if (typeof maxTokens !== 'number' || !Number.isFinite(maxTokens)) return undefined;
+  // 二次防呆：即使调用方漏做归一，也不把 0/负数/小数塞进请求体
+  if (maxTokens < 1) return undefined;
+  return Math.floor(maxTokens);
+}
+
+/**
  * OpenAI usage 字段 → TokenUsage 归一。
  * 三种上游形态都要能吃：非流式顶层 usage、流式末尾 chunk 的 usage、
  * 以及完全不返回 usage 的实现（返回 undefined，交由调用方标记「上游未提供」）。
@@ -458,6 +475,9 @@ export class OpenAICompatProvider implements LLMProvider {
     // 思考强度档位（doc/user-settings.md §2.1）：custom 不发送（未知字段严格校验风险）
     const thinkingParam = mapThinkingParam(this.name, options.thinking);
     if (thinkingParam) Object.assign(body, thinkingParam);
+    // 思考/输出预算上限（doc/user-settings.md §2.1）：与 thinking 同口径，custom 不发送
+    const maxTokens = mapMaxTokens(this.name, options.maxTokens);
+    if (maxTokens !== undefined) body.max_tokens = maxTokens;
     // 流式用量（doc/implementation-status.md 偏差项）：OpenAI 协议默认只在非流式返回 usage，
     // 流式必须显式声明 include_usage 才会补一个纯 usage chunk。仅 deepseek 官方文档写明支持，
     // zhipu / custom 一律不发，避免未知字段被严格校验端点拒绝。
