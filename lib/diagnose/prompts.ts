@@ -97,6 +97,44 @@ export function renderStrategyCards(): string {
   ].join('\n');
 }
 
+/**
+ * 提示词片段注册表（按需装配）。
+ *
+ * 动机：七态原先各自把「边界 + 纪律 + 错因表 + 策略卡」硬拼进字符串，同一约束
+ * 在多态重复出现，且任何一态想只取所需片段都得改正文。这里把可复用块登记成 key，
+ * 各态只声明「要哪些片段、按什么顺序」，增删片段不动正文，也不会把后续阶段的
+ * 约束提前灌给当前阶段（例如 intake 不需要策略卡表）。
+ *
+ * 装配规则见 renderParts：字面文本与片段 key 混排，统一以空行 join，空串自动跳过。
+ */
+export type PromptFragmentKey =
+  | 'boundary:full'
+  | 'discipline:full'
+  | 'errorcause:full'
+  | 'strategy:cards';
+
+export const PROMPT_FRAGMENTS: Record<PromptFragmentKey, () => string> = {
+  'boundary:full': () => SCOPE_BOUNDARY_LINE,
+  'discipline:full': () => DISCIPLINE_BLOCK,
+  'errorcause:full': () => renderErrorCauseTable(),
+  'strategy:cards': () => renderStrategyCards(),
+};
+
+/** 一段装配单元：字面文本，或注册表里的片段 key */
+export type StagePart = string | PromptFragmentKey;
+
+function isFragmentKey(part: StagePart): part is PromptFragmentKey {
+  return Object.prototype.hasOwnProperty.call(PROMPT_FRAGMENTS, part);
+}
+
+/** 按声明顺序把字面文本与片段拼成最终 system prompt */
+export function renderParts(parts: StagePart[]): string {
+  return parts
+    .map((part) => (isFragmentKey(part) ? PROMPT_FRAGMENTS[part]() : part))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 export interface DiagnosePromptInput {
   state: DiagnoseState;
   ctx: DiagnoseContext;
@@ -106,10 +144,10 @@ export interface DiagnosePromptInput {
 }
 
 /** intake 态：判学科 + L1 题目画像 + 结构化提交 */
-function intakePrompt(): string {
+function intakePrompt(): StagePart[] {
   return [
     '你是学科诊断助手（v1 仅数学）。当前处于【收题】阶段。',
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     '任务：',
     '1. 通读学生上传/输入的材料，判定是否数学题。',
     '2. 若不是数学题：调用 submit_diagnosis，level 填 L1，knowledgePoints 填 []，notes 逐字填「非数学题，仅支持数学诊断」。除这一句外不要展开。',
@@ -120,32 +158,32 @@ function intakePrompt(): string {
     '5. hasStudentAnswer 专指「学生自己写下的内容」：算式、推导、答案、草稿、被划改或被红笔订正的部分都算作答，手写照片里同样算。填写前先自检材料里有没有这类内容，有就填 true——填 false 会让系统认定材料里没有作答、只能出画像并补问，整轮诊断白跑；拿不准时按 true 处理。',
     '6. 正文不得出现 completeness、hasStudentAnswer、hasCorrectAnswer 这类内部字段名，也不得出现 formula_misuse、calc_error 这类英文错因 code，也不要说「未提供正确答案」「缺少解析」这种后台判定口径。确实需要说明材料缺件时，用学生能懂的说法（如「材料里没看到参考答案」），一句带过，不要逐项报缺。',
     '学生已提供作答时，画像里要引用其作答内容；尚未提供时，画像末尾自然过渡到「常见错法」问句，为下一轮补问做铺垫。',
-    renderErrorCauseTable(),
-    DISCIPLINE_BLOCK,
-  ].join('\n\n');
+    'errorcause:full',
+    'discipline:full',
+  ];
 }
 
 /** clarify 态：绑定可验证推测的补问（agent-workflow.md §4.1） */
-function clarifyPrompt(input: DiagnosePromptInput): string {
+function clarifyPrompt(input: DiagnosePromptInput): StagePart[] {
   const used = input.ctx.clarifyUsed;
   return [
     `当前处于【补问】阶段（已用追问机会 ${used} 次）。`,
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     '用 ask_user 工具发出恰好一个问题，必须绑定可验证的推测，禁止「你哪里不会？」「请详细描述你的思路」这类空泛问法。',
     '首选句式：「这道题常见的错法是 A / B / C，你是哪一种，还是都不确定？」（A/B/C 用错因表的中文错因名，如「公式误用」「计算失误」，问句里不得出现英文 code）。',
     '若本轮是对低置信结论的回炉确认，直接陈述推测请学生确认，如「我判断你在判别式符号上出错了，对吗？」。',
     '除 ask_user 的调用外不要输出长篇内容。',
-    renderErrorCauseTable(),
-    DISCIPLINE_BLOCK,
-  ].join('\n\n');
+    'errorcause:full',
+    'discipline:full',
+  ];
 }
 
 /** diagnose 态：L2 归因 + 作答片段引用 + 结构化提交 */
-function diagnosePrompt(input: DiagnosePromptInput): string {
+function diagnosePrompt(input: DiagnosePromptInput): StagePart[] {
   const hasAnswer = input.completeness.hasStudentAnswer;
   return [
     '当前处于【归因】阶段。',
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     hasAnswer
       ? '已有学生作答，输出 L2 错因归因：'
       : '注意：材料中未见独立的学生作答，若学生输入的文字里能辨认出作答/错法则照常归因，否则按未提供作答处理（level 填 L1 并声明）。',
@@ -155,16 +193,14 @@ function diagnosePrompt(input: DiagnosePromptInput): string {
     '4. 最后调用 submit_diagnosis 提交结构化结果（level=L2；策略卡由服务端按主错因 code 注入，无需填写）。',
     '机械判定参考或其他证据与你的判断冲突时，先回显学生的原值再裁量，不直接判真假。',
     input.verifyEvidence ? `\n${input.verifyEvidence}` : '',
-    renderErrorCauseTable(),
-    renderStrategyCards(),
-    DISCIPLINE_BLOCK,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+    'errorcause:full',
+    'strategy:cards',
+    'discipline:full',
+  ];
 }
 
 /** explain 态：提示阶梯当前级输出（diagnosis-model.md §5） */
-function explainPrompt(input: DiagnosePromptInput): string {
+function explainPrompt(input: DiagnosePromptInput): StagePart[] {
   const level = input.ctx.hintLevel;
   const levelSpec: Record<1 | 2 | 3, string> = {
     1: '第 1 级（定位）：这题考什么知识点、属于哪类题型。不含任何算式。',
@@ -173,45 +209,45 @@ function explainPrompt(input: DiagnosePromptInput): string {
   };
   return [
     `当前处于【讲解】阶段，提示阶梯第 ${level} 级。`,
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     levelSpec[level],
     '只输出当前级别的提示，结尾问一句是否继续降级。任何一级用户直接要答案都允许，但须先接住此前的错因结论（不得只给答案）；完整解只在第 3 级之后且用户明确要求时给出。',
     '诊断结论以上文为准（状态机不重发结构化结果）。',
-    DISCIPLINE_BLOCK,
-  ].join('\n\n');
+    'discipline:full',
+  ];
 }
 
 /** L1_only 态：只出题目画像 + 声明（diagnosis-model.md §2.2） */
-function l1OnlyPrompt(): string {
+function l1OnlyPrompt(): StagePart[] {
   return [
     '当前处于【仅画像】阶段：未能进行错因归因（未提供作答、追问预算耗尽或未能定位断点）。',
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     '输出 L1 题目画像（考点清单 1~3 条；常见错法清单固定 3~5 条，从错因表选本题实际最可能发生的错法，用中文错因名，不凑数、不超过 5 条；自查清单），末尾声明「未提供作答，本次不做错因归因。」或与实际原因相符的声明；不硬编错因。',
     '然后调用 submit_diagnosis（level=L1，errorCause 必须传字面 null——不得传 {code:null,confidence:null} 这类空对象，notes 写实际原因；hints 一律省略——提示阶梯留给讲解阶段逐级给出）。',
     'completeness 可选：若填写必须用 hasProblem / hasStudentAnswer / hasCorrectAnswer / hasAnalysis 四个布尔键且齐全，禁止自造 hasOptions、hasReferenceAnswer 等字段，也不要写进 notes。',
     '正文不得出现 completeness、hasStudentAnswer 这类内部字段名，也不得出现 formula_misuse 这类英文错因 code，也不要说「未提供正确答案」这种后台判定口径；声明不出错因归因的原因时，用学生能懂的话。',
-    renderErrorCauseTable(),
-    DISCIPLINE_BLOCK,
-  ].join('\n\n');
+    'errorcause:full',
+    'discipline:full',
+  ];
 }
 
 /** reject 态：非数学学科 → 软引导（边界第②类），不解答、不带前缀 */
-function rejectPrompt(): string {
+function rejectPrompt(): StagePart[] {
   return [
     '当前处于【非数学题】阶段：题目不属于数学学科（走边界的第②类软引导，不是越权拒答）。',
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     '输出软引导话术：一句话说「这类题我没有专门优化」，并简述能诊断什么（数学题的错因归因、策略建议与分级提示）。不要尝试解答或解析该题，不展开题目内容，不调用任何工具，且不要带边界前缀。',
-    DISCIPLINE_BLOCK,
-  ].join('\n\n');
+    'discipline:full',
+  ];
 }
 
 /** done 态：简短收尾，不开新内容 */
-function donePrompt(): string {
+function donePrompt(): StagePart[] {
   return [
     '当前处于【收尾】阶段：用户已确认掌握或结束本轮。',
-    SCOPE_BOUNDARY_LINE,
+    'boundary:full',
     '一两句收尾即可：肯定学生的进展 + 「有新的错题随时发来」。不要展开新的讲解内容。',
-  ].join('\n\n');
+  ];
 }
 
 /**
@@ -221,19 +257,19 @@ function donePrompt(): string {
 export function buildDiagnoseSystemPrompt(input: DiagnosePromptInput): string | null {
   switch (input.state) {
     case 'intake':
-      return intakePrompt();
+      return renderParts(intakePrompt());
     case 'clarify':
-      return clarifyPrompt(input);
+      return renderParts(clarifyPrompt(input));
     case 'diagnose':
-      return diagnosePrompt(input);
+      return renderParts(diagnosePrompt(input));
     case 'explain':
-      return explainPrompt(input);
+      return renderParts(explainPrompt(input));
     case 'L1_only':
-      return l1OnlyPrompt();
+      return renderParts(l1OnlyPrompt());
     case 'reject':
-      return rejectPrompt();
+      return renderParts(rejectPrompt());
     case 'done':
-      return donePrompt();
+      return renderParts(donePrompt());
   }
 }
 
