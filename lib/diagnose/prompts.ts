@@ -41,8 +41,8 @@ export function renderErrorCauseTable(): string {
   return [
     '【错因枚举表（正文写中文错因名，提交时才用 code）】',
     ...ERROR_CAUSES.map((c) => `- ${c.label}（提交 code：${c.code}）：${c.symptom}`),
-    '注意：知识库检索片段（【本地检索】块）仅作知识参考，其中的分类体系（概念不清/方法缺失/审题偏差等）',
-    '不是本系统的错因口径，不得沿用。',
+    '注意：知识库检索片段（【本地检索】块）仅作知识参考；其中的错因说法可能是口语化粗分（概念不清/方法缺失/审题偏差等），',
+    '不是本系统的错因口径，不得沿用。系统口径只有上面 14 条。',
     '用法：正文描述错因一律用中文错因名（如「公式误用」「计算失误」）；英文 code 只出现在 submit_diagnosis 的 errorCause.code / secondaryErrorCause.code 字段里，正文不得出现 formula_misuse 这类英文 code，也不得用反引号包裹任何字段名。',
     ERROR_CAUSE_JUDGE_GUIDE,
   ].join('\n');
