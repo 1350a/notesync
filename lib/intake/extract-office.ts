@@ -33,15 +33,11 @@ function slideNumber(path: string): number {
 
 /** docx → 纯文本（extractRawText 保留段落换行，表格按文档顺序输出单元格文字） */
 async function extractDocxText(file: File): Promise<string> {
-  const mammoth = await import('mammoth');
-  const arrayBuffer = await file.arrayBuffer();
-  // mammoth 的 Node 构建只吃 path/buffer、浏览器构建吃 arrayBuffer：
-  // 生产环境是浏览器，但单测在 Node 直跑同一代码路径，按环境给输入形态
-  const input =
-    typeof Buffer !== 'undefined'
-      ? { buffer: Buffer.from(arrayBuffer) }
-      : { arrayBuffer };
-  const result = await mammoth.extractRawText(input);
+  // 显式用预编译浏览器构建：Turbopack 不应用 mammoth 的 browser 字段映射，
+  // 默认打进 Node 版 unzip（只认 path/buffer），浏览器里会报
+  // "Could not find file in options"；预编译包自包含且原生支持 arrayBuffer
+  const mammoth = (await import('mammoth/mammoth.browser.min.js')).default;
+  const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
   return result.value;
 }
 
