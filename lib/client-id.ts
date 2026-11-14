@@ -11,8 +11,9 @@ export const CLIENT_ID_HEADER = 'X-Client-Id';
 /** 上游终端用户标识（请求体 user 字段）：与客户端 ID 是两回事，见 doc/user-settings.md §4.1 */
 export const USER_ID_STORAGE_KEY = 'notesync-user-id';
 
-/** 生成 UUID v4：非 secure context（如局域网 http 访问）没有 crypto.randomUUID，用 getRandomValues 手工拼接 */
-function generateId(): string {
+/** 生成 UUID v4：非 secure context（如局域网 http 访问）没有 crypto.randomUUID，用 getRandomValues 手工拼接。
+ *  需要随机 ID 的客户端组件一律用这里，不得裸调 crypto.randomUUID（2026-11-14 诊断页上传静默失败的教训） */
+export function generateId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }

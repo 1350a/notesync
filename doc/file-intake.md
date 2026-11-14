@@ -110,6 +110,13 @@ gb18030 等扩展编码）：
 - 单文件失败不抛错：空结果 + warning（与 diagnose-file-intake.md §4 同口径）。
 - PDF 文字层提取自诊断页迁出共用：扫描件（无文字层）返回空文本，调用方给出
   "可能是扫描件" 提示。
+- pdfjs 运行时资源三件套（worker / `cMapUrl` / `standardFontDataUrl`）全部指向
+  本地静态资源 `public/pdfjs/`。该目录是**派生产物不入库**（与 public/ocr、
+  public/models 同模式），由 `npm run pdfjs:assets` 自 node_modules/pdfjs-dist
+  复制，postinstall 自动执行——资产与安装的 pdfjs-dist 恒同版本，升级依赖后
+  重装即同步，无手动重拷与版本错配风险。缺 cMapUrl 时，预定义 CMap 编码的
+  中文 PDF（未嵌入字体：WPS 导出、试卷下载站等常见来源）文字层解码失败返回
+  空，会被误判成扫描件（2026-11-14 实测，见 §12）。
 
 ## 8. 服务端 `.doc` 端点（POST /api/parse-doc）
 
@@ -158,6 +165,17 @@ gb18030 等扩展编码）：
   （CSV 走纯文本通道，编码探测同样生效）。
 - **编码误判**：GB18030 兜底覆盖绝大多数中文场景；如反馈出现 Latin-1/Shift_JIS 误判，
   再评估引入 jschardet。
+- **扫描件 PDF 兜底**（2026-11-14 调查结论，本轮不做）：真扫描件（无文字层）目前
+  两入口均为死路（诊断页行内警告 + 聊天页 4 秒提示）。glm-ocr 服务端支持 PDF 直传
+  （≤100 页，cloud-ocr.md §8 冒烟的 400 文案「仅支持PDF、JPG、PNG、JPEG格式」反向
+  证实）；多模态 chat 模型普遍不吃 PDF。候选设计：cloud 引擎下无文字层 PDF 直传
+  glm-ocr 转写；local 引擎下渲染页转图走既有图片链路。接入需单独协议（页数/预算
+  与文字层路径的取舍），与 cloud-ocr.md §8 同一挂账。
+- **移动端附件菜单二次弹层**（2026-11-14 真机观察，待拍板）：聊天页「选择文件」的
+  accept 含 `image/*`，Android 弹系统级「文件/拍照相机」来源选择层，与菜单内「拍照」
+  项路径重复；诊断页文件入口无 accept，直进文件选择器无此层。候选方向：移动端文件
+  入口 accept 去 `image/*` 并补「相册选图」项；或把文件/相机的分派整体交由系统层。
+  动代码前先修订本节协议。
 
 ## 11. 测试与冒烟
 
@@ -173,3 +191,8 @@ gb18030 等扩展编码）：
   HEIC 转 JPEG（WebKit"最兼容"传输），原始 HEIC 仅"存到文件 App 再传"可得；
   Android Chrome 原样上传（三星 HEIF 机型会传真 HEIC）。
   来源：stackoverflow.com/q/64093027、news.ycombinator.com/item?id=23260987。
+- **2026-11-14 PDF 中文 CID 字体实验**：node 下用项目同款 pdfjs-dist 5.6.205 提取
+  手工构造的 STSong-Light（GB-EUC-H 预定义 CMap）最小 PDF——无 `cMapUrl` 时
+  getTextContent 返回空（警告 "Ensure that the cMapUrl API parameter is provided"，
+  即被判"扫描件"）；补 `cMapUrl` 后提取出正确中文。Helvetica 对照组始终正常，
+  排除提取管线本身故障。结论：中文 CID 字体 PDF 必须配 cMaps 静态资源。
