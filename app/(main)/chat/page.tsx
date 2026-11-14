@@ -99,7 +99,6 @@ export default function ChatPage() {
     stopGeneration,
     clearMessages,
     diagnoseContext,
-    deleteMessage,
     regenerate,
     editAndResend,
   } = useChat(selectedModel);
@@ -252,7 +251,6 @@ export default function ChatPage() {
           messages={messages}
           loading={loading}
           onDiagnoseAction={handleDiagnoseAction}
-          onDeleteMessage={deleteMessage}
           onRegenerate={() => void regenerate()}
           onEditResend={(index, text) => void editAndResend(index, text)}
         />

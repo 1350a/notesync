@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import type { ChatMsg } from '@/lib/chat/messages';
+import { stripAbortedSuffix } from '@/lib/chat/messages';
 import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
 import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
 import DiagnosisCard from './DiagnosisCard';
@@ -13,30 +14,21 @@ import MessageActions, { MessageEditor } from './MessageActions';
 import ToolTrace from './ToolTrace';
 
 /**
- * 复制按钮：复制消息的原始 markdown 源文本——渲染后 DOM 复制会把 KaTeX/表格拷成碎片，
- * 源文本才是可再用的形态。触屏常显（hover-only 在触屏不可见，doc/mobile-ux.md §4）。
+ * 「已中止」徽标：细分隔线 + 停止图标 + 灰字（doc/chat-history.md §8.3）。
+ * 取代旧版拼在正文里的斜体行——正文数据不变（后缀仍唯一由 useChat 写入），
+ * 渲染层剥离后转徽标，旧库遗留的斜体后缀同样命中。
  */
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // 剪贴板不可用（非安全上下文等）时静默失败：复制是纯增益，不弹错误打断对话
-    }
-  };
+function AbortedMark() {
   return (
-    <button
-      type="button"
-      onClick={onCopy}
-      className="mt-2 rounded-md px-2 py-1 text-[11px] transition-colors touch:h-9 touch:px-3"
-      style={{ border: '1px solid var(--border)', color: copied ? 'var(--primary)' : 'var(--text-muted)' }}
-      title="复制 Markdown 源文本"
-    >
-      {copied ? '✓ 已复制' : '复制'}
-    </button>
+    <div className="mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+      <span className="h-px w-6" style={{ backgroundColor: 'var(--border)' }} aria-hidden />
+      <span className="inline-flex items-center gap-1.5 text-[11px]">
+        <svg className="h-3 w-3" viewBox="0 0 24 24" aria-hidden>
+          <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+        </svg>
+        已中止
+      </span>
+    </div>
   );
 }
 
@@ -71,7 +63,6 @@ export default function ChatList({
   messages,
   loading,
   onDiagnoseAction,
-  onDeleteMessage,
   onRegenerate,
   onEditResend,
 }: {
@@ -79,8 +70,6 @@ export default function ChatList({
   loading: boolean;
   /** 掌握度回路回调（明白了/还不懂/继续），由页面层接 useChat；缺省不渲染回路按钮 */
   onDiagnoseAction?: (event: DiagnoseRequestEvent, label: string) => void;
-  /** 删除单条消息（doc/chat-history.md §8.3）；缺省则整条操作条不出现（未接线不露 UI） */
-  onDeleteMessage?: (index: number) => void;
   /** 重新生成最后一条回答 */
   onRegenerate?: () => void;
   /** 编辑某条 user 消息并重发 */
@@ -103,162 +92,193 @@ export default function ChatList({
         </div>
       )}
 
-      {messages.map((m, i) => (
-        <div
-          key={i}
-          // 搜索命中跳转的定位锚点（doc/chat-history.md §7.4）；ChatMsg 无稳定 id，key 即下标
-          data-msg-index={i}
-          // 无边框扁平排版：user 只留一块语义主色填充，assistant 完全去壳（无底、无框、无阴影），
-          // 正文直接贴齐内容列左缘；圆角收小到 8px 一类，避免"悬浮卡片"观感
-          className={
-            m.role === 'user'
-              ? 'group self-end rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm'
-              : 'group self-start max-w-[85%] text-sm'
-          }
-          style={
-            m.role === 'user'
-              ? {
-                  backgroundColor: 'var(--primary)',
-                  color: 'var(--primary-foreground)',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  maxWidth: '85%',
-                }
-              : {
-                  backgroundColor: 'transparent',
-                  color: 'var(--text)',
-                  wordBreak: 'break-word',
-                }
-          }
-        >
-          {m.role === 'assistant' && m.reasoning ? <ThinkingBlock reasoning={m.reasoning} /> : null}
-          {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 ? (
-            <ToolTrace calls={m.toolCalls} />
-          ) : null}
-
-          {m.role === 'assistant' ? (
-            // ask_user 待回答的问题由输入区问题面板（AskUserPanel）承载，不再渲染气泡卡片；
-            // 正文只渲染模型前导文本，前导为空时不渲染空泡
-            m.awaitingQuestions && !m.content ? null : (
-              <>
-                <div className="markdown-body text-sm">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
-                  >
-                    {m.content || '…'}
-                  </ReactMarkdown>
-                </div>
-                {m.content ? <CopyButton text={m.content} /> : null}
-                {m.diagnosis ? <DiagnosisCard result={m.diagnosis} onAction={onDiagnoseAction} /> : null}
-              </>
-            )
-          ) : (
-            <>
-              {m.files && m.files.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {m.files.map((file, idx) => (
-                    <span
-                      key={`file-${idx}`}
-                      className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-                      style={{
-                        border: '1px solid var(--border)',
-                        backgroundColor: 'var(--bg-deep)',
-                        color: 'var(--text-secondary)',
-                      }}
-                      title={`${file.name}（${file.text.length} 字符）`}
-                    >
-                      <span className="max-w-[160px] truncate">{file.name}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>
-                        {file.text.length >= 1000
-                          ? `${(file.text.length / 1000).toFixed(1)}k`
-                          : file.text.length}
-                        字符
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {m.images && m.images.length > 0 ? (
-                <div className="mb-2 flex flex-wrap gap-2">
-                  {m.images.map((src, idx) => {
-                    // 存库时被配额淘汰的槽位是空串：命中过期登记就摆占位，
-                    // 未登记则整槽不渲染（避免历史会话里出现莫名其妙的灰块）
-                    if (!src) {
-                      if (!m.expiredImages?.includes(idx)) return null;
-                      return (
-                        <div
-                          key={`img-${idx}`}
-                          className="flex h-24 w-24 items-center justify-center rounded-lg text-[11px]"
-                          style={{
-                            border: '1px dashed var(--border)',
-                            backgroundColor: 'var(--bg-deep)',
-                            color: 'var(--text-muted)',
-                          }}
-                          title="附件超出本地存储预算已被清理，仅保留占位"
-                        >
-                          图片已过期
-                        </div>
-                      );
+      {messages.map((m, i) => {
+        // 中止标记在渲染入口剥一次：正文渲染、复制源共用同一口径（doc/chat-history.md §8.3）；
+        // user 消息不会有中止后缀（abort 分支只写最后一条 assistant）
+        const isUser = m.role === 'user';
+        const { text: renderContent, aborted } = isUser
+          ? { text: m.content, aborted: false }
+          : stripAbortedSuffix(m.content);
+        return (
+          <div
+            key={i}
+            // 搜索命中跳转的定位锚点（doc/chat-history.md §7.4）；ChatMsg 无稳定 id，key 即下标
+            data-msg-index={i}
+            // 无边框扁平排版：user 只留一块语义主色填充，assistant 完全去壳（无底、无框、无阴影），
+            // 正文直接贴齐内容列左缘；圆角收小到 8px 一类，避免"悬浮卡片"观感。
+            // 外层 wrapper 承载 group/对齐/宽度，气泡只是其中一块：操作条得以放在气泡外（§8.3）
+            className={
+              isUser
+                ? 'group flex flex-col items-end gap-1 self-end'
+                : 'group flex w-full flex-col items-start gap-1 self-start text-sm'
+            }
+            style={isUser ? { maxWidth: '85%' } : undefined}
+          >
+            <div
+              className={
+                isUser
+                  ? 'max-w-full rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm'
+                  : 'w-full text-sm'
+              }
+              style={
+                isUser
+                  ? {
+                      backgroundColor: 'var(--primary)',
+                      color: 'var(--primary-foreground)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
                     }
-                    return (
-                      // 消息里的图片是上传时读出的 data URL，next/image 优化器无法处理内联 src；
-                      // 气泡内缩略图固定 96px，走优化器无收益且会多一次 /_next/image 代理
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={`img-${idx}`}
-                        src={src}
-                        alt={`上传图片 ${idx + 1}`}
-                        className="h-24 w-24 rounded-lg object-cover"
-                        style={{ border: '1px solid var(--border)' }}
-                      />
-                    );
-                  })}
-                </div>
+                  : {
+                      backgroundColor: 'transparent',
+                      color: 'var(--text)',
+                      wordBreak: 'break-word',
+                    }
+              }
+            >
+              {m.role === 'assistant' && m.reasoning ? <ThinkingBlock reasoning={m.reasoning} /> : null}
+              {m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0 ? (
+                <ToolTrace calls={m.toolCalls} />
               ) : null}
-              {m.ocrTexts && m.ocrTexts.length > 0 ? (
-                <div className="mb-2">
-                  <span
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-                    style={{
-                      border: '1px solid var(--border)',
-                      backgroundColor: 'var(--bg-deep)',
-                      color: 'var(--text-secondary)',
-                    }}
-                    title={`图片已在浏览器本地OCR转文字后发送，原图未离开浏览器：\n${m.ocrTexts.join('\n---\n')}`}
-                  >
-                    🖼️→📄 已本地OCR转文字（{m.ocrTexts.length} 张）
-                  </span>
-                </div>
-              ) : null}
-              {editingIndex === i ? (
-                <MessageEditor
-                  initial={m.content}
-                  onCancel={() => setEditingIndex(null)}
-                  onSubmit={(text) => {
-                    setEditingIndex(null);
-                    onEditResend?.(i, text);
-                  }}
-                />
-              ) : m.content ? (
-                <div>{m.content}</div>
-              ) : null}
-            </>
-          )}
 
-          {/* 操作条：只有外部接线了删除能力才出现（未接线不露 UI，AGENTS.md §8） */}
-          {onDeleteMessage && editingIndex !== i && !loading ? (
-            <MessageActions
-              role={m.role}
-              canRegenerate={m.role === 'assistant' && i === messages.length - 1 && Boolean(onRegenerate)}
-              disabled={loading}
-              onEdit={m.role === 'user' && onEditResend ? () => setEditingIndex(i) : undefined}
-              onRegenerate={onRegenerate}
-              onDelete={() => onDeleteMessage(i)}
-            />
-          ) : null}
-        </div>
-      ))}
+              {m.role === 'assistant' ? (
+                // ask_user 待回答的问题由输入区问题面板（AskUserPanel）承载，不再渲染气泡卡片；
+                // 正文只渲染模型前导文本，前导为空时不渲染空泡
+                m.awaitingQuestions && !renderContent ? null : (
+                  <>
+                    {renderContent ? (
+                      <div className="markdown-body text-sm">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
+                        >
+                          {renderContent}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      // 无正文且未中止时才给占位号：中止后空正文只摆徽标，不再摆 "…"
+                      !aborted && (
+                        <div className="markdown-body text-sm">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
+                          >
+                            …
+                          </ReactMarkdown>
+                        </div>
+                      )
+                    )}
+                    {aborted && <AbortedMark />}
+                    {m.diagnosis ? <DiagnosisCard result={m.diagnosis} onAction={onDiagnoseAction} /> : null}
+                  </>
+                )
+              ) : (
+                <>
+                  {m.files && m.files.length > 0 ? (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {m.files.map((file, idx) => (
+                        <span
+                          key={`file-${idx}`}
+                          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                          style={{
+                            border: '1px solid var(--border)',
+                            backgroundColor: 'var(--bg-deep)',
+                            color: 'var(--text-secondary)',
+                          }}
+                          title={`${file.name}（${file.text.length} 字符）`}
+                        >
+                          <span className="max-w-[160px] truncate">{file.name}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            {file.text.length >= 1000
+                              ? `${(file.text.length / 1000).toFixed(1)}k`
+                              : file.text.length}
+                            字符
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {m.images && m.images.length > 0 ? (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {m.images.map((src, idx) => {
+                        // 存库时被配额淘汰的槽位是空串：命中过期登记就摆占位，
+                        // 未登记则整槽不渲染（避免历史会话里出现莫名其妙的灰块）
+                        if (!src) {
+                          if (!m.expiredImages?.includes(idx)) return null;
+                          return (
+                            <div
+                              key={`img-${idx}`}
+                              className="flex h-24 w-24 items-center justify-center rounded-lg text-[11px]"
+                              style={{
+                                border: '1px dashed var(--border)',
+                                backgroundColor: 'var(--bg-deep)',
+                                color: 'var(--text-muted)',
+                              }}
+                              title="附件超出本地存储预算已被清理，仅保留占位"
+                            >
+                              图片已过期
+                            </div>
+                          );
+                        }
+                        return (
+                          // 消息里的图片是上传时读出的 data URL，next/image 优化器无法处理内联 src；
+                          // 气泡内缩略图固定 96px，走优化器无收益且会多一次 /_next/image 代理
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={`img-${idx}`}
+                            src={src}
+                            alt={`上传图片 ${idx + 1}`}
+                            className="h-24 w-24 rounded-lg object-cover"
+                            style={{ border: '1px solid var(--border)' }}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {m.ocrTexts && m.ocrTexts.length > 0 ? (
+                    <div className="mb-2">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+                        style={{
+                          border: '1px solid var(--border)',
+                          backgroundColor: 'var(--bg-deep)',
+                          color: 'var(--text-secondary)',
+                        }}
+                        title={`图片已在浏览器本地OCR转文字后发送，原图未离开浏览器：\n${m.ocrTexts.join('\n---\n')}`}
+                      >
+                        🖼️→📄 已本地OCR转文字（{m.ocrTexts.length} 张）
+                      </span>
+                    </div>
+                  ) : null}
+                  {editingIndex === i ? (
+                    <MessageEditor
+                      initial={m.content}
+                      onCancel={() => setEditingIndex(null)}
+                      onSubmit={(text) => {
+                        setEditingIndex(null);
+                        onEditResend?.(i, text);
+                      }}
+                    />
+                  ) : m.content ? (
+                    <div>{m.content}</div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            {/* 操作条：气泡外、正文下方一行图标（doc/chat-history.md §8.3）。生成中整条隐藏 */}
+            {editingIndex !== i && !loading ? (
+              <MessageActions
+                role={m.role}
+                canRegenerate={m.role === 'assistant' && i === messages.length - 1 && Boolean(onRegenerate)}
+                disabled={loading}
+                copyText={(isUser ? m.content : renderContent) || undefined}
+                onEdit={isUser && onEditResend ? () => setEditingIndex(i) : undefined}
+                onRegenerate={onRegenerate}
+              />
+            ) : null}
+          </div>
+        );
+      })}
 
       {loading && (
         <div className="flex justify-start">
