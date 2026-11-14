@@ -6,8 +6,8 @@
  */
 import type { ProviderMessage } from '../provider/types.ts';
 
-/** 文件种类：图片 / PDF / Word / 纯文本 / 无法识别 */
-export type DiagnoseKind = 'image' | 'pdf' | 'doc' | 'text' | 'unsupported';
+/** 文件种类：图片 / PDF / Word / Office（pptx/xlsx/xls）/ 纯文本 / 无法识别 */
+export type DiagnoseKind = 'image' | 'pdf' | 'doc' | 'office' | 'text' | 'unsupported';
 
 /** 四类上传标签，UI 下拉与组装锚点一一对应 */
 export type ReviseCategory = 'origin' | 'wrong' | 'correct' | 'analysis';
@@ -19,6 +19,8 @@ export interface DetectResult {
   supported: boolean;
   /** 归一后的 MIME（扩展名推断优先，缺失时用传入 MIME 兜底） */
   mime: string;
+  /** 具体格式（魔数 / 扩展名判定结果），extract 按它选解析器（doc/file-intake.md §3） */
+  format?: string;
   reason?: string;
 }
 
