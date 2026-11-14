@@ -2,52 +2,33 @@
  * 诊断模式文件接入 - 浏览器侧内容提取
  *
  * 只允许在客户端组件调用（依赖 FileReader 与 pdfjs 的 worker）。
- * PDF 在这里取文字而不是把整份 base64 塞给模型：多模态端点普遍不吃 PDF，
- * 而纯文本模型连图片都看不到，文字是两边都能用的最小公分母。
+ * 图片 / 文本 / Office 的提取委托 `lib/intake/`（doc/file-intake.md，两入口
+ * 统一口径）；PDF 在这里取文字而不是把整份 base64 塞给模型：多模态端点
+ * 普遍不吃 PDF，而纯文本模型连图片都看不到，文字是两边都能用的最小公分母。
  */
+import { decodeTextFile } from '../intake/decode-text.ts';
+import { extractImageIntake } from '../intake/extract-image.ts';
+import { extractOfficeText, type OfficeExtractResult } from '../intake/extract-office.ts';
+import { extractPdfText } from '../intake/extract-pdf.ts';
+import { parseDocViaServer } from '../intake/parse-doc-client.ts';
+import type { OfficeFormat } from '../intake/detect.ts';
 import type { DiagnoseAttachment, DiagnoseKind, ReviseCategory } from './types.ts';
 
-/** pdfjs worker 走本地静态资源，避免运行时依赖 CDN */
-const PDF_WORKER_SRC = '/pdfjs/pdf.worker.min.mjs';
-/** 单份 PDF 最多解析页数，防止超大文档卡死主线程 */
-const MAX_PDF_PAGES = 80;
-/** 单份 PDF 提取字符上限，与组装层预算量级对齐 */
+/** 单份 PDF 提取字符上限，与组装层预算量级对齐（页数上限在 intake 模块内） */
 const MAX_PDF_CHARS = 20000;
+/** Office 提取字符上限：与 PDF 对齐（doc/file-intake.md §7），聊天侧另有 20 万上限 */
+const MAX_OFFICE_CHARS = 20000;
 
-/** File → dataUrl */
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'));
-    reader.readAsDataURL(file);
-  });
-}
-
-/** PDF → 纯文本（扫描件无文字层时返回空串） */
-async function extractPdfText(file: File): Promise<string> {
-  const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
-
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  try {
-    const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
-    let text = '';
-    for (let pageNo = 1; pageNo <= pages; pageNo++) {
-      const page = await doc.getPage(pageNo);
-      const content = await page.getTextContent();
-      const line = content.items
-        .map((item) => ('str' in item ? item.str : ''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (line) text += `${line}\n`;
-      if (text.length >= MAX_PDF_CHARS) break;
-    }
-    return text.slice(0, MAX_PDF_CHARS).trim();
-  } finally {
-    await doc.destroy();
+/** Office / .doc 统一转 DiagnoseAttachment：text 通道，warning 透传 */
+function officeAttachment(
+  name: string,
+  category: ReviseCategory,
+  result: OfficeExtractResult
+): DiagnoseAttachment {
+  if (!result.text.trim()) {
+    return { name, category, warning: result.warning ?? '未提取到内容' };
   }
+  return { name, category, text: result.text, warning: result.warning };
 }
 
 /**
@@ -58,27 +39,46 @@ async function extractPdfText(file: File): Promise<string> {
 export async function extractAttachment(
   file: File,
   category: ReviseCategory,
-  kind: DiagnoseKind
+  kind: DiagnoseKind,
+  /** detect 判出的具体格式；kind === 'office' 时必为 docx/pptx/xlsx/xls 之一 */
+  format = ''
 ): Promise<DiagnoseAttachment> {
   const base: DiagnoseAttachment = { name: file.name, category };
 
   try {
     if (kind === 'image') {
-      const dataUrl = await readAsDataUrl(file);
-      if (!dataUrl.startsWith('data:image/')) {
-        return { ...base, warning: '图片读取结果异常，未取到有效图像数据' };
-      }
-      return { ...base, dataUrl };
+      // intake 已做 heic 阶梯 / 规范化 / 缩放（doc/file-intake.md §5~§6）
+      const result = await extractImageIntake(file);
+      return result.ok
+        ? { ...base, dataUrl: result.dataUrl }
+        : { ...base, warning: result.reason };
     }
 
     if (kind === 'text') {
-      const text = await file.text();
-      return text.trim() ? { ...base, text } : { ...base, warning: '文件内容为空' };
+      const decoded = await decodeTextFile(file);
+      if (!decoded.ok) return { ...base, warning: decoded.reason };
+      return decoded.text.trim()
+        ? { ...base, text: decoded.text }
+        : { ...base, warning: '文件内容为空' };
     }
 
     if (kind === 'pdf') {
-      const text = await extractPdfText(file);
+      const text = await extractPdfText(file, MAX_PDF_CHARS);
       return text ? { ...base, text } : { ...base, warning: '未提取到文字，可能是扫描件或纯图片 PDF' };
+    }
+
+    if (kind === 'office') {
+      const result = await extractOfficeText(file, format as OfficeFormat, MAX_OFFICE_CHARS);
+      return officeAttachment(file.name, category, result);
+    }
+
+    if (kind === 'doc') {
+      // 旧版 Word 浏览器无解，上传至自有服务端解析（doc/file-intake.md §8）
+      const result = await parseDocViaServer(file);
+      if (!result.ok) return { ...base, warning: result.reason };
+      return result.text.trim()
+        ? { ...base, text: result.text }
+        : { ...base, warning: '服务端未提取到文字内容' };
     }
 
     return { ...base, warning: '该类型不在本轮支持范围内' };
