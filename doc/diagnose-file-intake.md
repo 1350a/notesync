@@ -1,7 +1,9 @@
 # 诊断模式 · 文件接入契约
 
-> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-12
-> 对应代码：`lib/diagnose/`（types / detect / assemble / extract）、`app/diagnose/_components/UploadArea.tsx`、`app/api/chat/route.ts`（attachments 分支）
+> 状态：P1（detect / extract / assemble / send 四段已接通）｜最后更新：2026-11-14
+> 对应代码：`lib/diagnose/`（types / detect / assemble / extract）、
+> `lib/intake/`（两入口共用的判定与提取，见 doc/file-intake.md）、
+> `app/diagnose/_components/UploadArea.tsx`、`app/api/chat/route.ts`（attachments 分支）
 
 本文件定义"用户上传错题文件 → 组装成模型消息 → 发出请求"这一段的数据契约。
 按 `AGENTS.md` §9，改这里先于改代码。
@@ -37,25 +39,35 @@
 
 ## 3. 判定规则（detect）
 
-扩展名优先，其次用浏览器给的 MIME：
+2026-11-14 起 detect 委派 `lib/intake/detect.ts`（魔数判定规则、编码与图片契约
+统一见 doc/file-intake.md §3~§6），本表只保留 DiagnoseKind 映射：
 
-| 扩展名 | kind | 是否接收 |
+| 输入（魔数 / 扩展名） | kind | 是否接收 |
 |---|---|---|
-| png / jpg / jpeg / webp / bmp | `image` | 是 |
+| 图片魔数（png/jpg/webp/bmp/avif/ico；heic 走三级阶梯） | `image` | 是；gif 魔数拒收（"动图请截帧后上传"） |
 | pdf | `pdf` | 是 |
-| txt / md / markdown / csv | `text` | 是 |
-| doc / docx / wps | `doc` | 否，提示另存为 PDF 或截图 |
+| 文本白名单（txt / md / markdown / csv 等） | `text` | 是 |
+| docx | `doc` | 是，客户端 mammoth 解析 |
+| doc | `doc` | 是，服务端 `/api/parse-doc` 解析（内容上传至自有服务端，UI 明示） |
+| pptx | `office`（DiagnoseKind 新增值，仅 extract 分发用） | 是，客户端解析 |
+| xlsx / xls | `unsupported` | 否，提示另存为 CSV 后上传（2026-11-14 暂缓，file-intake.md §10） |
+| ppt | `unsupported` | 否，提示另存为 pptx |
+| wps | `unsupported` | 否，提示另存为 docx |
 | 其它 | `unsupported` | 否 |
 
 拒收必须回具体原因（含文件名），不得用"暂不支持"泛化。
 
 ## 4. 提取规则（extract）
 
-- **图片**：`FileReader.readAsDataURL`，结果必须是 `data:image/` 前缀，否则判失败。
+- **图片**：走 `lib/intake/extract-image.ts`（heic 三级阶梯、格式规范化、尺寸缩放，
+  file-intake.md §5/§6），产出规范化后的 `data:image/png|jpeg` dataUrl。
 - **PDF**：前端 `pdfjs-dist` 逐页取文字层，worker 走本地 `/pdfjs/pdf.worker.min.mjs`（不依赖 CDN）。
   上限 80 页 / 20000 字符；无文字层（扫描件）视为失败并给出原因。
   不把 PDF 转 base64 直传：多模态端点普遍不收 PDF，纯文本模型更看不到图。
-- **纯文本**：`File.text()`，空内容判失败。
+- **纯文本**：走 `lib/intake/decode-text.ts` 编码探测（BOM → 严格 UTF-8 → GB18030 兜底，
+  file-intake.md §4），空内容判失败。
+- **Office（docx/pptx/xlsx/xls）**：走 `lib/intake/extract-office.ts` 客户端解析，
+  上限 20000 字符（对齐 PDF）；`.doc` 走 `POST /api/parse-doc`。
 - 单文件失败不抛错，降级为空内容 + `warning`，整批继续。
 
 ## 5. 请求体（`POST /api/chat`）
@@ -152,7 +164,8 @@ interface DiagnoseAttachment {
 
 ## 9. 已知未做
 
-- `.doc` / `.docx` 解析（本轮明确报不支持）。
+- `.doc` / `.docx` / pptx / xlsx / xls 解析已于 2026-11-14 接入（doc/file-intake.md）；
+  `.ppt` 仍拒收（纯 JS 无解，智谱文件解析 API 待验证，file-intake.md §10 挂账）。
 - 扫描件 PDF 的 OCR（旧 `lib/ocr.ts` 已停用，未接入本链路；图片的云端转写引擎已由
   doc/cloud-ocr.md 接入，PDF 接入 glm-ocr 仍为单独挂账）。
 - 多模态能力按模型标注：智谱以 `ZHIPU_CATALOG` 元数据目录为唯一事实来源
