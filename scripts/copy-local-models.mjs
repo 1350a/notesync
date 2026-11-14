@@ -14,7 +14,10 @@ import path from "node:path";
 
 const root = process.cwd();
 const MODEL_REPO = "onnx-community/bge-small-zh-v1.5-ONNX";
-const BASE = process.env.HF_MIRROR || "https://huggingface.co";
+const DEFAULT_BASE = "https://huggingface.co";
+// 手动兜底镜像：大文件可能 302 回被墙 CDN，仅作直连不通时的备选下载源
+const MIRROR_BASE = "https://hf-mirror.com";
+const BASE = process.env.HF_MIRROR || DEFAULT_BASE;
 const DEST = "public/models/bge-small-zh-v1.5";
 const ORT_SRC = "node_modules/onnxruntime-web/dist";
 const ORT_DEST = "public/models/ort";
@@ -50,6 +53,13 @@ async function existsAtLeast(rel, minBytes) {
   }
 }
 
+/** 体积下限的人类可读展示（十进制口径，与网络传输一致） */
+function formatBytes(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)} MB`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
 async function download({ file, minBytes }) {
   const dest = path.join(root, DEST, file);
   const url = `${BASE}/${MODEL_REPO}/resolve/main/${file}`;
@@ -65,6 +75,9 @@ async function download({ file, minBytes }) {
 }
 
 let failed = false;
+// 仅收集模型下载失败项：ORT 与语言包来源在依赖/仓库内，缺失应 npm install
+// 或 ocr:assets 解决，不进手动下载清单
+const failedDownloads = [];
 
 // 1) 下载模型权重与分词器（已存在且达标则跳过，避免每次重复下载几十 MB）
 for (const item of DOWNLOADS) {
@@ -77,6 +90,7 @@ for (const item of DOWNLOADS) {
     await download(item);
   } catch (err) {
     failed = true;
+    failedDownloads.push(item);
     console.error(`FAIL ${item.file}: ${err.message}`);
   }
 }
@@ -119,6 +133,25 @@ for (const name of ORT_FILES) {
 }
 
 if (failed) {
+  if (failedDownloads.length > 0) {
+    // 被墙设备上自动下载可能无解（直连失败、镜像大文件 302 回被墙 CDN），
+    // 逐文件给出可浏览器直接取件的 URL 与放置路径，手动补齐后重跑本命令校验
+    console.error(
+      "\n手动下载兜底清单（任一源下载后放入放置路径，重跑本命令校验补齐）：",
+    );
+    for (const item of failedDownloads) {
+      console.error(`\n  ${item.file}`);
+      console.error(
+        `    直连源  ${DEFAULT_BASE}/${MODEL_REPO}/resolve/main/${item.file}`,
+      );
+      console.error(
+        `    镜像源  ${MIRROR_BASE}/${MODEL_REPO}/resolve/main/${item.file}`,
+      );
+      console.error(
+        `    放置    ${DEST}/${item.file}（体积 ≥ ${formatBytes(item.minBytes)}）`,
+      );
+    }
+  }
   console.error(
     `\n资产准备未完成：模型下载需可访问 ${BASE}（或设 HF_MIRROR 切镜像）。` +
       `\n运行时缺资产时功能不可用，页面会提示本命令。`,

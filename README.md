@@ -97,6 +97,7 @@ npm run start
 - 作用：从 Hugging Face 下载 `onnx-community/bge-small-zh-v1.5-ONNX` 模型（`HF_MIRROR` 可切换镜像，如 `https://hf-mirror.com`），并从根依赖 `node_modules/onnxruntime-web/dist` 复制 ORT 的 wasm/glue 到 `public/models/ort/`。
 - 产物：`public/models/bge-small-zh-v1.5/`（config / tokenizer / 两档权重含 `_data`）、`public/models/ort/`（含 asyncify 档共 6+ 文件）。
 - 校验：按实测体积设下限，拦截截断与 HTML 错误页；复制 ORT 前校验已安装版本与 `package.json` 声明一致，版本漂移直接失败退出。
+- **失败兜底**：模型下载失败时逐文件打印手动下载清单（直连/镜像 URL、放置路径、体积下限），浏览器或下载工具取件放入对应路径后重跑本命令校验补齐；适用于无法访问 HF 的设备（镜像大文件可能 302 回被墙 CDN）。
 - **失败后果**：`checkLocalAssets()` 返回 `ready: false` 并列出缺失路径，「设置 → 本地能力」中的知识检索开关被禁用、本地引擎显示资产缺失与修复命令；聊天发送时 RAG 静默跳过（消息照常发送，不阻断）。若只缺 asyncify 档，会在引擎实例化阶段报 `Failed to fetch dynamically imported module`。
 
 ### 6.2 `npm run ocr:assets`
