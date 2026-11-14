@@ -9,6 +9,7 @@ process.env.MOCK_MODEL = '1';
 
 import { describe, expect, it } from 'vitest';
 import { POST } from '@/app/api/chat/route';
+import { STRUCTURE_RULES } from '@/lib/safety/wordlist';
 
 async function post(body: unknown): Promise<Response> {
   return POST(
@@ -59,7 +60,8 @@ describe('服务端输入兜底（绕过客户端也不能过）', () => {
   });
 
   it('超长输入在服务端也被拦（结构规则，不依赖词表）', async () => {
-    const res = await post({ content: 'a'.repeat(8001) });
+    // 跟随 STRUCTURE_RULES.maxChars，避免阈值调整时用例悄悄失真（8000→24000 曾发生）
+    const res = await post({ content: 'a'.repeat(STRUCTURE_RULES.maxChars + 1) });
     expect(await firstError(res)).toMatchObject({ code: 'input_blocked', category: 'structure' });
   });
 

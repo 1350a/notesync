@@ -47,14 +47,17 @@ export function isBlockedFinishReason(finishReason: string | undefined | null): 
 }
 
 /**
- * 是否系统自身的边界拒答：正文开头即以 REFUSAL_PREFIX 开头。
+ * 是否系统自身的边界拒答：正文开头（剥掉 markdown 装饰后）即以 REFUSAL_PREFIX 开头。
  *
- * 只看开头（前缀 + 8 字符的窗口内），不做全文包含判定——否则讲解正文里引用一次前缀
- * 就能绕过上游拦截识别。归一化同 injection 侧：先去掉首部空白与零宽字符。
+ * 只看开头，不做全文包含判定——否则讲解正文里引用一次前缀就能绕过上游拦截识别。
+ * 剥离先于比对：模型常把前缀套进 markdown（**【边界说明】**…），不剥装饰会把自家
+ * 合规拒答误判成上游拦截、整轮回复被丢。窗口放宽到前缀 +16 字符，给装饰字符留位。
  */
 export function isSelfBoundaryRefusal(text: string): boolean {
   if (!text) return false;
-  const head = text.replace(/^[\s\u200b-\u200f\ufeff]+/, '').slice(0, REFUSAL_PREFIX.length + 8);
+  const head = text
+    .replace(/^[\s\u200b-\u200f\ufeff>*#"'「『（(]+/, '')
+    .slice(0, REFUSAL_PREFIX.length + 16);
   return head.startsWith(REFUSAL_PREFIX);
 }
 

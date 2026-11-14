@@ -45,8 +45,8 @@ export const DEFAULT_WORDLIST: WordlistConfig = { hardRisk: [], psych: [] };
 
 /** 结构规则阈值（D 级可调） */
 export const STRUCTURE_RULES = {
-  /** 单条输入最大字符数，超过视为超长 */
-  maxChars: 8000,
+  /** 单条输入最大字符数，超过视为超长（24000≈整卷粘贴量级；8000 曾把贴整张试卷误拦） */
+  maxChars: 24000,
   /** 重复刷屏判定：同一段 ≥10 字内容重复次数 */
   repeatCount: 8,
 } as const;
