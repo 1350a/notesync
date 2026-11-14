@@ -43,11 +43,18 @@ export interface ToolAdapter {
 
   /**
    * 将本轮发起的工具调用与执行结果拼回历史消息。
+   *
+   * assistantText 为本轮 assistant 已产出的正文（即同一轮内流式下发给用户的文本）。
+   * 需要保留正文的适配器（native）必须把它随 tool_calls 一并回填，否则下一轮模型
+   * 看不到自己写过什么，会重新生成一份内容，前端同一气泡内出现两份重复正文。
+   * 该参数只影响服务端拼装的历史，不参与任何下发，不会导致正文二次显示。
+   * 不传/空串时行为与旧版一致（content 置空）。
    */
   appendResults(
     messages: ProviderMessage[],
     calls: ExtractedToolCall[],
-    results: ToolInvocation[]
+    results: ToolInvocation[],
+    assistantText?: string
   ): void;
 
   /**
