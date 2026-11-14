@@ -141,9 +141,10 @@ export interface SendOptions {
   /** 诊断回路事件（明白了/还不懂/继续/结束），随本次消息一并上行 */
   diagnoseEvent?: DiagnoseRequestEvent;
   /**
-   * 本条消息 OCR 产物的发送形态（doc/browser-local-ocr.md §6.2）：
-   * local-only 全本地（图片仅本地展示）；mixed 混合档（OCR 文本+原图都上行）。
-   * 缺省沿用旧口径（有 ocrTexts 即全本地）
+   * 【legacy，2026-11-14 起新发送不再写入】本条消息 OCR 产物的发送形态
+   * （doc/browser-local-ocr.md §6.2）：仅用于重发旧持久化会话里的混合档消息
+   * （regenerate/editAndResend 透传 ChatMsg.imageSendMode）。新发送缺省即
+   * 「有 ocrTexts 全本地」；混合档 UI 已下线，字段仅为旧数据重发保真保留
    */
   imageSendMode?: 'local-only' | 'mixed';
 }
@@ -454,7 +455,8 @@ export function useChat(selectedModel: string) {
               .map((m) => ({
                 role: m.role,
                 content: m.content,
-                // 混合档：OCR 文本与原图同上行；全本地：仅 imageTexts（图片仅本地展示）；
+                // 【legacy 分支保留】旧混合档消息（imageSendMode==='mixed'）重发时原图仍随行，
+                // 不丢历史内容；新发送不再产出该形态。全本地：仅 imageTexts（图片仅本地展示）；
                 // 直传：仅原图（doc/browser-local-ocr.md §6.2）
                 images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
                 imageTexts: m.ocrTexts,

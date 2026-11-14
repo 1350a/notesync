@@ -26,15 +26,15 @@ export interface DetectResult {
 
 /**
  * 提取完成后的单个文件，同时是 /api/chat 请求体 attachments 的元素形态。
- * 图片走 dataUrl，PDF/纯文本走 text；混合档（`AssembleImageMode = 'mixed'`）下
- * 图片项可两者同时携带——`text` 是浏览器本地 OCR 文本，`dataUrl` 是原图。
+ * 图片走 dataUrl，PDF/纯文本走 text；【legacy】混合形态（两者同时携带，`text` 为
+ * OCR 文本）2026-11-14 起新客户端不再产出，服务端判定仅为旧数据兼容保留。
  */
 export interface DiagnoseAttachment {
   name: string;
   category: ReviseCategory;
   /** 图片 dataUrl，形如 data:image/png;base64,... */
   dataUrl?: string;
-  /** PDF / 纯文本提取出的正文；混合档下为图片的本地 OCR 文本 */
+  /** PDF / 纯文本提取出的正文 */
   text?: string;
   /** 提取阶段的降级原因；单文件失败不阻断整批组装 */
   warning?: string;
@@ -44,7 +44,8 @@ export interface DiagnoseAttachment {
  * 图片投喂方式：
  * - `multimodal` 原图直传（附件只带 dataUrl）；
  * - `text-only` 模型不收图，图片退化为文字占位（有 OCR 文本时用 OCR 文本代替占位）；
- * - `mixed` 混合档（doc/diagnose-file-intake.md §6）：本地 OCR 文本打底 + 原图补充，外发最多。
+ * - `mixed` 【legacy】旧混合档（doc/diagnose-file-intake.md §6）：OCR 文本打底 + 原图补充，
+ *   2026-11-14 起客户端不再产出，仅为旧数据兼容保留。
  */
 export type AssembleImageMode = 'multimodal' | 'text-only' | 'mixed';
 

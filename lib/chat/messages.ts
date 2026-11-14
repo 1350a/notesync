@@ -58,9 +58,9 @@ export interface ChatMsg {
    */
   ocrTexts?: string[];
   /**
-   * OCR 产物的发送形态：local-only 全本地（images 仅本地展示不上行）；
-   * mixed 混合档（OCR 文本 + 原图都上行，需多模态模型）。缺省沿用旧口径
-   * （有 ocrTexts 即全本地），由发送时的三档选择写入
+   * 【legacy，2026-11-14 起新发送不再写入】OCR 产物的发送形态：local-only 全本地
+   * （images 仅本地展示不上行）；mixed 混合档（OCR 文本 + 原图都上行）。混合档 UI
+   * 已下线（product-vision.md P4 自动路由），字段仅为旧持久化会话的重发保真保留
    */
   imageSendMode?: 'local-only' | 'mixed';
   /** 用户随消息上传的纯文本文件 */
@@ -167,8 +167,8 @@ export function buildUserContent(
           item.length <= MAX_DATA_URL
       )
     : [];
-  // 混合档（doc/browser-local-ocr.md §6.2）：OCR 文本块打底 + 原图补充，
-  // 仅在客户端同时上行两者时触发（全本地模式客户端不上行图片本体）
+  // 旧混合档组装（doc/browser-local-ocr.md §6.2）：OCR 文本块打底 + 原图补充。
+  // 【legacy】2026-11-14 起新客户端不再同时上行两者，此分支仅为旧持久化会话重发保留
   if (ocrTexts.length > 0 && urls.length > 0) {
     return [
       {
