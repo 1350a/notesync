@@ -54,9 +54,8 @@ export interface ChatInputProps {
   modelsLoading?: boolean;
   /** 无可用模型时的后端提示 */
   modelsMessage?: string;
-  /** 设置页"优先本地OCR"偏好（ocr.preferLocal）：true 时图片一律先转文字 */
-  preferLocalOcr: boolean;
-  /** OCR 转写引擎（ocr.engine，doc/cloud-ocr.md）：local=tesseract 浏览器内；cloud=智谱 glm-ocr */
+  /** OCR 转写引擎（ocr.engine，doc/cloud-ocr.md §4）：cloud=智谱 glm-ocr（默认）；local=tesseract 浏览器内。
+   *  只在纯文本模型路径生效——多模态模型直传原图、无转写（P4 自动路由，2026-11-14） */
   ocrEngine: OcrEngine;
   /** 诊断会话进行中（useChat 上下文非 done）：开关只负责开启新会话，会话内展示状态 */
   diagnosisActive?: boolean;
@@ -116,7 +115,6 @@ export default function ChatInput({
   providers,
   modelsLoading = false,
   modelsMessage,
-  preferLocalOcr,
   ocrEngine,
   diagnosisActive = false,
 }: ChatInputProps) {
@@ -131,9 +129,7 @@ export default function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 触屏（虚拟键盘）Enter 应为换行，发送只靠按钮，避免选字回车误发（doc/mobile-ux.md §4）
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
-  /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
-  const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
-  /** 本地 OCR 进行中进度；非 null 时阻断重复发送 */
+  /** OCR 进行中进度；非 null 时阻断重复发送 */
   const [ocrBusy, setOcrBusy] = useState<{ done: number; total: number } | null>(null);
   /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，product-vision.md §3.3） */
   const [diagnosisMode, setDiagnosisMode] = useState(false);
@@ -302,10 +298,7 @@ export default function ChatInput({
   };
 
   const removeImage = (index: number) => {
-    const next = images.filter((_, i) => i !== index);
-    setImages(next);
-    // 图片清空即撤销当次覆盖，下次贴图重新按设置与模型能力派生（事件内重置，不用 effect）
-    if (next.length === 0) setOcrOverride(null);
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeFile = (index: number) => {
@@ -313,10 +306,9 @@ export default function ChatInput({
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
-  // P4 约束②：多模态能力未知/不支持时，全本地是唯一路径——多模态与混合两档不渲染
-  const canDirect = currentModel?.acceptsImages === true;
-  const derivedMode = resolveImageSendMode(currentModel, preferLocalOcr);
-  const imageMode: ImageSendMode = ocrOverride ?? (derivedMode === 'direct' && canDirect ? 'direct' : 'local-ocr');
+  // 图片路径全自动派生（product-vision.md P4，2026-11-14）：多模态直传、其余 OCR 转写。
+  // 无当次覆盖、无档位控件——UI 只展示派生结果与代价（诚实接线）
+  const imageMode: ImageSendMode = resolveImageSendMode(currentModel);
   const hasPayload = input.trim().length > 0 || images.length > 0 || files.length > 0;
 
   /** OCR 完成后进入回显确认，而不是直接发送（识别结果必须先经学生确认，§1.3 规则①②） */
@@ -334,9 +326,7 @@ export default function ChatInput({
       const index = result.failures.map((f) => f.index + 1).join('、');
       const engineLabel = ocrEngine === 'cloud' ? '云端' : '本地';
       pushHint(
-        `第 ${index} 张图${engineLabel}OCR失败：${result.failures[0].reason}。${
-          canDirect ? '可移除该图或改用「直传」' : '可移除该图或在设置中切换识别引擎后重试'
-        }`
+        `第 ${index} 张图${engineLabel}OCR失败：${result.failures[0].reason}。可移除该图或在设置中切换识别引擎后重试`
       );
       return false;
     }
@@ -346,8 +336,8 @@ export default function ChatInput({
 
   const handleSend = async () => {
     if (!hasPayload || loading || ocrBusy || ocrDraft) return;
-    // 全本地 / 混合：先 OCR → 回显确认；确认面板的发送按钮负责真正的上行
-    if (images.length > 0 && (imageMode === 'local-ocr' || imageMode === 'mixed')) {
+    // OCR 转写路径：先 OCR → 回显确认；确认面板的发送按钮负责真正的上行
+    if (images.length > 0 && imageMode === 'ocr-text') {
       const ok = await runOcrThenConfirm();
       if (!ok) return;
       return; // 等待回显确认，不在此处发送
@@ -358,16 +348,13 @@ export default function ChatInput({
   /** 确认面板「确认发送」/ 纯文本与直传路径的实际发送 */
   const doSend = (ocrTexts: string[] | undefined) => {
     const options: SendOptions | undefined = diagnosisMode ? { startDiagnosis: true } : undefined;
-    onSend(input.trim(), images, files, ocrTexts, {
-      ...options,
-      // OCR 产物形态随三档走：混合档原图与文本同上行（doc/browser-local-ocr.md §6.2）
-      ...(ocrTexts ? { imageSendMode: imageMode === 'mixed' ? ('mixed' as const) : ('local-only' as const) } : {}),
-    });
+    // 不传 imageSendMode：缺省口径即「有 ocrTexts 即全本地」（useChat 兼容语义）。
+    // 混合档已下线，客户端不再产出（doc/browser-local-ocr.md §6.2）
+    onSend(input.trim(), images, files, ocrTexts, options);
     setInput('');
     setImages([]);
     setFiles([]);
     setHint('');
-    setOcrOverride(null);
     setOcrDraft(null);
   };
 
@@ -637,85 +624,23 @@ export default function ChatInput({
                 </svg>
               </Button>
             )}
-            {/* 三档选择（product-vision.md P4）：全本地 / 多模态 / 混合。
-                P4 约束②：多模态能力未知或不支持时只呈现全本地一档，不得表现存在选择 */}
+            {/* 图片路径全自动派生（product-vision.md P4，2026-11-14）：无档位控件，
+                只展示派生结果。P4 约束①：外发代价写在发送处（触屏无 hover）；
+                云端引擎必须明示图片像素出端（doc/cloud-ocr.md §3） */}
             {images.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <div
-                  className="flex items-center overflow-hidden rounded-md border border-border text-[11px]"
-                  role="group"
-                  aria-label="图片发送方式"
-                >
-                  <button
-                    type="button"
-                    disabled={loading || ocrBusy !== null || ocrDraft !== null}
-                    onClick={() => setOcrOverride('local-ocr')}
-                    className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      imageMode === 'local-ocr'
-                        ? 'bg-foreground/10 font-medium text-foreground'
-                        : 'text-muted-foreground hover:bg-muted'
-                    }`}
-                    // 代价文案随引擎：云端引擎下原图像素上行至智谱 OCR，"不出设备"仅本地引擎成立（doc/cloud-ocr.md §3）
-                    title={
-                      ocrEngine === 'cloud'
-                        ? '转文字：图片经云端OCR转文字后发送（图片将上传至智谱，公式/手写识别更好）'
-                        : '全本地：图片在浏览器内转文字后发送，原图不出设备（隐私、省流量）'
-                    }
-                  >
-                    {ocrEngine === 'cloud' ? '云端转文字' : '全本地'}
-                  </button>
-                  {canDirect && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={loading || ocrBusy !== null || ocrDraft !== null}
-                        onClick={() => setOcrOverride('direct')}
-                        className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                          imageMode === 'direct'
-                            ? 'bg-foreground/10 font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-muted'
-                        }`}
-                        title="多模态：原图直传，图片会上传至模型服务商"
-                      >
-                        多模态
-                      </button>
-                      <button
-                        type="button"
-                        disabled={loading || ocrBusy !== null || ocrDraft !== null}
-                        onClick={() => setOcrOverride('mixed')}
-                        className={`px-2 py-1 touch:px-3 touch:py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                          imageMode === 'mixed'
-                            ? 'bg-foreground/10 font-medium text-foreground'
-                            : 'text-muted-foreground hover:bg-muted'
-                        }`}
-                        title={`混合：${ocrEngine === 'cloud' ? '云端' : '本地'}识别打底 + 原图上传至模型服务商（外发最多，质量最好）`}
-                      >
-                        混合
-                      </button>
-                    </>
-                  )}
-                </div>
-                {/* P4 约束①：代价必须写在选择处，不靠 hover 提示（触屏无 hover）；
-                    §7 图片上传明示：外发档当次明示图片将离开设备。
-                    转文字档的"原图不出设备"仅本地引擎成立，云端引擎必须明示图片出端（doc/cloud-ocr.md §3） */}
-                {imageMode === 'local-ocr' && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {ocrEngine === 'cloud'
-                      ? '云端转文字：图片将上传至智谱 OCR 转写（公式/手写更好，原图像素出设备），发送前需确认'
-                      : '全本地：原图不出设备；但用不到原图理解，图文混排 / 手写可能识别有误，发送前需确认'}
-                  </span>
-                )}
-                {imageMode === 'direct' && (
-                  <span className="text-[10px] text-amber-600">
-                    多模态：图片将上传至模型服务商
-                  </span>
-                )}
-                {imageMode === 'mixed' && (
-                  <span className="text-[10px] text-amber-600">
-                    混合：原图将上传至模型服务商（另有{ocrEngine === 'cloud' ? '云端' : '本地'}识别打底）
-                  </span>
-                )}
-              </div>
+              <span
+                className={`max-w-[220px] text-[10px] leading-snug sm:max-w-none ${
+                  imageMode === 'direct' || ocrEngine === 'cloud'
+                    ? 'text-amber-600'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {imageMode === 'direct'
+                  ? '多模态：原图直传，图片将上传至模型服务商'
+                  : ocrEngine === 'cloud'
+                    ? '云端转文字：发送时图片像素上传至智谱 OCR（公式/手写更好），确认识别结果后发送'
+                    : '本地转文字：发送时浏览器内 OCR，原图不出设备；图文混排/手写可能识别有误'}
+              </span>
             )}
           </div>
 

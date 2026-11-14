@@ -1,16 +1,21 @@
 /*
- * 图片发送管线：模式推导 + 本地 OCR 转文字。
+ * 图片发送管线：模式推导 + OCR 转文字。
  *
- * 协议见 doc/browser-local-ocr.md §6：聊天/诊断的图片先在浏览器内转成文字再发送，
- * 纯文本模型因此能消费图片内容而不报错。本模块同时被客户端组件与服务端
- * （lib/chat/messages.ts 的 OCR 文本块格式化）引用，除 ocrRecognize 外保持纯函数。
+ * 协议见 doc/browser-local-ocr.md §6：纯文本模型路径的图片先转成文字再发送
+ * （多模态模型直传原图、无转写，product-vision.md P4 自动路由，2026-11-14）。
+ * 本模块同时被客户端组件与服务端（lib/chat/messages.ts 的 OCR 文本块格式化）引用，
+ * 除 ocrRecognize 外保持纯函数。
  */
 import { ocrRecognize } from "./local.ts";
 import { CLIENT_ID_HEADER, getClientId } from "../client-id.ts";
 import type { OcrEngine } from "../settings/types.ts";
 
-/** 图片发送模式：原图直传 | 本地 OCR 转文字（全本地） | 混合（OCR 打底 + 原图补充） */
-export type ImageSendMode = "direct" | "local-ocr" | "mixed";
+/**
+ * 图片发送模式：原图直传 | OCR 转文字。
+ * 命名注意：ocr-text 不代表本地引擎——转写引擎由设置 ocr.engine 决定（默认云端），
+ * "local-ocr" 旧名在云端引擎下成了谎言，2026-11-14 更名（doc/browser-local-ocr.md §6.1）。
+ */
+export type ImageSendMode = "direct" | "ocr-text";
 
 /** 模型图片能力来源：/api/models 透传的 acceptsImages（undefined=能力未知） */
 export interface ImageCapability {
@@ -18,18 +23,13 @@ export interface ImageCapability {
 }
 
 /**
- * 推导图片发送模式（优先级见 doc/browser-local-ocr.md §6.1）：
- * 1. 用户显式偏好 preferLocal（设置页"优先本地OCR"）→ 一律转文字，隐私优先；
- * 2. 能力未知 → 保守转文字（绝不赌上游能不能吃 image_url）；
- * 3. 其余按模型声明能力。
+ * 推导图片发送模式（2026-11-14 起只看模型能力，无人工档位，product-vision.md P4）：
+ * 1. acceptsImages === true → direct：多模态直传原图，无转写；
+ * 2. false / undefined / 无模型 → ocr-text（能力未知保守转文字，绝不赌上游）。
+ * 旧 preferLocal 偏好与 mixed 混合档已删（服务端组装仅为旧历史重发保留兼容）。
  */
-export function resolveImageSendMode(
-  model: ImageCapability | undefined,
-  preferLocal: boolean,
-): ImageSendMode {
-  if (preferLocal) return "local-ocr";
-  if (!model || model.acceptsImages === undefined) return "local-ocr";
-  return model.acceptsImages ? "direct" : "local-ocr";
+export function resolveImageSendMode(model: ImageCapability | undefined): ImageSendMode {
+  return model?.acceptsImages === true ? "direct" : "ocr-text";
 }
 
 /** OCR 文本块格式：服务端拼消息与诊断附件写入共用，改格式须同步 doc §6.2 */
