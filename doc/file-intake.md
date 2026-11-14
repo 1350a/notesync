@@ -110,6 +110,11 @@ gb18030 等扩展编码）：
 - 单文件失败不抛错：空结果 + warning（与 diagnose-file-intake.md §4 同口径）。
 - PDF 文字层提取自诊断页迁出共用：扫描件（无文字层）返回空文本，调用方给出
   "可能是扫描件" 提示。
+- pdfjs 运行时资源三件套（worker / `cMapUrl` / `standardFontDataUrl`）全部指向
+  本地静态资源 `public/pdfjs/`（自 node_modules/pdfjs-dist 全量拷入；升级
+  pdfjs-dist 版本后需同步重拷 worker 与这两个目录）。缺 cMapUrl 时，预定义
+  CMap 编码的中文 PDF（未嵌入字体：WPS 导出、试卷下载站等常见来源）文字层
+  解码失败返回空，会被误判成扫描件（2026-11-14 实测，见 §12）。
 
 ## 8. 服务端 `.doc` 端点（POST /api/parse-doc）
 
@@ -173,3 +178,8 @@ gb18030 等扩展编码）：
   HEIC 转 JPEG（WebKit"最兼容"传输），原始 HEIC 仅"存到文件 App 再传"可得；
   Android Chrome 原样上传（三星 HEIF 机型会传真 HEIC）。
   来源：stackoverflow.com/q/64093027、news.ycombinator.com/item?id=23260987。
+- **2026-11-14 PDF 中文 CID 字体实验**：node 下用项目同款 pdfjs-dist 5.6.205 提取
+  手工构造的 STSong-Light（GB-EUC-H 预定义 CMap）最小 PDF——无 `cMapUrl` 时
+  getTextContent 返回空（警告 "Ensure that the cMapUrl API parameter is provided"，
+  即被判"扫描件"）；补 `cMapUrl` 后提取出正确中文。Helvetica 对照组始终正常，
+  排除提取管线本身故障。结论：中文 CID 字体 PDF 必须配 cMaps 静态资源。
