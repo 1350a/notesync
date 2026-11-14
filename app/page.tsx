@@ -118,13 +118,17 @@ export default function Home() {
             <Link href="/chat" className="w-full sm:w-auto">
               <Button
                 size="lg"
-                className="w-full rounded-full px-8 shadow-lg shadow-primary/40 sm:w-auto"
+                className="h-12 w-full rounded-full px-9 text-base shadow-lg shadow-primary/40 sm:h-14 sm:w-auto sm:px-12 sm:text-lg"
               >
                 开始对话诊断 →
               </Button>
             </Link>
             <Link href="/diagnose" className="w-full sm:w-auto">
-              <Button size="lg" variant="outline" className="w-full rounded-full px-8 sm:w-auto">
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-12 w-full rounded-full px-9 text-base sm:h-14 sm:w-auto sm:px-12 sm:text-lg"
+              >
                 批量上传
               </Button>
             </Link>
