@@ -9,6 +9,14 @@ import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
 import { getUserId } from '@/lib/client-id';
+// 单题结果与聊天同为模型输出（受上传文件抽出文本影响），必须走同一套渲染+净化管线，
+// 插件顺序约束见 lib/markdown/sanitize.ts 头注
+import ReactMarkdown from 'react-markdown';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
 import PaperResultPanel, { type PaperViewState } from './PaperResultPanel';
 import {
   convertImagesToTexts,
@@ -625,7 +633,15 @@ export default function UploadArea() {
       {!paperView && result && (
         <div className="bg-card p-6 rounded-2xl shadow-sm border border-border">
           <h3 className="font-semibold text-foreground mb-3">诊断结果</h3>
-          <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">{result}</pre>
+          {/* 此前是 <pre> 直出，模型输出的 **加粗**、公式等标记原样漏出；与 ChatList 同管线渲染 */}
+          <div className="markdown-body text-sm text-foreground">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeRaw, rehypeSanitizeMarkdown, rehypeKatex]}
+            >
+              {result}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
     </div>
