@@ -9,6 +9,7 @@ import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
 import { generateId, getUserId } from '@/lib/client-id';
+import { FILE_ACCEPT, FILE_ACCEPT_NO_IMAGE } from '@/lib/intake/detect';
 // 单题结果与聊天同为模型输出（受上传文件抽出文本影响），必须走同一套渲染+净化管线，
 // 插件顺序约束见 lib/markdown/sanitize.ts 头注
 import ReactMarkdown from 'react-markdown';
@@ -93,6 +94,8 @@ export default function UploadArea() {
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 移动端相册选图入口（accept=image/* 无 capture，直进照片选择器，doc/file-intake.md §9） */
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   /** 移动端快速拍照入口（capture 属性直调系统相机，doc/file-intake.md §9） */
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
@@ -201,7 +204,7 @@ export default function UploadArea() {
     setRows((prev) => prev.filter((row) => row.id !== id));
   };
 
-  /** 上传区入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9） */
+  /** 上传区入口：桌面直开文件选择；触屏展开列表式三选项（file-intake.md §9） */
   const openPicker = () => {
     if (isCoarsePointer) setPickerOpen((v) => !v);
     else fileInputRef.current?.click();
@@ -403,8 +406,8 @@ export default function UploadArea() {
         )}
       </div>
 
-      {/* 上传区：桌面点按直开文件选择；触屏展开列表式两选项（file-intake.md §9，
-          2026-11-14 起取消独立拍照按钮） */}
+      {/* 上传区：桌面点按直开文件选择；触屏展开列表式三选项（file-intake.md §9）。
+          文件项 accept 不含 image/*（避免系统来源选择层），桌面统一为全量白名单（§9） */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -419,9 +422,18 @@ export default function UploadArea() {
       >
         <input
           type="file"
+          accept={isCoarsePointer ? FILE_ACCEPT_NO_IMAGE : FILE_ACCEPT}
           multiple
           className="hidden"
           ref={fileInputRef}
+          onChange={handleFileSelect}
+        />
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          ref={galleryInputRef}
           onChange={handleFileSelect}
         />
         <input
@@ -463,6 +475,18 @@ export default function UploadArea() {
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
               >
                 <span aria-hidden>📄</span> 选择文件
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPickerOpen(false);
+                  galleryInputRef.current?.click();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+              >
+                <span aria-hidden>🖼️</span> 从相册选择
               </button>
               <button
                 type="button"

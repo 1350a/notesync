@@ -17,6 +17,25 @@ export const TEXT_EXTENSIONS = [
   'sh', 'bash', 'bat', 'ps1', 'ini', 'toml', 'conf', 'properties', 'tex', 'gitignore',
 ];
 
+/** 文件入口的扩展白名单后缀（.doc 走服务端端点；xlsx/xls/ppt 拒收并给指引，见 §2/§10） */
+const FILE_EXTENSIONS_ACCEPT = [
+  ...TEXT_EXTENSIONS.map((ext) => `.${ext}`),
+  '.pdf',
+  '.docx',
+  '.doc',
+  '.pptx',
+];
+
+/**
+ * 文件选择 input 的 accept（doc/file-intake.md §9）。
+ * 桌面/拖拽外的对话框过滤用全量白名单（含 image/*——桌面文件对话框只过滤不弹层）；
+ * 移动端「选择文件」项必须用 FILE_ACCEPT_NO_IMAGE：accept 含图片类型时手机系统
+ * 会先弹「文件/拍照相机」来源选择层，与菜单内「拍照」「从相册选择」两项路径重复
+ * （2026-11-14 真机观察）。相册/拍照项各有独立 input，见各入口组件。
+ */
+export const FILE_ACCEPT = ['image/*', ...FILE_EXTENSIONS_ACCEPT].join(',');
+export const FILE_ACCEPT_NO_IMAGE = FILE_EXTENSIONS_ACCEPT.join(',');
+
 /** 客户端可解析的 Office 格式（.doc 走服务端端点；xlsx/xls 暂缓，见 file-intake.md §10） */
 export const OFFICE_EXTENSIONS = ['docx', 'pptx'] as const;
 export type OfficeFormat = (typeof OFFICE_EXTENSIONS)[number];
