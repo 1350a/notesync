@@ -63,12 +63,13 @@ check('maxTokens 非正数丢弃', eq(normalizeSettings({ generation: { maxToken
 check('generation 非对象丢弃', eq(normalizeSettings({ generation: 'high' }).generation, {}));
 
 /* ---------- normalizeSettings：ocr 与未知字段 ---------- */
-// 默认档为「全本地」（product-vision.md P4 约束③）：保守侧是 true，只有显式 false 才关闭
-check('ocr.preferLocal 缺省回落 true', normalizeSettings({}).ocr.preferLocal === true);
-check('ocr.preferLocal 显式 true 生效', normalizeSettings({ ocr: { preferLocal: true } }).ocr.preferLocal === true);
-check('ocr.preferLocal 显式 false 才关闭', normalizeSettings({ ocr: { preferLocal: false } }).ocr.preferLocal === false);
-check("ocr.preferLocal 'false' 字符串不误关", normalizeSettings({ ocr: { preferLocal: 'false' } }).ocr.preferLocal === true);
-check('ocr 非对象回落默认档', normalizeSettings({ ocr: 'local' }).ocr.preferLocal === true);
+// 引擎默认云端（2026-11-14 拍板，doc/cloud-ocr.md §4）；preferLocal 已删，存量键按未知字段丢弃
+check('ocr.engine 缺省回落 cloud', normalizeSettings({}).ocr.engine === 'cloud');
+check('ocr.engine 显式 local 生效', normalizeSettings({ ocr: { engine: 'local' } }).ocr.engine === 'local');
+check('ocr.engine 显式 cloud 生效', normalizeSettings({ ocr: { engine: 'cloud' } }).ocr.engine === 'cloud');
+check('ocr.engine 坏值回落 cloud', normalizeSettings({ ocr: { engine: 'bad' } }).ocr.engine === 'cloud');
+check('旧存量 preferLocal 键丢弃且不影响 engine', eq(normalizeSettings({ ocr: { preferLocal: true, engine: 'local' } }).ocr, { engine: 'local' }));
+check('ocr 非对象回落默认档', normalizeSettings({ ocr: 'local' }).ocr.engine === 'cloud');
 
 /* ---------- normalizeSettings：rag（本地检索开关，从严布尔，默认关闭） ---------- */
 check('rag.enabled 严格 true', normalizeSettings({ rag: { enabled: true } }).rag.enabled === true);

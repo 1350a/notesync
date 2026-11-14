@@ -1,6 +1,6 @@
 # 云端 OCR 协议（cloud-ocr）
 
-> 状态：v1 实装中（引擎维度接入转写链路）｜创建：2026-11-12
+> 状态：v1 实装（引擎维度接入转写链路；2026-11-14 引擎默认档改云端、preferLocal 删除）｜创建：2026-11-12
 > 对应代码：`lib/ocr/cloud.ts`（服务端客户端）、`app/api/ocr/route.ts`（代理路由）、
 > `lib/ocr/image-handling.ts`（engine 分流）、`components/settings/LocalCapabilitySection.tsx`（开关）
 
@@ -11,19 +11,20 @@
 diagnosis-model.md §1.3 已把本地 OCR 文本定为"中低可信、优先怀疑识别"——公式、手写、
 复杂版面恰是错题场景的常态。本协议引入智谱专用 OCR 模型 **glm-ocr** 作为第二个转写引擎。
 
-与既有概念的关系：
+与既有概念的关系（2026-11-14 起，档位随模型能力自动路由，见 product-vision.md P4）：
 
 | 维度 | 取值 | 说明 |
 |---|---|---|
-| 档位（不变） | `local-ocr` / `direct` / `mixed` | 决定**什么内容上行**（product-vision.md P4 三档），协议见 browser-local-ocr.md §6 |
-| 引擎（本协议新增） | `local` / `cloud` | 决定**谁来做转写**；转写只发生在 local-ocr 与 mixed 两档，direct 档无转写、引擎无关 |
+| 路径（自动派生） | `ocr-text` / `direct` | 多模态模型 → `direct` 原图直传（无转写）；纯文本/能力未知 → `ocr-text` 转写后发送。旧 `mixed` 混合档已下线（服务端组装仅为旧历史重发保留兼容）。协议见 browser-local-ocr.md §6 |
+| 引擎（本协议） | `local` / `cloud` | 决定**谁来做转写**；转写只发生在 `ocr-text` 路径，`direct` 无转写、引擎无关 |
 
-即引擎与档位**正交**：选云端引擎表达的是"转写质量优先于本地隐私"，不改变任何档位的
-外发内容语义。云端引擎的主要受益者是纯文本模型路径（local-ocr 档），mixed 档打底
-文本质量随之受益（原混合档"打底不可靠"的疑虑由此化解）。
+即路径由模型能力唯一决定、引擎由用户选择：选云端引擎表达的是"转写质量优先于本地
+隐私"。云端引擎的全部受益者就是纯文本模型路径（`ocr-text`）——公式、手写、复杂版面
+由 glm-ocr 承接。
 
-**它不是多模态的替代，也不是自动升级**：模型支持图片且用户未开"优先本地OCR"时，
-直传仍是首选路径，不引入云 OCR。路由绝对权在使用者（设备边界规则，见 §3）。
+**默认引擎为云端（2026-11-14 拍板，替代旧「默认 local」）**：纯文本模型路径默认走
+glm-ocr，图片像素默认出端至智谱；切「本地」是隐私动作。同意面收敛到设置页
+「图片处理（OCR）」行（见 §3）。
 
 ## 2. 模型与端点（2026-11-12 查证）
 
@@ -42,10 +43,10 @@ diagnosis-model.md §1.3 已把本地 OCR 文本定为"中低可信、优先怀�
 
 ## 3. 设备边界与同意（P4 关联）
 
-- **全本地档的"像素不出设备"在云端引擎下不再成立**：识别交给云端即图片像素上行至智谱
-  OCR 端点。目的地与诊断模型不同，按 product-vision.md P4 必须独立显式同意。
-- 落地形态：`ocr.engine` 默认 `'local'`；切到 `'cloud'` 是显式动作，设置行写明代价
-  （"图片像素将发送至智谱"）。
+- **云端引擎意味着图片像素上行至智谱 OCR 端点**（目的地与诊断模型不同）。2026-11-14
+  拍板后它是**默认引擎**：同意面收敛到设置页「图片处理（OCR）」行——行内明示代价
+  （"图片像素将发送至智谱"），发送处再按档明示一次（product-vision.md P4 约束①）；
+  切「本地」是隐私动作，无需额外同意。
 - **不静默回落**：云端识别失败 → 阻断 + 逐张原因 + 用户决策（移除 / 改本地引擎重试），
   绝不静默改走本地；本地引擎失败同理绝不静默改走云端（browser-local-ocr.md §6.4 同源）。
 - 回显确认面板（diagnosis-model.md §1.3 规则①）对两引擎统一生效：云端引擎下面板标题
@@ -57,17 +58,18 @@ diagnosis-model.md §1.3 已把本地 OCR 文本定为"中低可信、优先怀�
 type OcrEngine = 'local' | 'cloud';
 
 ocr: {
-  preferLocal: boolean;  // 档位偏好：true=一律先转写（browser-local-ocr.md §6.1）
-  engine: OcrEngine;     // 转写引擎：local=tesseract.js（默认）；cloud=智谱 glm-ocr
+  engine: OcrEngine;  // 转写引擎：cloud=智谱 glm-ocr（默认）；local=tesseract.js 浏览器内
 }
 ```
 
-- 默认 `'local'`（隐私保守档，P4 约束③）。
-- normalize（`lib/settings/types.ts`）：`engine` 非 `'local'/'cloud'` 一律回落 `'local'`；
-  旧存储数据无该字段 → 补默认 `'local'`，前向兼容。
+- 默认 `'cloud'`（2026-11-14 拍板，质量优先；旧 `preferLocal` 档位偏好字段已删，
+  语义并入自动路由——要不要转写只看模型能力，browser-local-ocr.md §6.1）。
+- normalize（`lib/settings/types.ts`）：`engine` 非 `'local'/'cloud'` 一律回落 `'cloud'`；
+  旧存储数据无该字段 → 补默认 `'cloud'`；旧存量 `ocr.preferLocal` 键按"未知字段丢弃"
+  自然清除（**隐私敏感存量会被迁到云端引擎**，这是拍板内容的一部分，不单独迁移）。
 - **可用性门禁**：zhipu Provider 处于 `unconfigured`（无 ZHIPU_API_KEY）时，设置页云端
   选项置灰并提示缺失项（AGENTS.md §8 诚实接线；探测来源 GET /api/models 的 providers 明细）。
-  运行中钥匙失效（如上游 401）按 §6 失败语义暴露，不做前置兜底。
+  运行中钥匙失效（如上游 401）按 §6 失败语义暴露，不做前置兜底、不静默回落本地。
 
 ## 5. 服务契约（POST /api/ocr）
 
@@ -104,10 +106,9 @@ ocr: {
   `'local'` 走既有 `ocrRecognize`（tesseract），`'cloud'` 走 `POST /api/ocr`。返回结构
   （texts / confidences / failures / elapsedMs）两引擎同形：云端无 tesseract 置信度，
   `confidences` 恒为 `null`，低置信标红规则仅适用于本地引擎。
-- 失败语义沿用 browser-local-ocr.md §6.4：
-  - local-ocr 档（识别文本是唯一通道）→ **阻断发送**，逐张列明原因，提示"移除该图或
-    在设置中切换识别引擎后重试"；
-  - mixed 档（原图仍上行，内容没丢）→ 不阻断，中性提示该文件本次只上传原图。
+- 失败语义沿用 browser-local-ocr.md §6.4：`ocr-text` 路径（识别文本是唯一通道）→
+  **阻断发送**，逐张列明原因，提示"移除该图或在设置中切换识别引擎后重试"。
+  （旧 mixed 档"不阻断只提示"的分支随混合档下线取消。）
 - 空识别结果（`text` 为空串）两引擎同口径按失败处理："未识别到文字（图片中可能没有文本）"。
 - webp / bmp：2026-11-14 起在**接入段**（`lib/intake/extract-image.ts`，doc/file-intake.md §6）
   统一规范化为 PNG/JPEG，云 OCR 不做任何转格式——`/api/ocr` 的 JPG/PNG 门禁语义不变，

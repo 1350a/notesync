@@ -217,8 +217,7 @@ export default function ChatPage() {
   const handleDiagnoseAction = (event: DiagnoseRequestEvent, label: string) => {
     void handleSend(label, [], [], undefined, { diagnoseEvent: event });
   };
-  // 图片处理偏好（设置页"优先本地OCR" + 识别引擎）：交由 ChatInput 派生图片发送方式与转写引擎
-  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
+  // OCR 转写引擎（设置页「图片处理」行）：交由 ChatInput 派生图片路径与转写引擎
   const ocrEngine = useSettingsStore((s) => s.settings.ocr.engine);
 
   // 顶栏「新建对话」：信号递增即清空当前会话（首帧不触发）
@@ -300,7 +299,6 @@ export default function ChatPage() {
             providers={providers}
             modelsLoading={modelsLoading}
             modelsMessage={notice}
-            preferLocalOcr={preferLocalOcr}
             ocrEngine={ocrEngine}
             diagnosisActive={diagnoseContext !== null && diagnoseContext.state !== 'done'}
           />

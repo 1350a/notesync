@@ -24,9 +24,10 @@ export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['off', 'low', 'medium', 'high'];
 
 /**
- * OCR 转写引擎（doc/cloud-ocr.md §4）：与档位偏好 preferLocal 正交——
- * preferLocal 决定「要不要转写」，engine 决定「谁来转写」。
- * cloud 档图片像素上行至智谱 glm-ocr，默认保守档为 local（P4 约束③）。
+ * OCR 转写引擎（doc/cloud-ocr.md §4）：决定「谁来转写」。
+ * 「要不要转写」不由设置决定——按所选模型能力自动路由（多模态直传、纯文本转写，
+ * product-vision.md P4，2026-11-14 拍板）。cloud 档图片像素上行至智谱 glm-ocr，
+ * 且为默认档（质量优先；切 local 是隐私动作）。
  */
 export type OcrEngine = 'local' | 'cloud';
 
@@ -58,11 +59,11 @@ export interface UserSettings {
   /** 生成参数（未接线占位，无 UI） */
   generation: GenerationSettings;
   /**
-   * OCR 偏好（已接线，doc/browser-local-ocr.md §6.1 + doc/cloud-ocr.md §4）：
-   * preferLocal 默认档为「全本地」（P4 约束③）——true=图片一律先转文字；
-   * engine 为转写引擎，cloud=智谱 glm-ocr（图片像素出端，显式开启）
+   * OCR 转写引擎（已接线，doc/cloud-ocr.md §4）：cloud=智谱 glm-ocr（默认，
+   * 图片像素出端）；local=tesseract.js 浏览器内。只在纯文本模型路径生效——
+   * 多模态模型直传原图、无转写（自动路由，2026-11-14 拍板）
    */
-  ocr: { preferLocal: boolean; engine: OcrEngine };
+  ocr: { engine: OcrEngine };
   /** 本地知识检索（已接线，doc/browser-local-inference.md §7）：true=发送前浏览器内检索并注入命中片段 */
   rag: { enabled: boolean };
 }
@@ -72,8 +73,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   defaultModel: '',
   systemPrompt: '',
   generation: {},
-  // 保守档默认：图片先本地转文字，原图不出端（product-vision.md P4 约束③）
-  ocr: { preferLocal: true, engine: 'local' },
+  // 引擎默认云端（2026-11-14 拍板，质量优先）：转写只发生在纯文本模型路径，
+  // 多模态模型直传原图不经此配置（product-vision.md P4）
+  ocr: { engine: 'cloud' },
   rag: { enabled: false },
 };
 
@@ -125,27 +127,24 @@ function normalizeGeneration(raw: unknown): GenerationSettings {
 }
 
 /**
- * OCR 偏好规整：默认档是「全本地 + 本地引擎」（图片先转文字，原图不出端）。
- * 与 normalizeRag 的「只有显式 true 才生效」相反——这里的保守侧是 true，
- * 因此只有 **显式 false** 才关闭；缺省、'false' 字符串、坏值一律回落到默认档。
- * （宁可多一次本地识别，也不误把图片外发。）
- * engine 同理保守：非合法枚举值（含旧存储缺字段）一律回落 'local'——
- * 云端引擎意味着图片像素出端，必须由显式合法值开启（doc/cloud-ocr.md §4）。
+ * OCR 引擎规整：默认档为云端（2026-11-14 拍板，质量优先，doc/cloud-ocr.md §4）。
+ * 非合法枚举值（含旧存储缺字段）一律回落 'cloud'；旧存量的 preferLocal 键按
+ * 未知字段丢弃，不做迁移——隐私敏感存量会被迁到云端引擎，这是拍板内容的一部分。
  */
 function normalizeOcr(raw: unknown): UserSettings['ocr'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { preferLocal: true, engine: 'local' };
+    return { engine: 'cloud' };
   }
   const record = raw as Record<string, unknown>;
   const engine = (OCR_ENGINES as readonly string[]).includes(record.engine as string)
     ? (record.engine as OcrEngine)
-    : 'local';
-  return { preferLocal: record.preferLocal !== false, engine };
+    : 'cloud';
+  return { engine };
 }
 
 function normalizeRag(raw: unknown): UserSettings['rag'] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { enabled: false };
-  // 从严布尔：只有显式 true 才生效，其余（含 'true' 字符串）视为未设置；与 ocr.preferLocal 的保守侧相反
+  // 从严布尔：只有显式 true 才生效，其余（含 'true' 字符串）视为未设置
   return { enabled: (raw as Record<string, unknown>).enabled === true };
 }
 

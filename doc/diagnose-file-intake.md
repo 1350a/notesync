@@ -116,22 +116,23 @@ interface DiagnoseAttachment {
 | 图片上限 | 4 张 | 超出部分降级为文字占位，并计入 warning |
 | 图片降级模式 | `multimodal` | 所选模型不支持图片输入时整体降为 `text-only`。判定优先走 Provider 的 `modelAcceptsImages(model)`（同 Provider 下模型能力可能不同，如智谱按 `ZHIPU_CATALOG` 目录标注）；Provider 未实现该方法时回落 Provider 级 `acceptsImages` |
 
-### 6.1 图片投喂三档
+### 6.1 图片投喂口径（2026-11-14 重写：两档自动路由，混合档下线）
 
 | 档位 | 判定条件 | 组装行为 | 外发内容 |
 |---|---|---|---|
 | `multimodal` 直传 | 模型支持图片，附件只带 `dataUrl` | 按四类标签分组直发 `image_url`，超 4 张降级为文字占位 | 原图 |
-| `mixed` 混合 | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text`（客户端 OCR 文本；转写引擎为本地 tesseract 或云端 glm-ocr，见 doc/cloud-ocr.md） | 先发 `[文件 X · 本地OCR]` 文本块打底，再发原图；OCR 文本与其它文本一起均分字符预算 | 原图 + OCR 文本 |
+| `mixed` 混合（**仅兼容**） | 模型支持图片，且任一项**同时**带 `dataUrl` 与 `text` | 先发 `[文件 X · 本地OCR]` 文本块打底，再发原图 | 原图 + OCR 文本 |
 | `text-only` 降级 | 模型不支持图片输入 | 带 OCR 文本的项发文本块，无文本的项发文字占位；均不占图片配额 | 仅文本 |
 
 判定统一由 `lib/diagnose/assemble.ts` 的 `resolveAssembleImageMode(attachments, allowImages)`
-完成，**客户端不传档位字段**：模型不收图一律 `text-only`；存在混合形态附件则 `mixed`；
-否则 `multimodal`。`/api/chat`（单题）与 `/api/diagnose-paper`（整卷）共用该函数，
+完成，**客户端不传档位字段**。2026-11-14 起客户端只产出两种形态（product-vision.md P4
+按模型能力自动路由）：模型收图 → 附件只带 `dataUrl`（`multimodal`）；模型不收图 →
+OCR 转写后只带 `text`（`text-only`）。`mixed` 判定分支保留只为兼容旧数据，不再是
+UI 可达路径。`/api/chat`（单题）与 `/api/diagnose-paper`（整卷）共用该函数，
 避免两条链路档位口径漂移。
 
-失败降级：混合档下 OCR 未识别的图片项仍按原图上行（内容没丢），UI 用中性提示告知
-「该文件本次只上传原图」；全本地档 OCR 失败则阻断提交（识别文本是唯一通道，由用户决策）。
-混合档在模型不收图时仍投喂 OCR 文本——「模型不吃图」不等于该丢内容。
+失败降级：`text-only` 路径 OCR 失败则**阻断提交**（识别文本是唯一通道，由用户决策——
+移除文件或在设置中切换识别引擎重试）。
 
 聊天历史消息里的图片走同一能力口径：选中模型不支持图片时，历史消息的 `image_url` part
 同样降级为文字占位并留一行说明（`buildProviderMessages` 的 `allowImages` 选项），

@@ -4,8 +4,8 @@
  * 设置 - 本地能力分区（doc/browser-local-inference.md §7）
  *
  * 四行结构：图片处理（OCR）/ 知识检索（RAG）/ 本地引擎 / 本地对话。
- * - 图片处理行自通用设置迁入（合并时取 browser-ocr 侧），全站唯一开关，
- *   通用设置不再保留同名条目；
+ * - 图片处理行＝转写引擎选择（本地/云端，默认云端；2026-11-14 起取代旧
+ *   「自动/优先本地OCR」+「识别引擎」两行），全站唯一入口；
  * - 知识检索与本地引擎两行取 dev 侧实现（资产就绪门禁 + 引擎状态机），
  *   预加载入口收敛到「本地引擎」行唯一一处；
  * - 本地对话为 v2 占位（诚实接线，AGENTS.md §8）。
@@ -89,53 +89,23 @@ export default function LocalCapabilitySection() {
         </div>
       )}
 
-      {/* 图片处理（自通用设置迁入，语义 doc/browser-local-ocr.md §6.1 不变）：
-          输入区贴图后仍可当次切换，此处为持久默认。
-          store.update 对嵌套对象整体替换，必须展开现有 ocr 保留 engine 字段 */}
+      {/* 图片处理（OCR）＝转写引擎选择（2026-11-14 重构，doc/cloud-ocr.md §4）：
+          一行两档，默认云端。转写只发生在纯文本模型路径——多模态模型直传原图、
+          无转写（product-vision.md P4 自动路由）；旧 preferLocal（自动/优先本地OCR）
+          与输入区当次三档切换已删。cloud 档图片像素上行至智谱 glm-ocr；
+          zhipu 未配置时云端置灰（诚实接线，不静默回落本地） */}
       <SettingsRow
         label="图片处理（OCR）"
-        hint="优先本地OCR：图片先转文字再发送（隐私、省token，纯文本模型可用）；自动：多模态模型直传原图、纯文本模型转文字"
-      >
-        <div className="flex w-full gap-2">
-          <button
-            type="button"
-            onClick={() => updateSettings({ ocr: { ...ocr, preferLocal: false } })}
-            className={`${TOGGLE_CLASS} ${
-              !ocr.preferLocal
-                ? 'border-foreground/50 bg-muted font-medium'
-                : 'border-border hover:bg-muted/50'
-            }`}
-          >
-            自动
-          </button>
-          <button
-            type="button"
-            onClick={() => updateSettings({ ocr: { ...ocr, preferLocal: true } })}
-            className={`${TOGGLE_CLASS} ${
-              ocr.preferLocal
-                ? 'border-foreground/50 bg-muted font-medium'
-                : 'border-border hover:bg-muted/50'
-            }`}
-          >
-            优先本地OCR
-          </button>
-        </div>
-      </SettingsRow>
-
-      {/* 识别引擎（doc/cloud-ocr.md §4）：preferLocal 决定要不要转写，engine 决定谁来转写。
-          cloud 档图片像素上行至智谱 glm-ocr——显式选择即同意；zhipu 未配置时置灰（诚实接线） */}
-      <SettingsRow
-        label="识别引擎（OCR）"
         hint={
           ocr.engine === 'cloud'
-            ? '云端 glm-ocr：公式/表格/手写识别更好，但图片像素将发送至智谱（图片出端）'
-            : '本地 tesseract：全程浏览器内转写（隐私默认）；手写/公式/复杂版面较弱，纯文本模型慎用'
+            ? '默认云端 glm-ocr：公式/表格/手写识别更好，转写时图片像素将发送至智谱；仅纯文本模型路径生效（多模态模型直传原图）'
+            : '本地 tesseract：全程浏览器内转写（隐私）；手写/公式/复杂版面较弱'
         }
       >
         <div className="flex w-full gap-2">
           <button
             type="button"
-            onClick={() => updateSettings({ ocr: { ...ocr, engine: 'local' } })}
+            onClick={() => updateSettings({ ocr: { engine: 'local' } })}
             className={`${TOGGLE_CLASS} ${
               ocr.engine === 'local'
                 ? 'border-foreground/50 bg-muted font-medium'
@@ -146,7 +116,7 @@ export default function LocalCapabilitySection() {
           </button>
           <button
             type="button"
-            onClick={() => updateSettings({ ocr: { ...ocr, engine: 'cloud' } })}
+            onClick={() => updateSettings({ ocr: { engine: 'cloud' } })}
             disabled={!cloudOcrReady}
             title={cloudOcrReady ? undefined : '需在 .env 配置 ZHIPU_API_KEY 后可用'}
             className={`${TOGGLE_CLASS} ${

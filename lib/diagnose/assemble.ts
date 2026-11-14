@@ -7,9 +7,9 @@
  * 文本预算按参与文件数均分（默认总量 8000 字符），避免一份长 PDF 吃掉全部额度、
  * 把其它文件挤成空段。图片上限默认 4 张，超出的明确降级为文字占位而不是静默丢弃。
  *
- * 图片投喂三档见 doc/diagnose-file-intake.md §6：直传（multimodal）/ 纯文本降级（text-only）/
- * 混合（mixed，本地 OCR 文本打底 + 原图补充）。mixed 由附件形态与模型能力自动判定，
- * 见 resolveAssembleImageMode——客户端不额外传档位字段。
+ * 图片投喂口径见 doc/diagnose-file-intake.md §6（2026-11-14 重写）：直传（multimodal）/
+ * 纯文本降级（text-only）两档由客户端按模型能力自动路由产出；mixed（OCR 打底 + 原图）
+ * 判定分支仅为旧数据兼容保留，UI 不再产出（product-vision.md P4）。
  */
 import type { ProviderImagePart, ProviderTextPart } from '../provider/types.ts';
 import type {
@@ -47,9 +47,10 @@ function isTextItem(item: DiagnoseAttachment): boolean {
 }
 
 /**
- * 由附件形态与模型图片能力推导投喂方式（三档口径见 doc/diagnose-file-intake.md §6）。
+ * 由附件形态与模型图片能力推导投喂方式（口径见 doc/diagnose-file-intake.md §6）。
  * - 模型不收图 → `text-only`；
- * - 任一项同时带 OCR 文本与原图（客户端混合档产物）→ `mixed`；
+ * - 任一项同时带 OCR 文本与原图 → `mixed`（【legacy】2026-11-14 起新客户端不再产出
+ *   混合形态附件，此分支仅为旧数据兼容保留）；
  * - 其余 → `multimodal`。
  * 客户端不传档位字段：附件形态本身就表达了意图，避免多一处可失配的状态。
  */

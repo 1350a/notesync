@@ -89,8 +89,6 @@ export default function UploadArea() {
   const [isSending, setIsSending] = useState(false);
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
-  /** 中性提示（如混合档 OCR 失败但原图仍上行）：与 error 的红框区分，不阻断流程 */
-  const [notice, setNotice] = useState('');
   /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，agent-workflow.md §5） */
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
@@ -110,12 +108,9 @@ export default function UploadArea() {
   const [pickedModel, setPickedModel] = useState('');
   // 默认模型记忆：与聊天页共用设置里的 defaultModel（doc/user-settings.md §5）
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
-  const preferLocalOcr = useSettingsStore((s) => s.settings.ocr.preferLocal);
   const ocrEngine = useSettingsStore((s) => s.settings.ocr.engine);
   const updateSettings = useSettingsStore((s) => s.update);
-  /** 图片发送方式当次覆盖（会话级，不落盘；null = 按设置与模型能力派生） */
-  const [ocrOverride, setOcrOverride] = useState<ImageSendMode | null>(null);
-  /** 本地 OCR 进行中进度（提交阶段）；非 null 时阻断重复提交 */
+  /** OCR 进行中进度（提交阶段）；非 null 时阻断重复提交 */
   const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null);
 
   // 派生选中值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
@@ -134,13 +129,9 @@ export default function UploadArea() {
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
-  /** 只有模型明确声明支持图片，直传与混合两档才成立（product-vision.md P4 约束②；
-   *  模型清单未返回能力字段时不渲染这两档，避免用户选了必定失败的档位） */
-  const canDirect = currentModel?.acceptsImages === true;
-  const requestedMode = ocrOverride ?? resolveImageSendMode(currentModel, preferLocalOcr);
-  // 覆盖项可能来自上一张图 / 上一个模型，能力不足时回落全本地，不留失配状态
-  const imageMode: ImageSendMode =
-    requestedMode !== 'local-ocr' && !canDirect ? 'local-ocr' : requestedMode;
+  // 图片路径全自动派生（product-vision.md P4，2026-11-14）：多模态直传、其余 OCR 转写。
+  // 无当次覆盖与档位控件——UI 只展示派生结果与代价（诚实接线）
+  const imageMode: ImageSendMode = resolveImageSendMode(currentModel);
 
   /** 加入文件：先判定类型（魔数嗅探，异步），再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
@@ -200,10 +191,7 @@ export default function UploadArea() {
   };
 
   const removeRow = (id: string) => {
-    const next = rows.filter((row) => row.id !== id);
-    setRows(next);
-    // 图片行清空即撤销当次覆盖（事件内重置，不用 effect），下次添加图片重新派生
-    if (!next.some((row) => row.dataUrl)) setOcrOverride(null);
+    setRows((prev) => prev.filter((row) => row.id !== id));
   };
 
   const readyRows = rows.filter((row) => row.supported && (row.dataUrl || row.text));
@@ -217,14 +205,14 @@ export default function UploadArea() {
     setIsSending(true);
     setResult('');
     setError('');
-    setNotice('');
     setPaperView(null);
 
     try {
       let prepared = readyRows;
       const imageRows = readyRows.filter((row) => row.dataUrl);
-      // 全本地与混合两档都要先跑 OCR（引擎由 ocr.engine 决定，doc/cloud-ocr.md §6），差别只在原图是否随请求上行
-      if ((imageMode === 'local-ocr' || imageMode === 'mixed') && imageRows.length > 0) {
+      // OCR 转写路径（引擎由 ocr.engine 决定，doc/cloud-ocr.md §6）：仅纯文本模型走到这里，
+      // 多模态模型直传原图不经过转写（product-vision.md P4 自动路由）
+      if (imageMode === 'ocr-text' && imageRows.length > 0) {
         setOcrProgress({ done: 0, total: imageRows.length });
         const ocrResult = await convertImagesToTexts(
           imageRows.map((row) => row.dataUrl!),
@@ -233,22 +221,14 @@ export default function UploadArea() {
         );
         setOcrProgress(null);
         if (ocrResult.failures.length > 0) {
+          // 识别文本是唯一通道：失败阻断提交，由用户决策（doc/browser-local-ocr.md §6.4：
+          // 绝不静默丢图片内容、绝不静默切换引擎；旧混合档"只传原图"分支已随混合档下线）
           const names = ocrResult.failures.map((f) => imageRows[f.index].name).join('、');
           const engineLabel = ocrEngine === 'cloud' ? '云端' : '本地';
-          if (imageMode === 'local-ocr') {
-            // 全本地：识别文本是唯一通道，失败即无内容可发 → 阻断，由用户决策
-            // （doc/browser-local-ocr.md §6.4：绝不静默丢图片内容、绝不静默切换引擎）
-            setError(
-              `${engineLabel}OCR未能识别：${names}（${ocrResult.failures[0].reason}）。可移除该文件或${
-                canDirect ? '改用「直传原图」' : '在设置中切换识别引擎后重试'
-              }。`
-            );
-            return;
-          }
-          // 混合：原图仍会随请求上行，内容没丢 → 不阻断，只提示该文件降级为纯原图
-          setNotice(
-            `${engineLabel}OCR未能识别：${names}（${ocrResult.failures[0].reason}）。该文件本次只上传原图，不影响诊断。`
+          setError(
+            `${engineLabel}OCR未能识别：${names}（${ocrResult.failures[0].reason}）。可移除该文件或在设置中切换识别引擎后重试。`
           );
+          return;
         }
         const textByRow = new Map(
           imageRows.map((row, i) => [row.id, ocrResult.texts[i] as string | null] as const)
@@ -259,9 +239,8 @@ export default function UploadArea() {
           return {
             ...row,
             text: mergeOcrText(row.text, ocrText),
-            // 全本地：原图不上行（纯文本附件通道）；
-            // 混合：OCR 文本打底 + 原图同时上行，服务端按 mixed 组装（doc/diagnose-file-intake.md §6）
-            dataUrl: imageMode === 'mixed' ? row.dataUrl : undefined,
+            // OCR 路径原图不上行（纯文本附件通道），缩略预览仍在本地保留
+            dataUrl: undefined,
           };
         });
       }
@@ -389,86 +368,25 @@ export default function UploadArea() {
         />
         {models.length === 0 ? (
           <span
-            className="w-full break-words text-xs text-destructive md:min-w-0 md:flex-1 md:truncate"
+            className="w-full break-words text-xs text-destructive md:min-w-0 md:flex-1"
             title={modelsError ?? modelsMessage}
           >
             {modelsError ?? modelsMessage ?? '暂无可选模型'}
           </span>
         ) : (
-          <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-0 md:flex-1 md:flex-row md:items-center">
-            {/* 图片发送方式：默认按模型能力与设置派生，可当次切换（doc/browser-local-ocr.md §6.1） */}
-            <div
-              className="flex w-full items-center overflow-hidden rounded-md border border-border text-[11px] touch:text-xs md:w-auto md:shrink-0"
-              role="group"
-              aria-label="图片发送方式"
-            >
-              {/* 三档：直传原图 / OCR转文字 / 混合。后两档中的直传与混合都依赖模型图片能力，
-                  能力不明时只留「OCR转文字」，避免摆出选了必定失败的选项（product-vision.md P4 约束②） */}
-              {canDirect && (
-                <button
-                  type="button"
-                  disabled={isSending || ocrProgress !== null}
-                  onClick={() => setOcrOverride('direct')}
-                  className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
-                    imageMode === 'direct'
-                      ? 'bg-muted font-medium text-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                  title="图片原图随附件直传（需所选模型支持多模态）"
-                >
-                  直传原图
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={isSending || ocrProgress !== null}
-                onClick={() => setOcrOverride('local-ocr')}
-                className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
-                  imageMode === 'local-ocr'
-                    ? 'bg-muted font-medium text-foreground'
-                    : 'text-muted-foreground hover:bg-muted'
-                }`}
-                // 代价文案随引擎：云端引擎下图片像素上行至智谱 OCR（doc/cloud-ocr.md §3）
-                title={
-                  ocrEngine === 'cloud'
-                    ? '图片经云端OCR（智谱 glm-ocr）转文字再发送：公式/手写识别更好，但图片将上传至智谱'
-                    : '图片先在浏览器本地OCR转文字再发送：纯文本模型可用，原图不出设备（隐私、省token）'
-                }
-              >
-                {ocrEngine === 'cloud' ? '云端转文字' : 'OCR转文字'}
-              </button>
-              {canDirect && (
-                <button
-                  type="button"
-                  disabled={isSending || ocrProgress !== null}
-                  onClick={() => setOcrOverride('mixed')}
-                  className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
-                    imageMode === 'mixed'
-                      ? 'bg-muted font-medium text-foreground'
-                      : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                  title="本地OCR文本打底 + 原图同传：识别不准时模型仍能看图，代价是原图也出设备"
-                >
-                  混合
-                </button>
-              )}
-            </div>
-            {/* P4 约束①：代价必须写在选择处（触屏无 hover）；
-                safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
-            <span
-              className={`w-full break-words text-xs md:min-w-0 md:flex-1 ${
-                imageMode === 'local-ocr' && ocrEngine === 'local' ? 'text-muted-foreground' : 'text-amber-600'
-              }`}
-            >
-              {imageMode === 'local-ocr'
-                ? ocrEngine === 'cloud'
-                  ? '图片将上传至智谱 OCR（glm-ocr）转文字后发送：公式/手写识别更好，但原图像素出设备'
-                  : '图片经浏览器本地识别转文字后发送（原图不出设备）；但用不到原图理解，图文混排 / 手写可能识别有误'
-                : imageMode === 'mixed'
-                  ? `混合：${ocrEngine === 'cloud' ? '云端' : '本地'}识别打底 + 原图一并上传至模型服务商（外发最多，识别不准时仍能看图）；若该模型实际不吃图片，会返回明确的错误提示`
-                  : '多模态：图片将上传至模型服务商；若该模型实际不吃图片，会返回明确的错误提示'}
-            </span>
-          </div>
+          // 图片路径全自动派生（product-vision.md P4，2026-11-14）：无档位控件，
+          // 只展示派生结果。P4 约束①：外发代价写在发送处（触屏无 hover）
+          <span
+            className={`w-full break-words text-xs md:min-w-0 md:flex-1 ${
+              imageMode === 'direct' || ocrEngine === 'cloud' ? 'text-amber-600' : 'text-muted-foreground'
+            }`}
+          >
+            {imageMode === 'direct'
+              ? '多模态：图片原图将上传至模型服务商'
+              : ocrEngine === 'cloud'
+                ? '云端转文字：提交时图片像素上传至智谱 OCR（glm-ocr）转写后发送，公式/手写识别更好'
+                : '本地转文字：提交时图片在浏览器内 OCR 转文字后发送（原图不出设备）；图文混排/手写可能识别有误'}
+          </span>
         )}
       </div>
 
@@ -530,11 +448,9 @@ export default function UploadArea() {
                   ? '正在提取内容…'
                   : row.status === 'ready'
                     ? row.dataUrl
-                      ? imageMode === 'local-ocr'
-                        ? `图片已就绪（发送时${ocrEngine === 'cloud' ? '云端OCR' : '本地OCR'}转文字）`
-                        : imageMode === 'mixed'
-                          ? `图片已就绪（发送时${ocrEngine === 'cloud' ? '云端' : '本地'}OCR打底 + 原图同传）`
-                          : '图片已就绪'
+                      ? imageMode === 'ocr-text'
+                        ? `图片已就绪（提交时${ocrEngine === 'cloud' ? '云端OCR' : '本地OCR'}转文字）`
+                        : '图片已就绪（原图直传）'
                       : `文字已提取（${row.text?.length ?? 0} 字符）`
                     : null;
               return (
@@ -613,12 +529,6 @@ export default function UploadArea() {
               ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL）后重启服务。
             </p>
           )}
-        </div>
-      )}
-
-      {notice && (
-        <div className="bg-card p-4 rounded-2xl shadow-sm border border-amber-500/40 dark:border-amber-400/40">
-          <p className="text-sm text-amber-700 dark:text-amber-300 whitespace-pre-wrap">{notice}</p>
         </div>
       )}
 
