@@ -80,6 +80,23 @@ const PRINCIPLES = [
 export default function Home() {
   return (
     <div className="flex min-h-dvh flex-col">
+      {/* 首页专属弥散光背景（fixed 整页壁纸，内容从其上滚过）：主题色光斑缓慢漂移 +
+          淡网格，避免满屏单色；色值走语义变量四主题自适应，reduced-motion 时静止为纯渐变 */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="home-grid absolute inset-0" />
+        <div
+          className="home-blob absolute -top-44 -left-36 h-[36rem] w-[36rem] rounded-full bg-primary/20 blur-[100px] max-sm:h-[22rem] max-sm:w-[22rem]"
+          style={{ animationDuration: '38s' }}
+        />
+        <div
+          className="home-blob absolute top-1/4 -right-44 h-[32rem] w-[32rem] rounded-full bg-accent/25 blur-[100px] max-sm:h-[20rem] max-sm:w-[20rem]"
+          style={{ animationDuration: '46s', animationDelay: '-18s' }}
+        />
+        <div
+          className="home-blob absolute -bottom-52 left-1/5 h-[34rem] w-[34rem] rounded-full bg-secondary/40 blur-[110px] max-sm:h-[22rem] max-sm:w-[22rem]"
+          style={{ animationDuration: '42s', animationDelay: '-30s' }}
+        />
+      </div>
       {/* 首页无侧栏、无会话语境：顶栏只留 Logo 与 ⚙️（不实装的控制必须隐藏，AGENTS §8） */}
       <AppHeader showSidebarToggle={false} showNewChat={false} />
       {/* 首页不经过 AppLayout，需自带设置弹窗宿主，顶栏 ⚙️ 才能一次点击打开（doc/mobile-ux.md §7） */}

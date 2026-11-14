@@ -269,3 +269,49 @@ mark.search-hit {
     background-color: transparent;
   }
 }
+
+/* --- 首页弥散光背景（仅首页引用，层级见 app/page.tsx 背景层）--- */
+
+/* 光斑缓慢漂移：大位移靠元素自身尺寸的百分比，幅度克制避免喧宾夺主；
+   色值由页面用语义变量上底色，四主题自动跟随；时长/相位各光斑用内联样式错开 */
+.home-blob {
+  animation: home-blob-drift 38s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-blob {
+    /* 减弱动效：退化为静态弥散渐变，仍保留非单色的层次 */
+    animation: none;
+  }
+}
+
+@keyframes home-blob-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(4%, -5%, 0) scale(1.07);
+  }
+  66% {
+    transform: translate3d(-4%, 4%, 0) scale(0.94);
+  }
+}
+
+/* 淡网格：主题 border 色拉线，径向 mask 向边缘淡出，给纯色底加纸面质感 */
+.home-grid {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--border) 60%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--border) 60%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 35%, black 25%, transparent 78%);
+}
