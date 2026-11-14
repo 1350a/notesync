@@ -73,3 +73,27 @@ describe('parseAttachments 条数截断', () => {
     expect(parseAttachments('not-an-array')).toEqual([]);
   });
 });
+
+describe('ocrEngine 字段透传', () => {
+  const base = { name: 'img.png', category: 'origin', text: 'OCR 产物文本' };
+
+  it('local / cloud 原样透出', () => {
+    const [local] = parseAttachments([{ ...base, ocrEngine: 'local' }]);
+    expect(local.ocrEngine).toBe('local');
+    const [cloud] = parseAttachments([{ ...base, ocrEngine: 'cloud' }]);
+    expect(cloud.ocrEngine).toBe('cloud');
+  });
+
+  it('非法值丢弃该字段，附件本体保留（缺省走中性「OCR」标签）', () => {
+    const [bad1] = parseAttachments([{ ...base, ocrEngine: 'zhipu' }]);
+    expect(bad1.ocrEngine).toBeUndefined();
+    expect(bad1.name).toBe('img.png');
+    const [bad2] = parseAttachments([{ ...base, ocrEngine: null }]);
+    expect(bad2.ocrEngine).toBeUndefined();
+  });
+
+  it('缺省不写字段', () => {
+    const [item] = parseAttachments([base]);
+    expect(item.ocrEngine).toBeUndefined();
+  });
+});
