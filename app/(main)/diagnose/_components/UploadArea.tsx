@@ -20,10 +20,10 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 
 /** 四类上传标签，顺序与组装锚点一致 */
 const CATEGORIES: { id: ReviseCategory; label: string; color: string }[] = [
-  { id: 'origin', label: '错题原题', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  { id: 'wrong', label: '错误答案', color: 'bg-red-100 text-red-700 border-red-200' },
-  { id: 'correct', label: '正确答案', color: 'bg-green-100 text-green-700 border-green-200' },
-  { id: 'analysis', label: '标准解析', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { id: 'origin', label: '错题原题', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40' },
+  { id: 'wrong', label: '错误答案', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40' },
+  { id: 'correct', label: '正确答案', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/40' },
+  { id: 'analysis', label: '标准解析', color: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40' },
 ];
 
 type RowStatus = 'extracting' | 'ready' | 'failed';
@@ -335,7 +335,7 @@ export default function UploadArea() {
     <div className="w-full max-w-3xl mx-auto space-y-6">
       {/* 诊断模式：单题对话式 / 整卷四步流程（agent-workflow.md §5） */}
       <div
-        className="flex items-center overflow-hidden rounded-xl border border-slate-200 bg-white text-sm shadow-sm w-fit"
+        className="flex items-center overflow-hidden rounded-xl border border-border bg-card text-sm shadow-sm w-fit"
         role="group"
         aria-label="诊断模式"
       >
@@ -344,7 +344,7 @@ export default function UploadArea() {
           disabled={isSending}
           onClick={() => setMode('single')}
           className={`px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:px-5 touch:py-2.5 ${
-            mode === 'single' ? 'bg-blue-600 font-medium text-white' : 'text-slate-600 hover:bg-slate-50'
+            mode === 'single' ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
           }`}
           title="单题：逐题对话式诊断，支持追问与分级提示"
         >
@@ -355,7 +355,7 @@ export default function UploadArea() {
           disabled={isSending}
           onClick={() => setMode('paper')}
           className={`px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:px-5 touch:py-2.5 ${
-            mode === 'paper' ? 'bg-blue-600 font-medium text-white' : 'text-slate-600 hover:bg-slate-50'
+            mode === 'paper' ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
           }`}
           title="整卷：切题 → 分类 → 同类共享诊断 → 汇总（同类题只诊断一次，省 token）"
         >
@@ -367,8 +367,8 @@ export default function UploadArea() {
           窄屏（<md）纵向堆叠，标签 / 下拉 / 图片方式各占整行：
           此前三者挤在同一弹性行里，图片方式的容器被压到 6~19px 宽，
           长文案逐字竖排、按钮组被 overflow-hidden 裁掉（doc/mobile-ux.md §7）。 */}
-      <div className="flex flex-col gap-3 bg-white px-4 py-3 rounded-2xl shadow-sm border border-slate-200 md:flex-row md:flex-wrap md:items-center">
-        <span className="text-sm font-medium text-slate-700 md:shrink-0">诊断模型</span>
+      <div className="flex flex-col gap-3 bg-card px-4 py-3 rounded-2xl shadow-sm border border-border md:flex-row md:flex-wrap md:items-center">
+        <span className="text-sm font-medium text-foreground md:shrink-0">诊断模型</span>
         <ModelSelect
           models={models}
           providers={providers}
@@ -377,11 +377,11 @@ export default function UploadArea() {
           loading={modelsLoading}
           disabled={isSending}
           emptyHint={modelsError ?? modelsMessage}
-          className="w-full border border-slate-200 touch:min-h-11 touch:text-base md:w-auto md:max-w-[280px]"
+          className="w-full border border-border touch:min-h-11 touch:text-base md:w-auto md:max-w-[280px]"
         />
         {models.length === 0 ? (
           <span
-            className="w-full break-words text-xs text-red-500 md:min-w-0 md:flex-1 md:truncate"
+            className="w-full break-words text-xs text-destructive md:min-w-0 md:flex-1 md:truncate"
             title={modelsError ?? modelsMessage}
           >
             {modelsError ?? modelsMessage ?? '暂无可选模型'}
@@ -390,7 +390,7 @@ export default function UploadArea() {
           <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-0 md:flex-1 md:flex-row md:items-center">
             {/* 图片发送方式：默认按模型能力与设置派生，可当次切换（doc/browser-local-ocr.md §6.1） */}
             <div
-              className="flex w-full items-center overflow-hidden rounded-md border border-slate-200 text-[11px] touch:text-xs md:w-auto md:shrink-0"
+              className="flex w-full items-center overflow-hidden rounded-md border border-border text-[11px] touch:text-xs md:w-auto md:shrink-0"
               role="group"
               aria-label="图片发送方式"
             >
@@ -403,8 +403,8 @@ export default function UploadArea() {
                   onClick={() => setOcrOverride('direct')}
                   className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
                     imageMode === 'direct'
-                      ? 'bg-slate-100 font-medium text-slate-800'
-                      : 'text-slate-500 hover:bg-slate-50'
+                      ? 'bg-muted font-medium text-foreground'
+                      : 'text-muted-foreground hover:bg-muted'
                   }`}
                   title="图片原图随附件直传（需所选模型支持多模态）"
                 >
@@ -417,8 +417,8 @@ export default function UploadArea() {
                 onClick={() => setOcrOverride('local-ocr')}
                 className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
                   imageMode === 'local-ocr'
-                    ? 'bg-slate-100 font-medium text-slate-800'
-                    : 'text-slate-500 hover:bg-slate-50'
+                    ? 'bg-muted font-medium text-foreground'
+                    : 'text-muted-foreground hover:bg-muted'
                 }`}
                 // 代价文案随引擎：云端引擎下图片像素上行至智谱 OCR（doc/cloud-ocr.md §3）
                 title={
@@ -436,8 +436,8 @@ export default function UploadArea() {
                   onClick={() => setOcrOverride('mixed')}
                   className={`flex-1 px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60 touch:py-2.5 md:flex-none ${
                     imageMode === 'mixed'
-                      ? 'bg-slate-100 font-medium text-slate-800'
-                      : 'text-slate-500 hover:bg-slate-50'
+                      ? 'bg-muted font-medium text-foreground'
+                      : 'text-muted-foreground hover:bg-muted'
                   }`}
                   title="本地OCR文本打底 + 原图同传：识别不准时模型仍能看图，代价是原图也出设备"
                 >
@@ -449,7 +449,7 @@ export default function UploadArea() {
                 safety-protocol.md §7：外发档明示「图片上传至模型服务商」 */}
             <span
               className={`w-full break-words text-xs md:min-w-0 md:flex-1 ${
-                imageMode === 'local-ocr' && ocrEngine === 'local' ? 'text-slate-500' : 'text-amber-600'
+                imageMode === 'local-ocr' && ocrEngine === 'local' ? 'text-muted-foreground' : 'text-amber-600'
               }`}
             >
               {imageMode === 'local-ocr'
@@ -473,7 +473,7 @@ export default function UploadArea() {
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         className={`relative flex flex-col items-center justify-center p-6 md:p-12 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
-          isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-white hover:bg-slate-50'
+          isDragging ? 'border-primary bg-accent' : 'border-border bg-card hover:bg-muted'
         }`}
       >
         <input
@@ -484,8 +484,8 @@ export default function UploadArea() {
           onChange={handleFileSelect}
         />
         <div className="text-4xl mb-4">📁</div>
-        <p className="text-lg font-medium text-slate-700">点击或拖拽文件到这里</p>
-        <p className="text-sm text-slate-500 mt-2">
+        <p className="text-lg font-medium text-foreground">点击或拖拽文件到这里</p>
+        <p className="text-sm text-muted-foreground mt-2">
           支持图片 / PDF / 纯文本 / Word / PPT / Excel（仅旧版 .doc 需上传服务器解析）
         </p>
       </div>
@@ -496,7 +496,7 @@ export default function UploadArea() {
           type="button"
           onClick={() => cameraInputRef.current?.click()}
           disabled={isSending}
-          className="w-full py-3 bg-white text-slate-700 font-medium rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60 touch:py-3.5"
+          className="w-full py-3 bg-card text-foreground font-medium rounded-xl border border-border hover:bg-muted transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60 touch:py-3.5"
         >
           📷 拍照上传
         </button>
@@ -511,8 +511,8 @@ export default function UploadArea() {
       />
 
       {rows.length > 0 && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-          <h3 className="font-semibold text-slate-800">已上传文件 ({rows.length})</h3>
+        <div className="bg-card p-6 rounded-2xl shadow-sm border border-border space-y-4">
+          <h3 className="font-semibold text-foreground">已上传文件 ({rows.length})</h3>
 
           <div className="space-y-3">
             {rows.map((row) => {
@@ -534,14 +534,14 @@ export default function UploadArea() {
                   key={row.id}
                   className={`p-3 rounded-xl border ${
                     row.status === 'failed'
-                      ? 'bg-red-50 border-red-100'
-                      : 'bg-slate-50 border-slate-100'
+                      ? 'bg-destructive/10 border-destructive/30'
+                      : 'bg-muted border-border'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 truncate">
                       <span className="text-xl">📄</span>
-                      <span className="text-sm text-slate-700 truncate max-w-50">{row.name}</span>
+                      <span className="text-sm text-foreground truncate max-w-50">{row.name}</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <select
@@ -557,7 +557,7 @@ export default function UploadArea() {
                       </select>
                       <button
                         onClick={() => removeRow(row.id)}
-                        className="text-slate-400 hover:text-red-500 transition-colors p-2"
+                        className="text-muted-foreground/70 hover:text-destructive transition-colors p-2"
                         title="移除文件"
                       >
                         ✕
@@ -565,10 +565,10 @@ export default function UploadArea() {
                     </div>
                   </div>
                   {statusText && (
-                    <p className="mt-2 text-xs text-slate-500 pl-9">{statusText}</p>
+                    <p className="mt-2 text-xs text-muted-foreground pl-9">{statusText}</p>
                   )}
                   {row.warning && (
-                    <p className="mt-2 text-xs text-red-600 pl-9">{row.warning}</p>
+                    <p className="mt-2 text-xs text-destructive pl-9">{row.warning}</p>
                   )}
                 </div>
               );
@@ -576,7 +576,7 @@ export default function UploadArea() {
           </div>
 
           {blockedCount > 0 && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               有 {blockedCount} 个文件不会被发送（类型不支持或未提取到内容）
             </p>
           )}
@@ -584,7 +584,7 @@ export default function UploadArea() {
           <button
             onClick={() => void handleSubmit()}
             disabled={readyRows.length === 0 || isSending || !selectedModel || ocrProgress !== null}
-            className="w-full py-4 mt-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+            className="w-full py-4 mt-4 bg-primary text-primary-foreground font-semibold rounded-xl hover:bg-primary/90 transition-colors shadow-sm disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
           >
             {ocrProgress
               ? `${ocrEngine === 'cloud' ? '云端OCR识别中' : '本地OCR识别中'} ${ocrProgress.done}/${ocrProgress.total}…`
@@ -597,10 +597,10 @@ export default function UploadArea() {
                   : `开始诊断（${readyRows.length} 个文件）`}
           </button>
           {readyRows.length === 0 && (
-            <p className="text-xs text-slate-500">至少需要 1 个已成功提取内容的文件才能开始诊断</p>
+            <p className="text-xs text-muted-foreground">至少需要 1 个已成功提取内容的文件才能开始诊断</p>
           )}
           {readyRows.length > 0 && !selectedModel && (
-            <p className="text-xs text-red-500">
+            <p className="text-xs text-destructive">
               没有可用模型，无法开始诊断：请在 .env.local 配置任一 Provider（DEEPSEEK_API_KEY /
               ZHIPU_API_KEY / CUSTOM_API_KEY+BASE_URL）后重启服务。
             </p>
@@ -609,23 +609,23 @@ export default function UploadArea() {
       )}
 
       {notice && (
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-amber-200">
-          <p className="text-sm text-amber-700 whitespace-pre-wrap">{notice}</p>
+        <div className="bg-card p-4 rounded-2xl shadow-sm border border-amber-500/40 dark:border-amber-400/40">
+          <p className="text-sm text-amber-700 dark:text-amber-300 whitespace-pre-wrap">{notice}</p>
         </div>
       )}
 
       {error && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <p className="text-sm text-red-600 whitespace-pre-wrap">{error}</p>
+        <div className="bg-card p-6 rounded-2xl shadow-sm border border-border">
+          <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
         </div>
       )}
 
       {paperView && paperView.steps.length > 0 && <PaperResultPanel view={paperView} />}
 
       {!paperView && result && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <h3 className="font-semibold text-slate-800 mb-3">诊断结果</h3>
-          <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{result}</pre>
+        <div className="bg-card p-6 rounded-2xl shadow-sm border border-border">
+          <h3 className="font-semibold text-foreground mb-3">诊断结果</h3>
+          <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">{result}</pre>
         </div>
       )}
     </div>
