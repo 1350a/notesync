@@ -80,7 +80,8 @@ const PRINCIPLES = [
 export default function Home() {
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppHeader />
+      {/* 首页无侧栏、无会话语境：顶栏只留 Logo 与 ⚙️（不实装的控制必须隐藏，AGENTS §8） */}
+      <AppHeader showSidebarToggle={false} showNewChat={false} />
       {/* 首页不经过 AppLayout，需自带设置弹窗宿主，顶栏 ⚙️ 才能一次点击打开（doc/mobile-ux.md §7） */}
       <SettingsModalHost />
 
