@@ -63,7 +63,8 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
     const content = parts(result);
     const firstImageAt = content.findIndex((part) => part.type === 'image_url');
     const ocrAt = content.findIndex(
-      (part) => part.type === 'text' && part.text.includes('本地OCR')
+      // 附件未记录引擎（旧客户端形态）→ 中性「OCR」，不写死引擎
+      (part) => part.type === 'text' && part.text.includes('· OCR]')
     );
 
     expect(ocrAt).toBeGreaterThanOrEqual(0);
@@ -84,7 +85,7 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
     expect(imageUrls(result)).toEqual([IMG]);
     expect(result.stats.texts).toBe(0);
     expect(texts(result).join('\n')).not.toContain('先移项');
-    expect(result.warnings.join('\n')).toContain('直传档不投喂本地OCR文本');
+    expect(result.warnings.join('\n')).toContain('直传档不投喂OCR文本');
   });
 
   it('模型不收图但有 OCR 文本：改用 OCR 文本，不发占位、不发图', () => {
@@ -93,7 +94,7 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
     expect(result.stats.images).toBe(0);
     expect(texts(result).join('\n')).toContain('先移项再合并同类项');
     expect(texts(result).join('\n')).not.toContain('[图片 b.png]');
-    expect(result.warnings.join('\n')).toContain('已改用本地OCR文本');
+    expect(result.warnings.join('\n')).toContain('已改用OCR文本');
   });
 
   it('模型不收图且无 OCR 文本：仍降级为文字占位', () => {
@@ -133,6 +134,50 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
     });
 
     expect(result.stats.chars).toBe(10);
-    expect(result.warnings.join('\n')).toContain('本地OCR文本超出单文件');
+    expect(result.warnings.join('\n')).toContain('OCR文本超出单文件');
+  });
+});
+
+describe('OCR 标签按附件引擎分流（diagnose-file-intake.md §5 ocrEngine）', () => {
+  const ocrImage = (engine: 'local' | 'cloud' | undefined): DiagnoseAttachment => ({
+    name: 'img.png',
+    category: 'origin',
+    dataUrl: IMG,
+    text: '识别文本',
+    ...(engine ? { ocrEngine: engine } : {}),
+  });
+
+  it('text-only 路径：云端引擎标注「云端OCR」', () => {
+    const result = assembleDiagnoseMessage([ocrImage('cloud')], { imageMode: 'text-only' });
+    expect(texts(result).join('\n')).toContain('[文件 img.png · 云端OCR]');
+  });
+
+  it('text-only 路径：本地引擎标注「本地OCR」', () => {
+    const result = assembleDiagnoseMessage([ocrImage('local')], { imageMode: 'text-only' });
+    expect(texts(result).join('\n')).toContain('[文件 img.png · 本地OCR]');
+  });
+
+  it('缺省引擎（旧客户端）：中性「OCR」，不写死引擎', () => {
+    const result = assembleDiagnoseMessage([ocrImage(undefined)], { imageMode: 'text-only' });
+    const joined = texts(result).join('\n');
+    expect(joined).toContain('[文件 img.png · OCR]');
+    expect(joined).not.toContain('云端OCR');
+    expect(joined).not.toContain('本地OCR');
+  });
+
+  it('截断告警随引擎标注', () => {
+    const long: DiagnoseAttachment = {
+      name: 'long.png',
+      category: 'origin',
+      dataUrl: IMG,
+      text: 'x'.repeat(50),
+      ocrEngine: 'cloud',
+    };
+    const result = assembleDiagnoseMessage([long], {
+      imageMode: 'mixed',
+      totalChars: 10,
+      minCharsPerFile: 10,
+    });
+    expect(result.warnings.join('\n')).toContain('云端OCR文本超出单文件');
   });
 });
