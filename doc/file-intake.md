@@ -133,12 +133,16 @@ gb18030 等扩展编码）：
 - 20MB 上限 why：.doc 实际场景远小于此，防请求体滥用（`readJsonBody` 无长度上限）。
 - MOCK：`MOCK_PARSE_DOC=1` 时跳过解析返回占位文本（零依赖验证接线）。
 
-## 9. 移动端相机（capture）
+## 9. 移动端附件入口（capture）
 
-- 触屏设备（`pointer: coarse`）在附件按钮旁显示独立"相机"按钮：
-  `<input type="file" accept="image/*" capture="environment" />`，直接调起系统相机。
+- **2026-11-14 拍板**：独立"相机"按钮取消（聊天输入区与诊断上传区同口径）——
+  移动端底栏空间有限，相机入口收敛进附件按钮。
+- 触屏设备（`pointer: coarse`）点附件/上传按钮**不直接开文件选择**，而是就地展开
+  **列表式两选项**（非弹窗、非模态，锚定在触发按钮旁）：
+  - 「选择文件」→ `<input type="file" multiple>`；
+  - 「拍照」→ `<input type="file" accept="image/*" capture="environment" />` 直调系统相机。
+- 桌面（`pointer: fine`）点附件按钮直接开文件选择，不出现列表（capture 在桌面无意义）。
 - 拍照产物为 JPEG，走与相册选图完全相同的 extract-image 链路（含规范化与缩放）。
-- 桌面不渲染该按钮（capture 在桌面无意义）；两个入口都提供。
 - 真机拍照行为无法桌面自动化，验收以实机为准（见 §12）。
 
 ## 10. 挂账

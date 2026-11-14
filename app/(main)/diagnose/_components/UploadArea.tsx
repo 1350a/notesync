@@ -112,6 +112,11 @@ export default function UploadArea() {
   const updateSettings = useSettingsStore((s) => s.update);
   /** OCR 进行中进度（提交阶段）；非 null 时阻断重复提交 */
   const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number } | null>(null);
+  /**
+   * 移动端附件方式列表（doc/file-intake.md §9）：触屏点上传区就地展开「文件/拍照」
+   * 列表（列表式非弹窗）；桌面点上传区直开文件选择，该状态不参与
+   */
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // 派生选中值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
   // 再回落到首个可用模型（不保留过期模型名）
@@ -192,6 +197,12 @@ export default function UploadArea() {
 
   const removeRow = (id: string) => {
     setRows((prev) => prev.filter((row) => row.id !== id));
+  };
+
+  /** 上传区入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9） */
+  const openPicker = () => {
+    if (isCoarsePointer) setPickerOpen((v) => !v);
+    else fileInputRef.current?.click();
   };
 
   const readyRows = rows.filter((row) => row.supported && (row.dataUrl || row.text));
@@ -390,6 +401,8 @@ export default function UploadArea() {
         )}
       </div>
 
+      {/* 上传区：桌面点按直开文件选择；触屏展开列表式两选项（file-intake.md §9，
+          2026-11-14 起取消独立拍照按钮） */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -397,7 +410,7 @@ export default function UploadArea() {
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={openPicker}
         className={`relative flex flex-col items-center justify-center p-6 md:p-12 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
           isDragging ? 'border-primary bg-accent' : 'border-border bg-card hover:bg-muted'
         }`}
@@ -409,32 +422,62 @@ export default function UploadArea() {
           ref={fileInputRef}
           onChange={handleFileSelect}
         />
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          ref={cameraInputRef}
+          onChange={handleFileSelect}
+        />
         <div className="text-4xl mb-4">📁</div>
         <p className="text-lg font-medium text-foreground">点击或拖拽文件到这里</p>
         <p className="text-sm text-muted-foreground mt-2">
           支持图片 / PDF / 纯文本 / Word / PPT / Excel（仅旧版 .doc 需上传服务器解析）
         </p>
+        {pickerOpen && (
+          <>
+            {/* 透明点击层：点列表外任意处收起（stopPropagation 防止冒泡回上传区重新展开） */}
+            <div
+              className="fixed inset-0 z-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPickerOpen(false);
+              }}
+            />
+            <div
+              role="menu"
+              aria-label="选择上传方式"
+              className="absolute bottom-6 left-1/2 z-10 w-44 -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-background py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPickerOpen(false);
+                  fileInputRef.current?.click();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+              >
+                <span aria-hidden>📄</span> 选择文件
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPickerOpen(false);
+                  cameraInputRef.current?.click();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+              >
+                <span aria-hidden>📷</span> 拍照
+              </button>
+            </div>
+          </>
+        )}
       </div>
-
-      {/* 快速拍照：仅触屏渲染（capture 在桌面无意义），产物走同一 detect/extract 链路（file-intake.md §9） */}
-      {isCoarsePointer && (
-        <button
-          type="button"
-          onClick={() => cameraInputRef.current?.click()}
-          disabled={isSending}
-          className="w-full py-3 bg-card text-foreground font-medium rounded-xl border border-border hover:bg-muted transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-60 touch:py-3.5"
-        >
-          📷 拍照上传
-        </button>
-      )}
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        ref={cameraInputRef}
-        onChange={handleFileSelect}
-      />
 
       {rows.length > 0 && (
         <div className="bg-card p-6 rounded-2xl shadow-sm border border-border space-y-4">

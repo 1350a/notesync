@@ -131,6 +131,11 @@ export default function ChatInput({
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   /** OCR 进行中进度；非 null 时阻断重复发送 */
   const [ocrBusy, setOcrBusy] = useState<{ done: number; total: number } | null>(null);
+  /**
+   * 移动端附件方式列表（doc/file-intake.md §9）：触屏点附件按钮就地展开「文件/拍照」
+   * 列表（列表式非弹窗）；桌面点按钮直开文件选择，该状态不参与
+   */
+  const [pickerOpen, setPickerOpen] = useState(false);
   /** 诊断模式开关：开启后发送即开启/延续诊断会话（对话模式主线，product-vision.md §3.3） */
   const [diagnosisMode, setDiagnosisMode] = useState(false);
   /** OCR 回显确认草稿：非 null 时输入区上方出现确认面板，阻断直接发送 */
@@ -154,6 +159,12 @@ export default function ChatInput({
     setHint(message);
     if (hintTimer.current) clearTimeout(hintTimer.current);
     hintTimer.current = setTimeout(() => setHint(''), 4000);
+  };
+
+  /** 附件入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9） */
+  const openPicker = () => {
+    if (isCoarsePointer) setPickerOpen((v) => !v);
+    else fileInputRef.current?.click();
   };
 
   // 自动调整高度的核心逻辑
@@ -567,44 +578,45 @@ export default function ChatInput({
           }}
         />
 
-        {/* 底栏：左侧上传与图片发送方式，右侧发送 */}
+        {/* 派生模式提示独占一行：此前与按钮同行，窄屏被 flex 压缩成一字一列的竖排（mobile-ux.md §7 同款教训） */}
+        {images.length > 0 && (
+          <p
+            className={`px-2 text-[10px] leading-snug ${
+              imageMode === 'direct' || ocrEngine === 'cloud'
+                ? 'text-amber-600'
+                : 'text-muted-foreground'
+            }`}
+          >
+            {imageMode === 'direct'
+              ? '多模态：原图直传，图片将上传至模型服务商'
+              : ocrEngine === 'cloud'
+                ? '云端转文字：发送时图片像素上传至智谱 OCR（公式/手写更好），确认识别结果后发送'
+                : '本地转文字：发送时浏览器内 OCR，原图不出设备；图文混排/手写可能识别有误'}
+          </p>
+        )}
+
+        {/* 底栏：左侧附件入口，右侧思考强度与发送 */}
         <div className="flex items-center justify-between px-1 pt-1">
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted touch:h-11 touch:w-11"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              title="上传图片、PDF、文本或 Office 文档"
-            >
-              <input
-                type="file"
-                accept={ACCEPT}
-                multiple
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-              />
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                />
-              </svg>
-            </Button>
-            {/* 快速拍照：仅触屏渲染（capture 在桌面无意义），产物走同一图片链路（file-intake.md §9） */}
-            {isCoarsePointer && (
+            {/* 附件入口：桌面直开文件选择；触屏展开列表式两选项（file-intake.md §9，2026-11-14 起取消独立相机按钮） */}
+            <div className="relative">
               <Button
                 variant="ghost"
                 size="icon"
                 className="rounded-full h-8 w-8 text-muted-foreground hover:bg-muted touch:h-11 touch:w-11"
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={openPicker}
                 disabled={loading}
-                title="拍照上传"
+                aria-expanded={pickerOpen}
+                title="上传图片、PDF、文本或 Office 文档"
               >
+                <input
+                  type="file"
+                  accept={ACCEPT}
+                  multiple
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                />
                 <input
                   type="file"
                   accept="image/*"
@@ -618,30 +630,45 @@ export default function ChatInput({
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"
+                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
                   />
-                  <circle cx="12" cy="13" r="4" />
                 </svg>
               </Button>
-            )}
-            {/* 图片路径全自动派生（product-vision.md P4，2026-11-14）：无档位控件，
-                只展示派生结果。P4 约束①：外发代价写在发送处（触屏无 hover）；
-                云端引擎必须明示图片像素出端（doc/cloud-ocr.md §3） */}
-            {images.length > 0 && (
-              <span
-                className={`max-w-[220px] text-[10px] leading-snug sm:max-w-none ${
-                  imageMode === 'direct' || ocrEngine === 'cloud'
-                    ? 'text-amber-600'
-                    : 'text-muted-foreground'
-                }`}
-              >
-                {imageMode === 'direct'
-                  ? '多模态：原图直传，图片将上传至模型服务商'
-                  : ocrEngine === 'cloud'
-                    ? '云端转文字：发送时图片像素上传至智谱 OCR（公式/手写更好），确认识别结果后发送'
-                    : '本地转文字：发送时浏览器内 OCR，原图不出设备；图文混排/手写可能识别有误'}
-              </span>
-            )}
+              {pickerOpen && (
+                <>
+                  {/* 透明点击层：点列表外任意处收起（无遮罩变暗，保持就地展开观感） */}
+                  <div className="fixed inset-0 z-0" onClick={() => setPickerOpen(false)} />
+                  <div
+                    role="menu"
+                    aria-label="选择上传方式"
+                    className="absolute bottom-full left-0 z-10 mb-2 w-44 overflow-hidden rounded-xl border border-border bg-background py-1 shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setPickerOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+                    >
+                      <span aria-hidden>📄</span> 选择文件
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setPickerOpen(false);
+                        cameraInputRef.current?.click();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-foreground hover:bg-muted touch:py-3"
+                    >
+                      <span aria-hidden>📷</span> 拍照
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {loading ? (
