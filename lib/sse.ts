@@ -25,11 +25,13 @@ export const SSE_HEADERS = {
 } as const;
 
 /**
- * error 事件的 code 取值（前端据此区分提示口径：目前仅 content_blocked 走专属分支，
- * 其余统一按 data.error 正文提示，因此新增 code 不会破坏前端解析）。
+ * error 事件的 code 取值（前端据此区分提示口径：content_blocked / input_blocked
+ * 走专属分支，其余统一按 data.error 正文提示，因此新增 code 不会破坏前端解析）。
  *
  * invalid_request：请求体本身不是合法 JSON。此前该场景直接抛异常变成框架 500，
  * 前端拿到空流、无 error 事件，与其余错误路径的口径不一致。
+ * content_blocked：上游拦截（响应形态归一，见 lib/safety/block-detect.ts）。
+ * input_blocked：服务端输入兜底拦截（结构/指令形态判定，带 signal/category/reason）。
  */
 export type SseErrorCode =
   | 'invalid_request'
@@ -37,7 +39,9 @@ export type SseErrorCode =
   | 'unconfigured'
   | 'provider_error'
   | 'no_model'
-  | 'no_content';
+  | 'no_content'
+  | 'content_blocked'
+  | 'input_blocked';
 
 /** 封装一条 SSE 事件为字节流 */
 export function sse(event: string, data: unknown): string {
@@ -51,6 +55,11 @@ export function errorStream(data: {
   model?: string;
   provider?: string;
   available?: string[];
+  /** 拦截来源（§3 证据字段）：input_guard = 服务端输入兜底；finish_reason / content = 上游 */
+  signal?: 'input_guard' | 'finish_reason' | 'content';
+  /** 输入拦截命中类别（structure / injection / hardRisk），供前端打标与日志归因 */
+  category?: string;
+  reason?: string;
 }): Response {
   return new Response(sse('error', data), { headers: SSE_HEADERS });
 }

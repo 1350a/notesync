@@ -19,6 +19,8 @@
  *   unconfigured    归属 Provider 的 API_KEY / BASE_URL 缺失
  *   no_content      上传的附件全部提取失败，没有可发送的内容
  *   provider_error  上游返回错误（含 401 鉴权失败、模型不存在等；loop 未标注 code 时也兜底为此值）
+ *   input_blocked   服务端输入兜底拦截（结构/指令形态判定，见 doc/safety-design.md §4；
+ *                   带 signal=input_guard、category、reason，前端据此展示拒答话术并打标）
  *   invalid_request 请求体不是合法 JSON（此前抛异常退化成框架 500，前端收不到 error 事件）
  *   parse_error     工具调用解析兜底失败（loop 内标注，见 doc/tool-protocol.md §5.3）
  *
@@ -60,7 +62,8 @@ import { trimMessages } from '@/lib/chat/trim';
 import { mockStream } from '@/lib/mock/chat';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
 import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '@/lib/safety/redact';
-import { CHAT_BASE_SYSTEM_PROMPT, CONTENT_BLOCKED_MESSAGE } from '@/lib/safety/messages';
+import { CHAT_BASE_SYSTEM_PROMPT, CONTENT_BLOCKED_MESSAGE, HARD_BLOCK_MESSAGE } from '@/lib/safety/messages';
+import { checkInputSafety } from '@/lib/safety/wordlist';
 import { createAdapter } from '@/lib/tools/adapters';
 import { registerBuiltinTools } from '@/lib/tools/builtin';
 import { createSubmissionStore, createSubmitDiagnosisTool } from '@/lib/tools/builtin/submit_diagnosis';
@@ -78,6 +81,21 @@ import {
 
 // 确保内置工具注册
 registerBuiltinTools();
+
+/**
+ * 取本轮用户直接输入的文字（服务端输入兜底的判定源）。
+ *
+ * 口径与下方 lastUserText（guard 判据用）一致：优先 body.content，其次 messages 里
+ * 最后一条 role=user 的 content。两者都为空说明本轮只有附件，交给系统提示的边界条款。
+ */
+function collectUserInputText(body: ChatRequestBody): string {
+  if (typeof body.content === 'string' && body.content.trim()) return body.content;
+  const msgs = Array.isArray(body.messages) ? body.messages : [];
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    if (msgs[i].role === 'user') return msgs[i].content || '';
+  }
+  return '';
+}
 
 /** 裁剪预算标签（日志用；trim.ts 的 resolveTrimBudget 是运行时值，这里只做展示） */
 function resolveTrimBudgetLabel(): string {
@@ -98,6 +116,27 @@ export async function POST(request: Request) {
   const parsedBody = await readJsonBody<ChatRequestBody>(request);
   if (!parsedBody.ok) return parsedBody.response;
   const body = parsedBody.body;
+
+  // 服务端输入兜底（§4 / doc/safety-design.md §4）：客户端那层可被绕过——改包、旧版本前端
+  // 缓存、直接打接口都不经过 hooks/useChat.ts 的 checkInputSafety。这里用同一个纯函数
+  // 独立再判一次，判据只有结构与指令形态（超长/乱码/刷屏/提示注入句式），不依赖任何词表。
+  // 放在 MOCK_MODEL 分支之前：本地链路验证同样要走这道闸，便于零 token 回归。
+  // 心理困扰级别不在此硬拦（关怀优先，§5.3）：话术由 CHAT_BASE_SYSTEM_PROMPT 承载。
+  // 判定范围是本轮用户直接输入的文字；附件/图片里的字符按「材料而非指令」处理，
+  // 由系统提示的边界条款约束（见 lib/diagnose/prompts.ts SCOPE_BOUNDARY_LINE）。
+  const inputGuard = checkInputSafety(collectUserInputText(body));
+  if (inputGuard.level === 'hard') {
+    console.warn(
+      `[chat] 服务端输入拦截 client=${clientId} category=${inputGuard.category ?? 'structure'} reason=${inputGuard.reason ?? '-'}`,
+    );
+    return errorStream({
+      code: 'input_blocked',
+      error: HARD_BLOCK_MESSAGE,
+      signal: 'input_guard',
+      category: inputGuard.category ?? 'structure',
+      reason: inputGuard.reason,
+    });
+  }
 
   // 本地链路验证开关：置 1 后不碰任何上游，只回显组装结构，便于零 token 校验发送数据
   if (process.env.MOCK_MODEL === '1') {
