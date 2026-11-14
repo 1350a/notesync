@@ -24,8 +24,27 @@ import {
 } from '@/lib/safety/messages';
 import { checkInputSafety, loadWordlist } from '@/lib/safety/wordlist';
 import { finalizeTrace, recordEvent, startTrace } from '@/lib/chat/trace';
+import type { TraceBlocked } from '@/lib/chat/trace';
+import type { TokenUsage } from '@/lib/provider/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { AskUserQuestion } from '@/lib/tools/types';
+
+/** done.usage 的轻量校验：只收数字字段，缺失即整体丢弃（用量记账不能靠猜） */ 
+function parseTraceUsage(raw: unknown): TokenUsage | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as Record<string, unknown>;
+  const pick = (key: string): number | undefined => {
+    const value = record[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  };
+  const promptTokens = pick('promptTokens');
+  const completionTokens = pick('completionTokens');
+  const totalTokens = pick('totalTokens');
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return { promptTokens, completionTokens, totalTokens };
+}
 
 /**
  * 用户主动中止生成的标记后缀（唯一文案出口）。
@@ -447,10 +466,16 @@ export function useChat(selectedModel: string) {
 
       setMessages((prev) => [...prev, { role: 'assistant', content: '', reasoning: '' }]);
 
-      // trace 落盘（P3）：本次请求的 SSE 事件流带时间戳留本地，设置页可导出供调试看时间线
+      // trace 落盘（P3）：本次请求的 SSE 事件流带时间戳留本地，设置页可导出供调试看时间线。
+      // 观测面：会话 ID / 思考档位 / 用户输入 / 诊断态在建 trace 时即固化，事后不可补
       let trace: ReturnType<typeof startTrace> | null = null;
       try {
-        trace = startTrace('/api/chat', selectedModel);
+        trace = startTrace('/api/chat', selectedModel, {
+          conversationId: sessionMetaRef.current?.id,
+          thinkingEffort,
+          userInput: text,
+          diagnoseState: diagnoseContext?.state,
+        });
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', [CLIENT_ID_HEADER]: getClientId() },
@@ -553,11 +578,28 @@ export function useChat(selectedModel: string) {
             } else if (parsed.event === 'done') {
               // 服务端推进后的最新诊断上下文；无该字段（普通聊天）保持原状
               const nextContext = parseDiagnoseContext(parsed.data.diagnose?.context);
-              if (nextContext) setDiagnoseContext(nextContext);
+              if (nextContext) {
+                setDiagnoseContext(nextContext);
+                trace.diagnoseState = nextContext.state;
+              }
+              // 精确用量：上游返回才有，缺省表示「上游未提供」而不是 0 token
+              const usage = parseTraceUsage(parsed.data.usage);
+              if (usage) trace.usage = usage;
               finished = true;
               break;
             } else if (parsed.event === 'error') {
               if (parsed.data.code === 'content_blocked') {
+                // 拦截归因先入 trace（signal 区分 finish_reason 与拒绝性文本），再展示固定说明；
+                // finalize 在 finally，先记录可保证归因不因 break 提前退出而丢失
+                const blockedInfo: TraceBlocked = {
+                  signal: parsed.data.signal === 'finish_reason' ? 'finish_reason' : 'content',
+                  code: 'content_blocked',
+                  ...(typeof parsed.data.finishReason === 'string'
+                    ? { finishReason: parsed.data.finishReason }
+                    : {}),
+                };
+                trace.blocked = blockedInfo;
+                recordEvent(trace, 'blocked', blockedInfo);
                 // 上游拦截（§2/§3.1）：丢弃已流出片段，展示固定说明并标记 blocked——
                 // 本条消息不进入下一轮上行历史（客户端侧回滚）
                 appendAssistant((m) => ({

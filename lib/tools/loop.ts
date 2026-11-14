@@ -11,7 +11,7 @@
  * 6. 达到最大轮数仍未结束：追加 system 提示后做一次不带 tools 的收敛请求，
  *    finishReason 仍为 'max_rounds'（doc/tool-protocol.md §8.3）。
  */
-import type { LLMProvider, ProviderMessage } from '@/lib/provider/types.ts';
+import type { LLMProvider, ProviderMessage, StreamDelta, TokenUsage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
 import { invokeTool } from './invoke.ts';
 import type { ExtractedToolCalls, ToolDefinition, ToolInvocation, ToolLoopEvent } from './types.ts';
@@ -88,6 +88,9 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
   // 单独用标志而不是比较 usedRounds，否则最后一轮自然 stop 也会被误标为 max_rounds
   let exhausted = false;
   let parseRetried = false; // 解析失败重试全程最多 1 次
+  // 上游 token 用量：跨轮取「最后一次出现的为准」（多轮工具调用时即末轮总量）。
+  // 上游不返回 usage 时保持 undefined，交由调用方标记「上游未提供」而不是按 0 记账。
+  let usage: TokenUsage | undefined;
 
   while (usedRounds < maxRounds) {
     usedRounds++;
@@ -102,7 +105,15 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         if (!provider.streamDetailed) {
           throw new Error('当前 Provider 不支持流式输出，无法使用工具调用');
         }
-        const stream = provider.streamDetailed(req);
+        const rawStream = provider.streamDetailed(req);
+        // 用量旁路捕获：适配器只认 content / reasoning / toolCall，usage 由这里吃掉，
+        // 避免改动 native / text 两个适配器的公共签名
+        const stream: AsyncGenerator<StreamDelta> = (async function* () {
+          for await (const delta of rawStream) {
+            if (delta.usage) usage = delta.usage;
+            yield delta;
+          }
+        })();
         return await adapter.processStream(
           stream,
           (c) => queue.push({ type: 'content', delta: c }),
@@ -186,7 +197,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
       if (result.kind === 'awaiting_user') {
         yield { type: 'awaiting_user', questions: result.questions, toolCallId: call.id };
-        yield { type: 'done', usedRounds, finishReason: 'awaiting_user' };
+        yield { type: 'done', usedRounds, finishReason: 'awaiting_user', ...(usage ? { usage } : {}) };
         return;
       }
 
@@ -256,5 +267,5 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
     }
   }
 
-  yield { type: 'done', usedRounds, finishReason };
+  yield { type: 'done', usedRounds, finishReason, ...(usage ? { usage } : {}) };
 }

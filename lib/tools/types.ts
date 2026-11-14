@@ -145,7 +145,13 @@ export type ToolLoopEvent =
     }
   | { type: 'tool_result'; id: string; ok: boolean; summary: string; ms: number }
   | { type: 'awaiting_user'; questions: AskUserQuestion[]; toolCallId: string }
-  | { type: 'done'; usedRounds: number; finishReason: string }
+  | {
+      type: 'done';
+      usedRounds: number;
+      finishReason: string;
+      /** 上游 token 用量（末轮为准）；上游未返回时缺省，不得当作 0 记账 */
+      usage?: import('@/lib/provider/types.ts').TokenUsage;
+    }
   /**
    * 上游拦截（content_blocked）：本轮内容不回填历史、请求终止（safety-protocol.md §3.1 硬项）。
    * 循环内检测到即丢弃本轮 assistant 消息——被拒内容回传上游会再拦甚至触发冷却。

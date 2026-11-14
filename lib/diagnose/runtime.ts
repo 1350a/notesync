@@ -378,7 +378,12 @@ export function advanceAfterResponse(input: {
 export interface LoopRunResult {
   /** 本段新增的正文全文（guard 判据的比对对象） */
   outputText: string;
-  done: { usedRounds: number; finishReason: string } | null;
+  done: {
+    usedRounds: number;
+    finishReason: string;
+    /** 上游 token 用量（末轮为准）；上游未返回时缺省，不等于 0 */
+    usage?: import('@/lib/provider/types.ts').TokenUsage;
+  } | null;
   awaitingUser: boolean;
   /** error 事件已由 route 转发；失败后不再编排重试 */
   failed: boolean;

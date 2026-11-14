@@ -32,6 +32,7 @@ import type {
   ProviderModel,
   StreamDelta,
   ThinkingEffort,
+  TokenUsage,
 } from './types.ts';
 import { MAX_ERROR_LOG_CHARS, extractUpstreamMessage, redactUpstreamText } from '../safety/redact.ts';
 
@@ -54,6 +55,25 @@ export function mapThinkingParam(
   // deepseek
   if (thinking === 'off') return null;
   return { reasoning_effort: thinking };
+}
+
+/**
+ * OpenAI usage 字段 → TokenUsage 归一。
+ * 三种上游形态都要能吃：非流式顶层 usage、流式末尾 chunk 的 usage、
+ * 以及完全不返回 usage 的实现（返回 undefined，交由调用方标记「上游未提供」）。
+ */
+export function parseUsage(raw: unknown): TokenUsage | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as Record<string, unknown>;
+  const pick = (key: string): number | undefined =>
+    typeof record[key] === 'number' ? (record[key] as number) : undefined;
+  const promptTokens = pick('prompt_tokens');
+  const completionTokens = pick('completion_tokens');
+  const totalTokens = pick('total_tokens');
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) {
+    return undefined;
+  }
+  return { promptTokens, completionTokens, totalTokens };
 }
 
 /** 单次请求超时（ms） */
@@ -438,6 +458,12 @@ export class OpenAICompatProvider implements LLMProvider {
     // 思考强度档位（doc/user-settings.md §2.1）：custom 不发送（未知字段严格校验风险）
     const thinkingParam = mapThinkingParam(this.name, options.thinking);
     if (thinkingParam) Object.assign(body, thinkingParam);
+    // 流式用量（doc/implementation-status.md 偏差项）：OpenAI 协议默认只在非流式返回 usage，
+    // 流式必须显式声明 include_usage 才会补一个纯 usage chunk。仅 deepseek 官方文档写明支持，
+    // zhipu / custom 一律不发，避免未知字段被严格校验端点拒绝。
+    if (stream && this.name === 'deepseek') {
+      body.stream_options = { include_usage: true };
+    }
     if (options.tools) {
       body.tools = options.tools;
       if (options.toolChoice) body.tool_choice = options.toolChoice;
@@ -547,6 +573,7 @@ export class OpenAICompatProvider implements LLMProvider {
         };
         finish_reason?: string;
       }[];
+      usage?: unknown;
       error?: { message?: string };
     };
     if (data.error?.message) {
@@ -565,6 +592,7 @@ export class OpenAICompatProvider implements LLMProvider {
       ...parsed,
       toolCalls: choice?.message?.tool_calls,
       finishReason: choice?.finish_reason,
+      usage: parseUsage(data.usage),
     };
   }
 
@@ -620,8 +648,15 @@ export class OpenAICompatProvider implements LLMProvider {
               };
               finish_reason?: string;
             }[];
+            usage?: unknown;
           };
           const choice = chunk.choices?.[0];
+          // usage 常在 choices 为空的独立 chunk 里下发：必须在下方 `if (!delta) continue`
+          // 之前取走，否则会被当成无内容行丢掉（用量归零的根因）
+          const streamUsage = parseUsage(chunk.usage);
+          if (streamUsage) {
+            yield { usage: streamUsage };
+          }
           // finish_reason 随流透传（safety-protocol §3：拦截判定需要它；最后一次出现的为准）
           if (choice?.finish_reason) {
             yield { finishReason: choice.finish_reason };

@@ -95,6 +95,16 @@ export interface CompleteOptions {
   toolChoice?: 'auto' | 'none' | 'required';
 }
 
+/**
+ * 上游 token 用量（OpenAI usage 字段的归一形态）。
+ * 兼容实现可能只返回其中部分字段，缺失项一律 undefined；整段缺失时为 undefined。
+ */
+export interface TokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
 /** 详细补全结果：内容 + 可选思考过程（本地推理模型透传用） */
 export interface CompleteDetailedResult {
   content: string;
@@ -104,6 +114,8 @@ export interface CompleteDetailedResult {
   toolCalls?: ProviderToolCall[];
   /** OpenAI finish_reason（"stop" | "tool_calls" | "length" | "content_filter" 等） */
   finishReason?: string;
+  /** 上游 token 用量；未返回时为 undefined（不要按 0 记账，见 lib/chat/cost.ts） */
+  usage?: TokenUsage;
 }
 
 /** 流式增量：内容片段或思考过程片段（二者至少一个） */
@@ -115,6 +127,12 @@ export interface StreamDelta {
    * content_filter 等异常值是上游拦截判定路径之一（safety-protocol.md §3）。
    */
   finishReason?: string;
+  /**
+   * 上游 token 用量增量（DeepSeek 在 `[DONE]` 前的最后一个 chunk 返回，
+   * 需请求时声明 `stream_options.include_usage`；智谱等实现可能每段都带）。
+   * 消费方按「最后一次出现的为准」累积，缺失即上游未返回。
+   */
+  usage?: TokenUsage;
   /**
    * native 模式下的工具调用增量片段（P1 仅类型，P4 实现）。
    * 同一次 tool_call 的 arguments 会切成多个 delta 下发，

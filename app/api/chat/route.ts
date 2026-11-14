@@ -304,7 +304,11 @@ export async function POST(request: Request) {
               )
             );
           } else if (ev.type === 'done') {
-            done = { usedRounds: ev.usedRounds, finishReason: ev.finishReason };
+            done = {
+              usedRounds: ev.usedRounds,
+              finishReason: ev.finishReason,
+              ...(ev.usage ? { usage: ev.usage } : {}),
+            };
             totalCalls += ev.usedRounds;
           } else if (ev.type === 'error') {
             failed = true;
@@ -329,6 +333,10 @@ export async function POST(request: Request) {
                 sse('error', {
                   code: 'content_blocked',
                   error: CONTENT_BLOCKED_MESSAGE,
+                  // 拦截归因（trace 观测面）：signal 区分「finish_reason 异常值」与「拒绝性文本」，
+                  // 两者处置相同但根因不同，缺了它线上只能猜（safety-protocol §3）
+                  signal: ev.signal,
+                  ...(ev.finishReason ? { finishReason: ev.finishReason } : {}),
                   model,
                   provider: provider.name,
                 })
@@ -368,6 +376,8 @@ export async function POST(request: Request) {
                 provider: provider.name,
                 usedRounds: mainRun.done.usedRounds,
                 finishReason: mainRun.done.finishReason,
+                // 精确用量（上游返回时）：客户端 trace 用它替代字符估算（总账 §9.1 偏差项）
+                ...(mainRun.done.usage ? { usage: mainRun.done.usage } : {}),
                 ...(diagnose ? { diagnose: { context: diagnose.context } } : {}),
               })
             )
