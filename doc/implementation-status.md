@@ -78,7 +78,8 @@ AIGC:
 | 输入侧本地词表过滤 | 机制已实装（结构规则默认启用，含超长/乱码/刷屏顺序判定）；**默认词表为空**，实际词表走配置注入 | 🟡 | `lib/safety/wordlist.ts` |
 | 服务端输入兜底（`input_blocked`） | 已实装：`/api/chat` 在 MOCK 分支前用同一纯函数复判本轮用户输入，`level==='hard'` 直接返回 `errorStream`，绕不开发包/旧前端/直连接口；心理困扰级别不硬拦（关怀优先） | ✅ | `app/api/chat/route.ts`、`lib/safety/wordlist.ts` |
 | 提示注入特征库 | 已实装：结构句式特征判定（`InputSafetyCategory` 增 `injection`），不做关键词黑名单，决策与理由见 `doc/safety-design.md` | ✅ | `lib/safety/injection-patterns.ts` |
-| 边界拒答前缀 | 已实装：`REFUSAL_PREFIX`（「【边界说明】」）统一话术前缀，自家拒答文本不被误判为上游拦截 | ✅ | `lib/safety/messages.ts`、`lib/safety/block-detect.ts` |
+| 边界拒答前缀 | 已实装：`REFUSAL_PREFIX`（「【边界说明】」）统一话术前缀，自家拒答文本不被误判为上游拦截；**只给越权类硬拒用**，非数学学科与无关话题的软引导不得带 | ✅ | `lib/safety/messages.ts`、`lib/safety/block-detect.ts` |
+| 学科边界三级处置 | 已实装（2026-11-14）：① 越权类（索取系统提示/内部规则、无限制模式、扮演其他角色）→ 硬拒 + 前缀；② 非数学学科 → 软引导「这类题我没有专门优化」，不展开、不带前缀；③ 与学习无关话题 → 软引导（第一次引导、再次简短结束）。`SCOPE_BOUNDARY_LINE` 七态各注入一份，`CHAT_BASE_SYSTEM_PROMPT` 同口径；「照常讲解」限定为数学 | ✅ | `lib/diagnose/prompts.ts`、`lib/safety/messages.ts` |
 | 拦截打标与冷却 | 已实装：被拦 user 消息打 `blocked`，上行历史改占位文本、被拦 assistant 消息不回传；连续两次拦截进 60s 冷却（`BLOCK_COOLDOWN_MS`） | ✅ | `hooks/useChat.ts`、`lib/safety/messages.ts` |
 | 安全链路回归脚本 | 已实装：`npm run smoke:safety`，拦 3 条放 3 条对照表 | ✅ | `scripts/safety-smoke.ts` |
 | 三级处置话术 | 已实装：硬拦截 / 软引导（system prompt 承载）/ 关怀转介 | ✅ | `lib/safety/messages.ts` |
@@ -162,7 +163,7 @@ AIGC:
 |---|---|---|
 | 证据可信度分级 + 识别结果回显确认（`components/chat/ChatInput.tsx`） | `diagnosis-model.md` §1.3 | ✅ |
 | OCR 低置信强制确认（阈值已定，低置信行标红并阻断直接发送） | 同上 | ✅ |
-| §7 输出纪律三条禁令写入提示词（`lib/diagnose/prompts.ts`） | `diagnosis-model.md` §7 | ✅ |
+| §7 输出纪律禁令写入提示词（原三条，第 1、2 条已并为「不得只给答案」；`lib/diagnose/prompts.ts`） | `diagnosis-model.md` §7 | ✅ |
 | 「必须引用作答片段」后置校验（连续窗口 + bigram 兜底） | 同上 §7.3 | ✅ |
 | 图片路径自动路由：多模态直传 / 纯文本 OCR 转写（2026-11-14 重构，混合档下线；`lib/ocr/image-handling.ts`、`components/chat/ChatInput.tsx`、整卷 `UploadArea.tsx`） | `product-vision.md` P4 | ✅ |
 | `explain` 掌握度回路（明白了 / 还不懂） | `agent-workflow.md` §4.3(a) | ✅ |

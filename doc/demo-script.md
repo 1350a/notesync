@@ -2,7 +2,7 @@
 
 > 状态：批次 1 交付物，3 分钟分镜｜最后更新：2026-11-12
 > 依据：`doc/product-vision.md` §3.3（演示对象＝比赛评委，一切优化以「3 分钟能看懂我们在做诊断而不是搜题」为准）
-> 相关协议：`diagnosis-model.md` §7（输出纪律三条禁令与正反对照）、`agent-workflow.md` §3/§5（追问预算、整卷四步）、`product-vision.md` P4（图片路径自动路由与代价）
+> 相关协议：`diagnosis-model.md` §7（输出纪律禁令与正反对照）、`agent-workflow.md` §3/§5（追问预算、整卷四步）、`product-vision.md` P4（图片路径自动路由与代价）
 
 本文件是可照读的现场分镜。**不是功能说明书**——功能实装状态一律以 `doc/implementation-status.md` 为准。
 
