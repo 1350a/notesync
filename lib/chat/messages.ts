@@ -7,6 +7,7 @@
 import type { ProviderMessage } from '../provider/types.ts';
 import type { AskUserQuestion } from '../tools/types.ts';
 import type { DiagnosisResult } from '../diagnose/types.ts';
+import type { OcrEngine } from '../settings/types.ts';
 import { formatOcrBlock } from '../ocr/image-handling.ts';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
@@ -53,10 +54,15 @@ export interface ChatMsg {
    */
   expiredImages?: number[];
   /**
-   * 本地 OCR 转文字产物（与 images 一一对应）：上行时以 imageTexts 契约随消息发送，
-   * 服务端拼成文本块；气泡上以"已本地OCR"标注透出（doc/browser-local-ocr.md §6.2）
+   * OCR 转文字产物（与 images 一一对应）：上行时以 imageTexts 契约随消息发送，
+   * 服务端拼成文本块；气泡上以徽章标注透出（doc/browser-local-ocr.md §6.2）
    */
   ocrTexts?: string[];
+  /**
+   * 产出本条 ocrTexts 的识别引擎（发送时随 options 传入，落库供徽章与导出区分口径；
+   * doc/browser-local-ocr.md §6.2）。缺省 = 旧消息未记录引擎，展示按中性「OCR」处理
+   */
+  ocrEngine?: OcrEngine;
   /**
    * 【legacy，2026-11-14 起新发送不再写入】OCR 产物的发送形态：local-only 全本地
    * （images 仅本地展示不上行）；mixed 混合档（OCR 文本 + 原图都上行）。混合档 UI

@@ -46,6 +46,13 @@ function isTextItem(item: DiagnoseAttachment): boolean {
   return !item.dataUrl?.trim() && Boolean(item.text?.trim());
 }
 
+/** OCR 文本块标签按附件引擎分流；缺省（旧客户端未记录引擎）中性「OCR」，不写死引擎 */
+function ocrLabel(item: DiagnoseAttachment): string {
+  if (item.ocrEngine === 'cloud') return '云端OCR';
+  if (item.ocrEngine === 'local') return '本地OCR';
+  return 'OCR';
+}
+
 /**
  * 由附件形态与模型图片能力推导投喂方式（口径见 doc/diagnose-file-intake.md §6）。
  * - 模型不收图 → `text-only`；
@@ -121,21 +128,22 @@ export function assembleDiagnoseMessage(
         if (ocrBody && (imageMode === 'mixed' || !acceptsImages)) {
           const clipped = ocrBody.slice(0, perFile);
           const truncated = ocrBody.length > clipped.length;
+          const label = ocrLabel(item);
           parts.push({
             type: 'text',
             text: truncated
-              ? `[文件 ${item.name} · 本地OCR]\n${clipped}\n……（内容过长，已截断）`
-              : `[文件 ${item.name} · 本地OCR]\n${clipped}`,
+              ? `[文件 ${item.name} · ${label}]\n${clipped}\n……（内容过长，已截断）`
+              : `[文件 ${item.name} · ${label}]\n${clipped}`,
           });
           texts += 1;
           chars += clipped.length;
           ocrSent = true;
           if (truncated) {
-            warnings.push(`${item.name}：本地OCR文本超出单文件 ${perFile} 字符预算，已截断`);
+            warnings.push(`${item.name}：${label}文本超出单文件 ${perFile} 字符预算，已截断`);
           }
         } else if (ocrBody) {
           // 直传档带了 OCR 文本：形态上本该走混合档，这里按直传处理但必须留痕
-          warnings.push(`${item.name}：直传档不投喂本地OCR文本，仅发送原图`);
+          warnings.push(`${item.name}：直传档不投喂${ocrLabel(item)}文本，仅发送原图`);
         }
 
         if (hasRoom) {
@@ -148,7 +156,7 @@ export function assembleDiagnoseMessage(
             parts.push({ type: 'text', text: `[图片 ${item.name}]（${why}，未发送图像本体）` });
           }
           warnings.push(
-            `${item.name}：${why}，${ocrSent ? '已改用本地OCR文本' : '已降级为文字占位'}`
+            `${item.name}：${why}，${ocrSent ? `已改用${ocrLabel(item)}文本` : '已降级为文字占位'}`
           );
         }
         continue;

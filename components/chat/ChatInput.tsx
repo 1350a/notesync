@@ -384,9 +384,16 @@ export default function ChatInput({
 
   /** 确认面板「确认发送」/ 纯文本与直传路径的实际发送 */
   const doSend = (ocrTexts: string[] | undefined) => {
-    const options: SendOptions | undefined = diagnosisMode ? { startDiagnosis: true } : undefined;
-    // 不传 imageSendMode：缺省口径即「有 ocrTexts 即全本地」（useChat 兼容语义）。
-    // 混合档已下线，客户端不再产出（doc/browser-local-ocr.md §6.2）
+    // 引擎随消息落库（useChat 写入 ChatMsg.ocrEngine）：徽章与导出按它区分
+    // 「云端转文字/本地转文字」口径，不再写死「本地」
+    const options: SendOptions | undefined =
+      diagnosisMode || (ocrTexts && ocrTexts.length > 0)
+        ? {
+            ...(diagnosisMode ? { startDiagnosis: true } : {}),
+            ...(ocrTexts && ocrTexts.length > 0 ? { ocrEngine } : {}),
+          }
+        : undefined;
+    // 不传 imageSendMode：混合档已下线，客户端不再产出（doc/browser-local-ocr.md §6.2）
     onSend(input.trim(), images, files, ocrTexts, options);
     setInput('');
     setImages([]);

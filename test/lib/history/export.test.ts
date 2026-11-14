@@ -72,6 +72,26 @@ describe('history 导出 Markdown', () => {
     expect(markdown).not.toContain('data:image');
   });
 
+  it('OCR 产物行按引擎区分去向，无引擎字段中性兜底', () => {
+    const markdown = buildSessionMarkdown(meta('OCR 会话'), [
+      userMsg('云端转写的题', {
+        images: ['data:image/png;base64,AAAA'],
+        ocrTexts: ['识别文本'],
+        ocrEngine: 'cloud',
+      }),
+      userMsg('本地转写的题', {
+        images: ['data:image/png;base64,AAAA'],
+        ocrTexts: ['识别文本'],
+        ocrEngine: 'local',
+      }),
+      userMsg('旧消息', { images: ['data:image/png;base64,AAAA'], ocrTexts: ['识别文本'] }),
+    ]);
+
+    expect(markdown).toContain('- 云端 OCR 产物：1 张（图片像素已外发至云端 OCR 服务）');
+    expect(markdown).toContain('- 本地 OCR 产物：1 张（原图未上行）');
+    expect(markdown).toContain('- OCR 产物：1 张');
+  });
+
   it('附件、工具调用与思考过程按约定格式落盘', () => {
     const markdown = buildSessionMarkdown(meta('附件会话'), [
       userMsg('看这份题', { files: [{ name: '题目.txt', text: '12345' }] }),

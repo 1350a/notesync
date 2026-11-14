@@ -5,6 +5,7 @@
  * 本文件只放类型定义，浏览器侧与 Node 冒烟脚本共用，不得引入运行时依赖。
  */
 import type { ProviderMessage } from '../provider/types.ts';
+import type { OcrEngine } from '../settings/types.ts';
 
 /** 文件种类：图片 / PDF / Word / Office（pptx/xlsx/xls）/ 纯文本 / 无法识别 */
 export type DiagnoseKind = 'image' | 'pdf' | 'doc' | 'office' | 'text' | 'unsupported';
@@ -38,6 +39,11 @@ export interface DiagnoseAttachment {
   text?: string;
   /** 提取阶段的降级原因；单文件失败不阻断整批组装 */
   warning?: string;
+  /**
+   * 产出该 OCR 文本的引擎（doc/diagnose-file-intake.md §5）：组装标签按它标注
+   * 「云端OCR/本地OCR」；缺省视为旧客户端，按中性「OCR」标注
+   */
+  ocrEngine?: OcrEngine;
 }
 
 /**

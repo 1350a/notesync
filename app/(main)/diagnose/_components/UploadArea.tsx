@@ -9,6 +9,7 @@ import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
+import type { OcrEngine } from '@/lib/settings/types';
 import { generateId, getUserId } from '@/lib/client-id';
 import { FILE_ACCEPT, FILE_ACCEPT_NO_IMAGE } from '@/lib/intake/detect';
 import { filePrivacyDetail } from '@/lib/ui/notices';
@@ -52,6 +53,8 @@ interface Row {
   text?: string;
   /** 降级/拒收原因，直接展示给用户 */
   warning?: string;
+  /** 提交时对图片行做过 OCR 转写的引擎；上行供服务端组装标签区分口径 */
+  ocrEngine?: OcrEngine;
 }
 
 /** 逐块消费 SSE，按事件名分发；解析失败的块直接跳过（上游可能下发心跳） */
@@ -257,6 +260,9 @@ export default function UploadArea() {
           return {
             ...row,
             text: mergeOcrText(row.text, ocrText),
+            // 引擎随附件上行（doc/diagnose-file-intake.md §5）：服务端组装标签
+            // 据此标「云端OCR/本地OCR」，不再写死「本地」
+            ocrEngine,
             // OCR 路径原图不上行（纯文本附件通道），缩略预览仍在本地保留
             dataUrl: undefined,
           };
@@ -271,6 +277,7 @@ export default function UploadArea() {
           dataUrl: row.dataUrl,
           text: row.text,
           warning: row.warning,
+          ocrEngine: row.ocrEngine,
         })),
         user: getUserId() || undefined,
       };

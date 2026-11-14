@@ -33,8 +33,6 @@
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@huggingface/transformers": "^4.3.2",
-    "@tesseract.js-data/chi_sim": "^1.0.0",
-    "@tesseract.js-data/eng": "^1.0.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "heic2any": "^0.0.4",

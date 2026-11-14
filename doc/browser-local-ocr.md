@@ -153,6 +153,9 @@ ImageSendMode = 'direct'（原图直传，无转写） | 'ocr-text'（OCR 转文
   混合形态附件（详见 `diagnose-file-intake.md` §6.1）。
 - 两档（多模态 / OCR 转文字）的呈现约束见 `product-vision.md` P4：
   路由全自动、不提供档位控件，外发代价写在发送处。
+- 气泡徽章（`ChatList`）按消息记录的 `ocrEngine`（`ChatMsg` 可选字段，发送时写入，
+  历史回读经 sanitize 白名单放行）显示「云端转文字 / 本地转文字」；无字段的旧消息
+  显示中性「OCR转文字」，不写死引擎（2026-11-14 起，导出 Markdown 同口径）。
 
 ### 6.3 Provider 能力默认值（本轮修正）
 

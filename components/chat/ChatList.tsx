@@ -36,6 +36,27 @@ function AbortedMark() {
 const THINKING_PREVIEW_CHARS = 400;
 
 /**
+ * OCR 徽章文案按发送时刻记录的引擎分流（doc/browser-local-ocr.md §6.2）：
+ * 云端引擎下「原图未离开浏览器」不成立，绝不允许出现；无引擎字段的旧消息
+ * 中性兜底，不猜引擎（历史数据无从判定，宁可少说不可说错）
+ */
+function ocrBadgeCopy(engine: ChatMsg['ocrEngine']): { label: string; title: string } {
+  if (engine === 'cloud') {
+    return {
+      label: '云端转文字',
+      title: '图片已上传至云端 OCR 转写后发送（图片像素已外发）：',
+    };
+  }
+  if (engine === 'local') {
+    return {
+      label: '本地转文字',
+      title: '图片已在浏览器内 OCR 转文字后发送，原图未离开浏览器：',
+    };
+  }
+  return { label: 'OCR转文字', title: '图片已经 OCR 转文字后发送：' };
+}
+
+/**
  * 思考过程三级展示（批 3-B）：
  * ① 默认折叠，只有「思考过程」一行；
  * ② 展开后先显示前 {@link THINKING_PREVIEW_CHARS} 字 + 省略号 + 「共 N 字」；
@@ -147,6 +168,7 @@ export default function ChatList({
         const { text: renderContent, aborted } = isUser
           ? { text: m.content, aborted: false }
           : stripAbortedSuffix(m.content);
+        const ocrBadge = m.ocrTexts && m.ocrTexts.length > 0 ? ocrBadgeCopy(m.ocrEngine) : null;
         return (
           <div
             key={i}
@@ -280,7 +302,7 @@ export default function ChatList({
                       })}
                     </div>
                   ) : null}
-                  {m.ocrTexts && m.ocrTexts.length > 0 ? (
+                  {ocrBadge ? (
                     <div className="mb-2">
                       <span
                         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
@@ -289,9 +311,9 @@ export default function ChatList({
                           backgroundColor: 'var(--bg-deep)',
                           color: 'var(--text-secondary)',
                         }}
-                        title={`图片已在浏览器本地OCR转文字后发送，原图未离开浏览器：\n${m.ocrTexts.join('\n---\n')}`}
+                        title={`${ocrBadge.title}\n${m.ocrTexts?.join('\n---\n')}`}
                       >
-                        🖼️→📄 已本地OCR转文字（{m.ocrTexts.length} 张）
+                        🖼️→📄 {ocrBadge.label}（{m.ocrTexts?.length} 张）
                       </span>
                     </div>
                   ) : null}

@@ -89,6 +89,7 @@ AIGC:
 | 上传前隐私提醒（全入口） | 已实装（2026-11-14）：聊天输入区常驻短句 + 首次上传一次性详细说明；诊断上传区常驻完整三点说明（上传什么 / 本站是否留存 / 怎么切本地）；设置页 hint 随引擎派生。文案按「模式 × 引擎」分五档，不混淆图片 OCR 与通用文件上传；不每次弹窗打断 | ✅ | `lib/ui/notices.ts`、`components/upload/UploadPrivacyNotice.tsx`、`components/chat/ChatInput.tsx`、`app/(main)/diagnose/_components/UploadArea.tsx`、`components/settings/LocalCapabilitySection.tsx` |
 | AI 生成内容提示 | 已实装（2026-11-14）：输入区下方常驻单行「回答由 AI 生成，可能存在错误，请核实后使用。」，弱化色、单行、不占额外纵向空间，纯展示无 state | ✅ | `lib/ui/notices.ts`、`components/chat/AiGeneratedNotice.tsx`、`components/chat/ChatInput.tsx` |
 | 提示词契约用例 | 已实装（2026-11-14）：锁死「不得只给答案」（禁回退「不得直接给答案」）、学科边界三级结构、仅越权类带 `REFUSAL_PREFIX`；另锁死各态注入边界条款 | ✅ | `test/lib/diagnose/prompt-contract.test.ts`、`test/ui/privacy-notice.test.ts`、`test/ui/notices.test.ts` |
+| OCR 引擎标记与文案分流 | 已实装（2026-11-14）：发送时刻引擎随消息落库（`ChatMsg.ocrEngine`，sanitize 白名单放行）与随附件上行（`DiagnoseAttachment.ocrEngine`，parseAttachments 严格判型）；气泡徽章、导出 Markdown、服务端组装标签按引擎区分「云端/本地」，无字段旧数据中性兜底不写死引擎（原「已本地OCR转文字·原图未离开浏览器」在云端引擎下失真） | ✅ | `components/chat/ChatList.tsx`、`lib/history/export.ts`、`lib/history/sanitize.ts`、`lib/diagnose/assemble.ts` |
 | 本地数据清除入口 | 已实装 | ✅ | `components/settings/DataSection.tsx` |
 | 术语纠正：不得写「云端 OCR」 | 已完成：`browser-local-ocr.md` 已无该表述 | ✅ | `doc/browser-local-ocr.md` |
 
@@ -116,7 +117,7 @@ AIGC:
 | trace 导出脱敏 | 已实装：`reasoning` 写入不截断（保留完整分析能力），仅导出出口经 `redactTraceText()` 处理副本——**只抹实现细节**（内部字段名 `completeness`/`hintLevel`/`submit_diagnosis` 等、提示词常量名 `DISCIPLINE_BLOCK` 等、协议标记 `protocol`，统一替换为 `[内部字段]`）；**提示条款原文与产品话术（`【边界说明】`）不隐藏**（开源项目不追求隐藏提示词，安全目标是不输出有害内容 + 数据流向可见）；公式、行内代码、围栏代码块与 URL 走白名单原样保留，`x²`/`f(x)`/`△ABC` 不被改写；`downloadTraces()` 经 `buildTraceExportPayload()` 导出脱敏副本，浏览器内存储保持原文 | ✅ | `lib/safety/redact.ts`、`lib/chat/trace.ts`、`test/lib/safety/redact-trace.test.ts`、`test/lib/chat/trace-export.test.ts` |
 | 思考面板三级展示 | 已实装：默认折叠；展开后先显示前 400 字 + 省略号与「共 N 字」；超过 400 字再给「展开完整推理」按钮显示全文，折叠时重置全文态 | ✅ | `components/chat/ChatList.tsx` |
 | 动态 import / Suspense | 部分 | 🟡 | — |
-| 关键测试 + CI | 测试 42 文件 / 457 用例（2026-11-14 实测，原记 40 文件 / 431 用例、36 文件 / 400 用例、30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
+| 关键测试 + CI | 测试 42 文件 / 468 用例（2026-11-14 实测，原记 42 文件 / 457 用例、40 文件 / 431 用例、36 文件 / 400 用例、30 文件 / 352 用例、更早 26 文件 / 310 用例），`npm test` 全过；CI 已接：push / PR 到 `dev`、`main`，lint → tsc → test → build → 8 项 smoke 共 15 step，本地同序预演全绿，CI 配置自 `5f57816` 起已在远端 `dev`，远端运行结论以 Actions 页为准 | ✅ | `test/`、`vitest.config.mts`、`.github/workflows/ci.yml` |
 | CSP 基础版 | 已实装，nonce/hash 挂账 | 🟡 | `next.config.ts` |
 | 移动端适配 | §2~§7 全部实装，含发送吸底例外（`handleSend` 无条件吸底一次，commit `cb2ecee`） | ✅ | `doc/mobile-ux.md` |
 

@@ -25,6 +25,7 @@ import {
   PSYCH_SUPPORT_MESSAGE,
 } from '@/lib/safety/messages';
 import { checkInputSafety, loadWordlist } from '@/lib/safety/wordlist';
+import type { OcrEngine } from '@/lib/settings/types';
 import { finalizeTrace, recordEvent, startTrace } from '@/lib/chat/trace';
 import type { TraceBlocked } from '@/lib/chat/trace';
 import type { TokenUsage } from '@/lib/provider/types';
@@ -169,10 +170,12 @@ export interface SendOptions {
   /**
    * 【legacy，2026-11-14 起新发送不再写入】本条消息 OCR 产物的发送形态
    * （doc/browser-local-ocr.md §6.2）：仅用于重发旧持久化会话里的混合档消息
-   * （regenerate/editAndResend 透传 ChatMsg.imageSendMode）。新发送缺省即
-   * 「有 ocrTexts 全本地」；混合档 UI 已下线，字段仅为旧数据重发保真保留
+   * （regenerate/editAndResend 透传 ChatMsg.imageSendMode）。混合档 UI 已下线，
+   * 字段仅为旧数据重发保真保留
    */
   imageSendMode?: 'local-only' | 'mixed';
+  /** 本条消息 OCR 产物使用的识别引擎：随消息落库，供徽章与导出按引擎区分文案 */
+  ocrEngine?: OcrEngine;
 }
 
 export function useChat(selectedModel: string) {
@@ -432,7 +435,7 @@ export function useChat(selectedModel: string) {
         setMessages(backfilled);
       }
 
-      // ocrTexts 与 images 一一对应：本地 OCR 转文字模式产物，随消息上行供服务端
+      // ocrTexts 与 images 一一对应：OCR 转文字模式产物，随消息上行供服务端
       // 以文本块拼进正文（doc/browser-local-ocr.md §6.2）；images 保留在本地用于气泡展示
       const userMsg: ChatMsg = {
         role: 'user',
@@ -440,6 +443,9 @@ export function useChat(selectedModel: string) {
         images,
         files,
         ...(ocrTexts && ocrTexts.length > 0 ? { ocrTexts } : {}),
+        ...(ocrTexts && ocrTexts.length > 0 && options?.ocrEngine
+          ? { ocrEngine: options.ocrEngine }
+          : {}),
         ...(ocrTexts && ocrTexts.length > 0 && options?.imageSendMode
           ? { imageSendMode: options.imageSendMode }
           : {}),
@@ -768,7 +774,10 @@ export function useChat(selectedModel: string) {
       source.images ?? [],
       source.files ?? [],
       source.ocrTexts,
-      source.imageSendMode ? { imageSendMode: source.imageSendMode } : undefined
+      // 引擎随 ocrTexts 一并保真：重发不做新转写，产物引擎仍是原来那个
+      source.imageSendMode || source.ocrEngine
+        ? { imageSendMode: source.imageSendMode, ocrEngine: source.ocrEngine }
+        : undefined
     );
   }, [loading, sendMessage]);
 
@@ -791,7 +800,9 @@ export function useChat(selectedModel: string) {
         target.images ?? [],
         target.files ?? [],
         target.ocrTexts,
-        target.imageSendMode ? { imageSendMode: target.imageSendMode } : undefined
+        target.imageSendMode || target.ocrEngine
+          ? { imageSendMode: target.imageSendMode, ocrEngine: target.ocrEngine }
+          : undefined
       );
     },
     [loading, sendMessage]
