@@ -8,7 +8,7 @@ import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
-import { getUserId } from '@/lib/client-id';
+import { generateId, getUserId } from '@/lib/client-id';
 // 单题结果与聊天同为模型输出（受上传文件抽出文本影响），必须走同一套渲染+净化管线，
 // 插件顺序约束见 lib/markdown/sanitize.ts 头注
 import ReactMarkdown from 'react-markdown';
@@ -144,7 +144,9 @@ export default function UploadArea() {
       incoming.map(async (file) => {
         const detected = await detectFile(file);
         const row: Row = {
-          id: crypto.randomUUID(),
+          // generateId 带非 secure context 降级：裸调 crypto.randomUUID 在局域网 http 下
+          // 抛 TypeError，且 addFiles 的 rejection 被 handleFileSelect 静默吞掉（2026-11-14）
+          id: generateId(),
           name: file.name,
           category: 'origin',
           kind: detected.kind,
