@@ -18,6 +18,9 @@ import { SAVE_DEBOUNCE_MS, createSessionMeta } from '@/lib/history/types';
 import type { ExpiredImageRef, SessionMeta, SessionRecord } from '@/lib/history/types';
 import { useChatStore } from '@/store/useChatStore';
 import {
+  BLOCK_COOLDOWN_MS,
+  BLOCKED_USER_PLACEHOLDER,
+  blockCooldownMessage,
   CONTENT_BLOCKED_MESSAGE,
   HARD_BLOCK_MESSAGE,
   PSYCH_SUPPORT_MESSAGE,
@@ -200,6 +203,25 @@ export function useChat(selectedModel: string) {
   const renameSignal = useChatStore((s) => s.renameSignal);
   const renamedSession = useChatStore((s) => s.renamedSession);
   const seenRenameSignalRef = useRef(0);
+  // 连续拦截计数与冷却截止时间（同会话级，存内存；刷新页面即重置）。
+  // 语义：被拒内容靠「打标 + 占位替换」阻断原样重发，但用户可能换个说法反复试探，
+  // 因此连续 2 次拦截后进入 60s 冷却，冷却期内请求都不出端（doc/safety-design.md §4）
+  const blockStreakRef = useRef(0);
+  const cooldownUntilRef = useRef(0);
+
+  /** 记一次拦截；触及阈值即进入冷却并清零计数（避免冷却结束后一票否决） */
+  const noteBlock = useCallback(() => {
+    blockStreakRef.current += 1;
+    if (blockStreakRef.current >= 2) {
+      cooldownUntilRef.current = Date.now() + BLOCK_COOLDOWN_MS;
+      blockStreakRef.current = 0;
+    }
+  }, []);
+
+  /** 一次干净的往返（无拦截）即清零，避免历史拦截长期累积成冷却 */
+  const notePass = useCallback(() => {
+    blockStreakRef.current = 0;
+  }, []);
   // 本地检索开关（路由绝对权在使用者，默认关闭）；水合前读默认值即不检索
   const ragEnabled = useSettingsStore((s) => s.settings.rag.enabled);
   // 思考强度档位（doc/user-settings.md §2.1）：随每次请求上行
@@ -373,9 +395,23 @@ export function useChat(selectedModel: string) {
     async (text: string, images: string[], files: ChatTextFile[] = [], ocrTexts?: string[], options?: SendOptions) => {
       if ((!text.trim() && images.length === 0 && files.length === 0) || loading) return;
 
+      // 冷却期内直接挡在入口：被拒内容不出端，也不留待回答状态。
+      // 冷却只按时间自解，不做「倒计时刷新」——避免为了 UI 秒数引入定时器与额外渲染
+      if (Date.now() < cooldownUntilRef.current) {
+        const leftSec = (cooldownUntilRef.current - Date.now()) / 1000;
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text, blocked: true },
+          { role: 'assistant', content: blockCooldownMessage(leftSec), localOnly: true },
+        ]);
+        return;
+      }
+
       // 输入侧本地前置过滤（safety-protocol.md §4，客户端优先：命中数据不出端）。
       // 只判纯文本输入；附件/OCR 产物不在词表范围（§4 语义判定交上游 + 形态归一）。
       // 命中即在本机挂提示气泡，不建立请求、不留待回答状态。
+      // 被拒的 user 消息打 blocked 标记：原文留在本机供用户回看「被拦了什么」，
+      // 但下一轮上行时替换为占位文本（doc/safety-design.md §4）
       const safety = checkInputSafety(text, loadWordlist());
       if (safety.level) {
         const notice: ChatMsg = {
@@ -383,7 +419,8 @@ export function useChat(selectedModel: string) {
           content: safety.level === 'psych' ? PSYCH_SUPPORT_MESSAGE : HARD_BLOCK_MESSAGE,
           localOnly: true,
         };
-        setMessages((prev) => [...prev, { role: 'user', content: text }, notice]);
+        setMessages((prev) => [...prev, { role: 'user', content: text, blocked: true }, notice]);
+        noteBlock();
         return;
       }
 
@@ -484,17 +521,24 @@ export function useChat(selectedModel: string) {
             // 图片与文本文件随所属消息上行，由服务端组装（图片转多模态、文本拼进正文）；
             // OCR 模式消息只上行 imageTexts，图片本体不再出浏览器（省带宽且符合隐私语义）
             messages: history
-              .filter((m) => !m.localOnly && !m.blocked)
-              .map((m) => ({
-                role: m.role,
-                content: m.content,
-                // 【legacy 分支保留】旧混合档消息（imageSendMode==='mixed'）重发时原图仍随行，
-                // 不丢历史内容；新发送不再产出该形态。全本地：仅 imageTexts（图片仅本地展示）；
-                // 直传：仅原图（doc/browser-local-ocr.md §6.2）
-                images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
-                imageTexts: m.ocrTexts,
-                files: m.files,
-              })),
+              .filter((m) => !m.localOnly && !(m.blocked && m.role === 'assistant'))
+              .map((m) => {
+                // 被拦的 user 消息：保留角色交替但正文换占位、附件不上行。
+                // 直接过滤会让上游看到「assistant 有回答却无对应提问」的断裂历史
+                if (m.blocked) {
+                  return { role: m.role, content: BLOCKED_USER_PLACEHOLDER };
+                }
+                return {
+                  role: m.role,
+                  content: m.content,
+                  // 【legacy 分支保留】旧混合档消息（imageSendMode==='mixed'）重发时原图仍随行，
+                  // 不丢历史内容；新发送不再产出该形态。全本地：仅 imageTexts（图片仅本地展示）；
+                  // 直传：仅原图（doc/browser-local-ocr.md §6.2）
+                  images: m.imageSendMode === 'mixed' ? m.images : m.ocrTexts?.length ? undefined : m.images,
+                  imageTexts: m.ocrTexts,
+                  files: m.files,
+                };
+              }),
             // 本地检索命中片段（可能为 undefined：开关关闭/引擎未就绪/未命中）
             ragContexts,
             // 诊断负载（可能为 undefined：无会话且未开诊断模式即普通聊天）
@@ -529,6 +573,19 @@ export function useChat(selectedModel: string) {
                 const next = [...prev];
                 const i = next.length - 1;
                 if (i >= 0) next[i] = updater(next[i]);
+                return next;
+              });
+            };
+            // 给「最近一条还没打标的 user 消息」补 blocked：被拒内容不再原样上行，
+            // 但气泡保留原文，用户能看清是哪条被拦（doc/safety-design.md §4）
+            const markLastUserBlocked = () => {
+              setMessages((prev) => {
+                const next = [...prev];
+                for (let i = next.length - 1; i >= 0; i -= 1) {
+                  if (next[i].role !== 'user') continue;
+                  if (!next[i].blocked) next[i] = { ...next[i], blocked: true };
+                  break;
+                }
                 return next;
               });
             };
@@ -585,6 +642,8 @@ export function useChat(selectedModel: string) {
               // 精确用量：上游返回才有，缺省表示「上游未提供」而不是 0 token
               const usage = parseTraceUsage(parsed.data.usage);
               if (usage) trace.usage = usage;
+              // 干净的往返：清掉连续拦截计数（冷却只认「连续」，不认历史总账）
+              notePass();
               finished = true;
               break;
             } else if (parsed.event === 'error') {
@@ -601,10 +660,29 @@ export function useChat(selectedModel: string) {
                 trace.blocked = blockedInfo;
                 recordEvent(trace, 'blocked', blockedInfo);
                 // 上游拦截（§2/§3.1）：丢弃已流出片段，展示固定说明并标记 blocked——
-                // 本条消息不进入下一轮上行历史（客户端侧回滚）
+                // 本条 assistant 不回上行历史；对应的 user 提问原文同样打标后不再上行
+                markLastUserBlocked();
+                noteBlock();
                 appendAssistant((m) => ({
                   ...m,
                   content: CONTENT_BLOCKED_MESSAGE,
+                  blocked: true,
+                }));
+              } else if (parsed.data.code === 'input_blocked') {
+                // 服务端输入兜底（doc/safety-design.md §3）：客户端漏判/被绕过时由服务端拦下。
+                // 处置与本地硬拦截一致（同一话术、同样打标），区别只是证据留在服务端
+                const blockedInfo: TraceBlocked = {
+                  signal: 'input_guard',
+                  code: 'input_blocked',
+                  ...(typeof parsed.data.category === 'string' ? { category: parsed.data.category } : {}),
+                };
+                trace.blocked = blockedInfo;
+                recordEvent(trace, 'blocked', blockedInfo);
+                markLastUserBlocked();
+                noteBlock();
+                appendAssistant((m) => ({
+                  ...m,
+                  content: HARD_BLOCK_MESSAGE,
                   blocked: true,
                 }));
               } else {
@@ -652,7 +730,7 @@ export function useChat(selectedModel: string) {
         scheduleSave();
       }
     },
-    [loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave]
+    [loading, selectedModel, ragEnabled, diagnoseContext, thinkingEffort, scheduleSave, noteBlock, notePass]
   );
 
   /**

@@ -50,6 +50,28 @@ export const CONTENT_BLOCKED_MESSAGE = [
   '- 换一种表述再试一次，或检查内容是否涉及敏感信息。',
 ].join('\n');
 
+/**
+ * 被拦内容的占位文本（上行替换用）。
+ *
+ * 为什么不是直接过滤掉这条消息：直接删会让请求里出现「assistant 有回答但找不到对应提问」的
+ * 断裂历史，上游模型与诊断状态机都会误读上下文。保留角色交替、只把正文换成占位，
+ * 既阻断原文上行，又不破坏对话结构；图片/文件同样不上行。
+ */
+export const BLOCKED_USER_PLACEHOLDER = '（该条消息未通过安全检查，内容已丢弃，请不要据此回答。）';
+
+/** 同会话连续拦截触发的冷却期（毫秒）：不是惩罚，是给用户一个停下来重述的机会 */
+export const BLOCK_COOLDOWN_MS = 60_000;
+
+/** 连续拦截 2 次后的入口拦截文案；remainingSec 用于倒计时展示 */
+export function blockCooldownMessage(remainingSec: number): string {
+  return [
+    '连续两条消息未通过安全检查，已暂停发送 60 秒。',
+    '',
+    `- 剩余约 ${Math.max(1, Math.ceil(remainingSec))} 秒后可继续；`,
+    '- 如需诊断错题，直接发送题目和你自己的作答即可。',
+  ].join('\n');
+}
+
 /** 普通聊天基础 system prompt：软引导（§5.2）+ 关怀转介模型侧兜底（§5.3）+ 含糊输入处置 */
 export const CHAT_BASE_SYSTEM_PROMPT = [
   '你是错题诊断助手（当前为普通对话模式）。若用户消息与学习、错题、学科问题无关：',

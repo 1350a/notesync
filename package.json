@@ -20,6 +20,7 @@
     "smoke:settings": "node --experimental-strip-types scripts/settings-smoke.ts",
     "smoke:ocr": "node --experimental-strip-types scripts/cloud-ocr-smoke.ts",
     "smoke:rag": "node --experimental-strip-types scripts/rag-smoke.ts",
+    "smoke:safety": "node --experimental-strip-types scripts/safety-smoke.ts",
     "ocr:assets": "node scripts/copy-ocr-assets.mjs",
     "local:assets": "node scripts/copy-local-models.mjs",
     "pdfjs:assets": "node scripts/copy-pdfjs-assets.mjs",

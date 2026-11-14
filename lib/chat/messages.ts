@@ -80,7 +80,13 @@ export interface ChatMsg {
    * 仅本地展示，不进入上行历史
    */
   localOnly?: boolean;
-  /** assistant 消息：被上游拦截（content_blocked）——展示固定说明且不进入上行历史（§3.1 回滚） */
+  /**
+   * assistant 消息：被上游拦截（content_blocked）——展示固定说明且不进入上行历史（§3.1 回滚）。
+   *
+   * user 消息：本条内容被安全链路拦下（本地词表/结构规则/提示注入、服务端 input_blocked、
+   * 或上游 content_blocked）。原文只留在本机用于展示「被拦了什么」，上行时替换为占位文本，
+   * 避免被拒内容在下一轮原样重发（doc/safety-design.md §4 拦截感知）。
+   */
   blocked?: boolean;
 }
 
