@@ -13,6 +13,7 @@
  *   服务端严格校验后采纳——模型是此时唯一看得到材料的证据来源。
  */
 import type { ProviderMessage } from '../provider/types.ts';
+import { attachmentCategories } from './category-tags.ts';
 import { deriveCompleteness } from './completeness.ts';
 import { isKnownErrorCode } from './error-causes.ts';
 import { checkAnswerQuote } from './guard.ts';
@@ -329,8 +330,9 @@ export function buildDiagnosisResult(parsed: ParsedSubmission, completeness: Dia
 
 /** 学生作答来源集合：wrong 类附件正文 + 最新一条用户文字（guard 判据的比对基准） */
 export function collectStudentSources(attachments: DiagnoseAttachment[], lastUserText: string): string[] {
+  // 多标签：只要该附件的任一标签命中 wrong 就算作答来源（不再只认单一 category）
   const sources = attachments
-    .filter((item) => item.category === 'wrong' && item.text && item.text.trim())
+    .filter((item) => attachmentCategories(item).includes('wrong') && item.text && item.text.trim())
     .map((item) => (item.text as string).trim());
   const typed = lastUserText.trim();
   if (typed) sources.push(typed);
@@ -340,10 +342,16 @@ export function collectStudentSources(attachments: DiagnoseAttachment[], lastUse
 /**
  * mathjs 机械判定证据文本：仅当 wrong 与 correct 两类附件都有正文时生成。
  * unverifiable 不注入（无信息量的证据只会稀释提示词）；文案按理念 3 标注来源与冲突处理口径。
+ * 多标签口径：标签集合含 wrong / correct 即可入选；仍按「取首份」处理（与多标签引入前一致），
+ * 因为机械判定只能比对一对答案，多份时先到先得，其余交由模型阅读。
  */
 export function buildVerifyEvidence(attachments: DiagnoseAttachment[]): string {
-  const wrong = attachments.find((item) => item.category === 'wrong' && item.text?.trim())?.text?.trim();
-  const correct = attachments.find((item) => item.category === 'correct' && item.text?.trim())?.text?.trim();
+  const wrong = attachments
+    .find((item) => attachmentCategories(item).includes('wrong') && item.text?.trim())
+    ?.text?.trim();
+  const correct = attachments
+    .find((item) => attachmentCategories(item).includes('correct') && item.text?.trim())
+    ?.text?.trim();
   if (!wrong || !correct) return '';
   const verdict = verifyAnswerEquivalence(wrong, correct);
   if (verdict.verdict === 'unverifiable') return '';
