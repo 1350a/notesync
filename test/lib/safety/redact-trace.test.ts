@@ -48,6 +48,11 @@ describe('redactTraceText — 内部字段名与常量名', () => {
     expect(redactTraceText(raw)).toBe(raw);
   });
 
+  it('普通英文单词 refused 不被抹（回归：曾当字段名把英文阅读文本改坏）', () => {
+    const raw = '字符题：句子 He refused to open the door 中的动词是 refused，它的原形是 refuse。';
+    expect(redactTraceText(raw)).toBe(raw);
+  });
+
   it('字段名紧挨中文时也能命中（\b 边界对中文失效，用非标识符边界）', () => {
     const out = redactTraceText('这里completeness字段取值为零');
     expect(out).not.toContain('completeness');

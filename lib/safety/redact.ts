@@ -113,7 +113,9 @@ const PROTECTED_SEGMENT_PATTERNS: RegExp[] = [
   /https?:\/\/[^\s"'<>）)]+/g, // 链接：脱敏不该改地址
 ];
 
-/** 内部字段名与工具名：命中即替换，避免把实现细节写进送审材料 */
+/** 内部字段名与工具名：命中即替换，避免把实现细节写进送审材料。
+ *  只收真标识符（camelCase/snake_case 形态）——普通英文词一律不入表：
+ *  `refused` 曾进表把英文阅读文本改成 [内部字段]（用户提问被改得不可读），已移除 */
 const INTERNAL_FIELD_TOKENS = [
   'completeness',
   'hintLevel',
@@ -131,7 +133,6 @@ const INTERNAL_FIELD_TOKENS = [
   'ragMinQueryChars',
   'maxAttachments',
   'completenessResult',
-  'refused',
 ];
 
 /** 协议/提示词常量名：属实现细节标识符，抹掉不影响推理可读性（条款原文不在此列） */
