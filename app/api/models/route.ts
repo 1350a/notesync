@@ -1,18 +1,39 @@
-import type { ModelsResponse } from "@/lib/types";
-import { getModelList } from "@/lib/provider";
-
 /**
  * GET /api/models
- * 薄路由：模型列表统一由 provider 聚合层返回。
- * - 有 DeepSeek key：返回 DeepSeek 云端模型（deepseek-flash / deepseek-v4-pro），
- *   ollama 可用时追加本地模型
- * - 无 key：返回本地 ollama 模型列表；ollama 未运行时返回 available=false 与友好提示
+ *
+ * 返回三家 Provider（DeepSeek / 智谱 / 自定义 OpenAI 兼容）的真实模型列表与健康状态：
+ *   { models, available, status, providers, message }
+ * - models：可请求的模型名（首项为该 Provider 默认选中项，已做 name:tag 归一）
+ * - status：ok / degraded / unauthorized / unconfigured 聚合结果
+ * - providers：每家 Provider 的明细状态与降级原因（前端分组与排障用）
+ * 结果带 30s 服务端缓存；GET /api/models?refresh=1 强制重新探测。
+ *
+ * 历史实现（聚合 ollama 模型列表）已注释保留在文件底部。
  */
-export async function GET() {
-  const result = await getModelList();
-  return Response.json({
-    models: result.models,
-    available: result.available,
-    message: result.message,
-  } satisfies ModelsResponse);
+import { getModelList } from "@/lib/provider";
+
+export async function GET(request: Request) {
+  // 匿名客户端标识（doc/user-settings.md §4）：仅日志追溯，不参与缓存/路由
+  console.log(`[models] client=${request.headers.get('x-client-id') ?? 'anonymous'}`);
+  const force = new URL(request.url).searchParams.get("refresh") === "1";
+  const result = await getModelList(force);
+  return Response.json(
+    {
+      models: result.models,
+      available: result.available,
+      status: result.status,
+      providers: result.providers,
+      message: result.message,
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
+
+/* =====================================================================
+ * 【历史遗留代码 - 已注释停用，保留原文便于恢复】
+ * 原实现（简易重构前 app/api/models/route.ts）：
+ * - import { getModelList } from "@/lib/provider";
+ * - GET 内直接返回 getModelList() 结果，旧 getModelList 会聚合 ollama
+ *   本地模型并探测 localhost:11434（available=false 时提示 ollama 未连接）。
+ * 简易重构后 getModelList 仅聚合云端三 provider，不再涉及 ollama。
+ * ===================================================================== */

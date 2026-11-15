@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD041 -->
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
@@ -8,11 +9,86 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## 项目规范
+## 1. Framework Facts
 
-- 双后端：配置 `DEEPSEEK_API_KEY` 时走 DeepSeek 云端（模型 `deepseek-flash`，base_url `https://api.deepseek.com`，Bearer 鉴权），否则回退本地 ollama（`http://localhost:11434`，`qwen2.5:7b`，无鉴权）；回退行为不可破坏，key 存 `.env.local`（已被 .gitignore 排除）
-- harness 协议：`/api/chat` 返回结构化响应——`phase=question` 时带 `questions` 追问列表（模型判断信息不足时主动向用户提问），`phase=answer` 时带 `content` 诊断内容；前端按 phase 渲染追问卡片并引导用户回答
-- provider 分层：模型调用在 `lib/provider/`（统一接口 + deepseek/ollama 两个实现），harness 编排在 `lib/harness/`；路由层只做薄转发
-- 图片：仅本轮新消息以 `image_url` 多模态上传，历史消息图片保留文本标注；单图 dataUrl >12MB 降级为文本标注；DeepSeek 请求体上限 48MiB
-- git：每写/改一个文件单独 `git add` + `git commit`（需单命令执行，一行多命令时 commit 会静默失效）；功能开发开新分支；commit message 说明文件用途
-- 构建：改代码后先 `npm run build` 通过再提交
+- This project runs on Next.js 16 (+ Turbopack) and React 19. Do not apply
+  knowledge of earlier Next.js versions.
+- Before writing any route handler, server component, or client component,
+  read the matching guide under `node_modules/next/dist/docs/`.
+
+## 2. Directory Boundaries
+
+| Path | Holds | Must not hold |
+|---|---|---|
+| `app/` | Routes, layouts, page composition | Business logic |
+| `app/api/*/route.ts` | Input validation + delegation | Logic longer than ~100 lines |
+| `components/ui/` | Business-agnostic primitives | Domain knowledge |
+| `components/<domain>/` | Components shared across routes | Page-specific markup |
+| `lib/` | All non-JSX logic (providers, domain services, prompts) | React components |
+| `store/` | Cross-component client UI state | Server-derived data |
+| `hooks/` | Hooks reused by more than one component | Single-use helpers |
+
+- A component used by exactly one route lives in `app/<route>/_components/`.
+- Components never call external APIs directly; all calls go through `lib/`.
+
+## 3. Type Discipline
+
+- `strict` stays enabled. Do not relax it to work around an error.
+- Do not use `any`. Use `unknown` and narrow it.
+- Do not use `@ts-ignore`. If genuinely unavoidable, use `@ts-expect-error`
+  with a reason on the same line.
+
+## 4. Design Rationale
+
+- Leave a short "why" comment at the point of any non-obvious decision —
+  a fallback path, a chosen limit, a workaround.
+- Do not comment what the code already says.
+
+## 5. Quality Gate
+
+- A change counts as complete only when both `npm run lint` and
+  `npm run build` exit with code 0.
+- Never report work as finished without having run both.
+- If either fails, fix it first; never run only one and call it done.
+
+## 6. Git Discipline
+
+- One commit per file. Do not bundle unrelated files in a single commit.
+  Exception: the code + test + doc of one single logical change may share a
+  commit when no part of it stands or passes the gate on its own.
+- Run `git add` and `git commit` as separate commands. Chaining them on one
+  line can make the commit silently fail.
+- Commit message format: `<type>(<scope>): <中文描述>`, where `<type>` is one
+  of `feat` | `fix` | `refactor` | `style` | `docs` | `test` | `chore` |
+  `revert`. Example: `fix: 修复了模型下拉框写死导致无法切换模型的问题`.
+- The description states what changed and why.
+- Full rules — type table, scope values, granularity, body and footer
+  keywords, forbidden files — live in `doc/git-commit-convention.md`.
+
+## 7. Secrets
+
+- API keys come from environment variables only.
+- Never hardcode a key, and never place one in client-side code or storage.
+- Keep `.env.example` in sync with the variables the code actually reads.
+
+## 8. Wiring Honesty
+
+- Do not ship UI that presents a capability which is not implemented.
+- An unwired control must be hidden or marked as unavailable.
+
+## 9. Protocol Pointer
+
+- Business protocols — diagnosis flow, API contracts, event schemas,
+  data models — belong in `doc/`, not here.
+- Changing a protocol requires updating the corresponding doc first,
+  then the code.
+
+## 10. Commit Convention Pointer
+
+- The binding commit rules live in `doc/git-commit-convention.md`.
+  Read it before your first commit in this repo.
+- It covers the message format and type prefixes, scope values, commit
+  granularity, body and footer keywords, and the list of files that must
+  never be committed.
+- §6 above is the short form; when the two disagree, the doc wins and §6
+  gets fixed in the same change.

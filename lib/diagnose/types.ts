@@ -1,0 +1,241 @@
+/**
+ * 诊断模式文件接入 - 共享类型
+ *
+ * 链路四段：detect（能不能收） → extract（取出内容） → assemble（拼模型消息） → send（POST /api/chat）
+ * 本文件只放类型定义，浏览器侧与 Node 冒烟脚本共用，不得引入运行时依赖。
+ */
+import type { ProviderMessage } from '../provider/types.ts';
+import type { OcrEngine } from '../settings/types.ts';
+
+/** 文件种类：图片 / PDF / Word / Office（pptx/xlsx/xls）/ 纯文本 / 无法识别 */
+export type DiagnoseKind = 'image' | 'pdf' | 'doc' | 'office' | 'text' | 'unsupported';
+
+/** 四类上传标签，UI 下拉与组装锚点一一对应 */
+export type ReviseCategory = 'origin' | 'wrong' | 'correct' | 'analysis';
+
+/** detect 判定结果 */
+export interface DetectResult {
+  kind: DiagnoseKind;
+  /** 本轮链路是否接得住；false 时 reason 必须是可直接展示给用户的中文原因 */
+  supported: boolean;
+  /** 归一后的 MIME（扩展名推断优先，缺失时用传入 MIME 兜底） */
+  mime: string;
+  /** 具体格式（魔数 / 扩展名判定结果），extract 按它选解析器（doc/file-intake.md §3） */
+  format?: string;
+  reason?: string;
+}
+
+/**
+ * 提取完成后的单个文件，同时是 /api/chat 请求体 attachments 的元素形态。
+ * 图片走 dataUrl，PDF/纯文本走 text；【legacy】混合形态（两者同时携带，`text` 为
+ * OCR 文本）2026-11-14 起新客户端不再产出，服务端判定仅为旧数据兼容保留。
+ */
+export interface DiagnoseAttachment {
+  name: string;
+  /**
+   * 该文件的全部标签（2026-11-15 起支持一个文件打多个标签）。
+   * 首项为主标签，决定组装分块与锚点计数；其余标签只写进文件描述行，
+   * 图片/文本身份仍只投喂一次。允许为空数组/缺省：服务端按 origin 兜底。
+   */
+  categories?: ReviseCategory[];
+  /**
+   * 【legacy】单标签形态，仅为旧客户端与旧数据兼容保留一版。
+   * 新代码读标签请用 category-tags.ts 的 attachmentCategories（自动兼容本字段）。
+   */
+  category?: ReviseCategory;
+  /** 图片 dataUrl，形如 data:image/png;base64,... */
+  dataUrl?: string;
+  /** PDF / 纯文本提取出的正文 */
+  text?: string;
+  /** 提取阶段的降级原因；单文件失败不阻断整批组装 */
+  warning?: string;
+  /**
+   * 产出该 OCR 文本的引擎（doc/diagnose-file-intake.md §5）：组装标签按它标注
+   * 「云端OCR/本地OCR」；缺省视为旧客户端，按中性「OCR」标注
+   */
+  ocrEngine?: OcrEngine;
+}
+
+/**
+ * 图片投喂方式：
+ * - `multimodal` 原图直传（附件只带 dataUrl）；
+ * - `text-only` 模型不收图，图片退化为文字占位（有 OCR 文本时用 OCR 文本代替占位）；
+ * - `mixed` 【legacy】旧混合档（doc/diagnose-file-intake.md §6）：OCR 文本打底 + 原图补充，
+ *   2026-11-14 起客户端不再产出，仅为旧数据兼容保留。
+ */
+export type AssembleImageMode = 'multimodal' | 'text-only' | 'mixed';
+
+export interface AssembleOptions {
+  /** 默认 multimodal */
+  imageMode?: AssembleImageMode;
+  /** 图片张数上限，默认 4；超出部分丢弃并记 warning */
+  maxImages?: number;
+  /** 文本总字符预算，按参与文件数均分，默认 8000 */
+  totalChars?: number;
+  /** 均分后单文件下限，默认 200 */
+  minCharsPerFile?: number;
+}
+
+export interface AssembleStats {
+  /** 实际投喂给模型的图片张数 */
+  images: number;
+  /** 实际投喂的文本块数 */
+  texts: number;
+  /** 实际占用字符数 */
+  chars: number;
+}
+
+export interface AssembleResult {
+  /** 组装出的单条 user 消息；无任何有效内容时为 null */
+  message: ProviderMessage | null;
+  stats: AssembleStats;
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// 诊断核心契约（diagnosis-model.md §4.1/§6 + agent-workflow.md §2）
+// 接口形状为硬项：字段变更须同批更新对应文档。
+// ---------------------------------------------------------------------------
+
+import type { ErrorCode } from './error-causes.ts';
+
+/** 策略卡：错因 → 干预策略，直查不检索（diagnosis-model.md §4.1） */
+export interface StrategyCard {
+  /** 对应错因表的 code（§3） */
+  errorCode: ErrorCode;
+  /** 稳定标识，供前端与统计引用；不含版本号，版本由 version 字段独立表达 */
+  id: string;
+  /** 3~5 条可执行动作 */
+  steps: string[];
+  subject: 'math';
+  /** 结构变更时递增，历史结论需可比 */
+  version: number;
+}
+
+/** 完整度四要素（diagnosis-model.md §1.1：仅 hasProblem 必需；hasAnalysis 只留痕，不参与门槛判定） */
+export interface DiagnosisCompleteness {
+  hasProblem: boolean;
+  hasStudentAnswer: boolean;
+  hasCorrectAnswer: boolean;
+  hasAnalysis: boolean;
+}
+
+/** 单次归因引用：主错因 1 个必带置信度，最多再加 1 个次错因（§3.1） */
+export interface ErrorCauseRef {
+  code: ErrorCode;
+  /** 0~1，模型自评；判定依据待实测（§8 待办） */
+  confidence: number;
+}
+
+/** 提示阶梯单级（§5）；「完整解」不在枚举内——仅用户明确索取时输出，不进结构 */
+export interface HintStep {
+  level: 1 | 2 | 3;
+  content: string;
+}
+
+/** 诊断输出结构（diagnosis-model.md §6）；对话模式与整卷模式共用，差别只在渲染层 */
+export interface DiagnosisResult {
+  subject: 'math';
+  level: 'L1' | 'L2';
+  completeness: DiagnosisCompleteness;
+  /** 考点，1~3 条 */
+  knowledgePoints: string[];
+  /** L1 时为 null，不硬编错因 */
+  errorCause: ErrorCauseRef | null;
+  secondaryErrorCause?: ErrorCauseRef;
+  /** L2 才有；服务端按 errorCause.code 从策略卡常量表直查注入，模型不产卡 */
+  strategy: StrategyCard | null;
+  hints: HintStep[];
+  /** 如「未提供作答，本次不做错因归因」 */
+  notes?: string;
+  /** 与策略卡表 STRATEGY_VERSION 对齐 */
+  strategyVersion: number;
+}
+
+/** 诊断状态机七状态（agent-workflow.md §2 裁剪：strategize 并入 diagnose——策略卡按错因直查，独立状态不产生新输入） */
+export type DiagnoseState =
+  | 'intake' // 收题：判定有无原题、是否数学
+  | 'clarify' // 补问：作答缺失或置信度不足时追问（有预算）
+  | 'diagnose' // L2 归因，策略卡组装并入此状态
+  | 'explain' // 提示阶梯输出与掌握度回路
+  | 'L1_only' // 拒绝补充/预算耗尽：只出题目画像 + 声明
+  | 'reject' // 非数学题：固定话术 + 能力说明
+  | 'done';
+
+/** 学科标识；v1 仅数学，多学科时在此扩联合（product-vision.md §2 非目标） */
+export type DiagnoseSubject = 'math';
+
+/**
+ * 状态机上下文。服务端无会话，历史由前端全量上送，
+ * 本结构由客户端持久（随 ChatMsg 存）并在每次请求时携带，服务端严格校验。
+ */
+export interface DiagnoseContext {
+  subject: DiagnoseSubject;
+  state: DiagnoseState;
+  /** 已消耗追问轮次（初始补问与置信度不足回炉同计），达预算强制收敛（agent-workflow.md §4.1） */
+  clarifyUsed: number;
+  /** explain 当前所处提示阶梯层级，逐级下降用 */
+  hintLevel: 1 | 2 | 3;
+}
+
+/** 状态机输入事件；实现为纯函数，迁移语义见 agent-workflow.md §2 迁移表 */
+export type DiagnoseEvent =
+  /** intake 完成：有无原题、是否数学题 */
+  | { type: 'intake_done'; hasProblem: boolean; isMath: boolean }
+  /** clarify 一轮结束：是否拿到作答 / 用户是否明确拒绝补充 */
+  | { type: 'clarify_done'; hasAnswer: boolean; refused: boolean }
+  /**
+   * diagnose 完成，三态出口：
+   * confident 达标进 explain；low_confidence 预算有余回 clarify 一次、耗尽走低置信输出；
+   * guard_failed 作答引用判据两试不过，降级 L1（diagnosis-model.md §7.3）
+   */
+  | { type: 'diagnosis_done'; outcome: 'confident' | 'low_confidence' | 'guard_failed' }
+  /** explain：用户点「继续」或「还不懂」→ 降一级 */
+  | { type: 'hint_descend' }
+  /** explain：用户点「明白了」→ done */
+  | { type: 'mastered' }
+  /** 用户明确终止或转换话题：任何状态都放行到 done，不纠缠 */
+  | { type: 'user_stop' }
+  /** L1_only / reject 输出完成 */
+  | { type: 'output_done' };
+
+/**
+ * 诊断模式请求负载（/api/chat 请求体 diagnose 字段，服务端经 runtime.parseDiagnosePayload 严格校验）。
+ * context 由客户端持久并回传；event 仅限「模型调用前就能确定」的白名单——
+ * intake_done / diagnosis_done / output_done 由服务端在响应后自行推导，客户端不得伪造。
+ */
+export type DiagnoseRequestEvent =
+  | { type: 'clarify_done'; hasAnswer: boolean; refused: boolean }
+  | { type: 'hint_descend' }
+  | { type: 'mastered' }
+  | { type: 'user_stop' };
+
+export interface DiagnoseRequestPayload {
+  context?: DiagnoseContext;
+  event?: DiagnoseRequestEvent;
+}
+
+/** 整卷结果面板的步骤条目（doc/diagnose-paper.md §3 paper_step） */
+export interface PaperStep {
+  text: string;
+  /** 进度口径文案（服务端下发，如「阶段 1/4」「第 2/3 组」），避免分母与上传文件数混读 */
+  progress?: string;
+  /** 终止态步骤：流程在此中断（切题失败等），渲染为警示色 */
+  status?: 'failed';
+}
+
+/** 整卷切题分类后一组共享诊断的结果（同类题只诊断一次，doc/diagnose-paper.md §4） */
+export interface PaperGroupResult {
+  result: DiagnosisResult;
+  questionNumbers: string[];
+  groupCode: string;
+}
+
+/** 整卷诊断结果面板的完整视图态（PaperResultPanel 渲染输入；doc/diagnose-paper.md §8 暂存快照同形状） */
+export interface PaperViewState {
+  steps: PaperStep[];
+  results: PaperGroupResult[];
+  summary: string;
+  /** 流程已中断：任一 error 终止后置真，标题明确标注「已中断」，不再有「处理中」观感 */
+  interrupted?: boolean;
+}
