@@ -71,7 +71,7 @@ data: {"code":"content_blocked","error":"...","model":"...","provider":"..."}
 
 | 步 | 动作 | 调用 | 说明 |
 |---|---|---|---|
-| ① 切题 | 附件材料 → 题号 / 题干 / 作答 / 题型 | 1 次，结构化 JSON | `buildSplitPrompt` + `parseSplitResultDetailed`。**切题请求必须携带 `assembleDiagnoseMessage` 组装出的多模态消息 `assembled.message`**：图片本体以 `image_url` parts 上行，或由附件自带的 OCR 文本承载，二者至少有其一；**禁止**把消息拍平成纯文本占位（`[图片]`）后送模型——原图直传档下那等于让模型凭空切题 |
+| ① 切题 | 附件材料 → 题号 / 题干 / 作答 / 题型 | 1 次，结构化 JSON | `buildSplitPrompt` + `parseSplitResultDetailed`。**切题请求必须携带 `assembleDiagnoseMessage` 组装出的多模态消息 `assembled.message`**：图片本体以 `image_url` parts 上行，或由附件自带的 OCR 文本承载，二者至少有其一；**禁止**把消息拍平成纯文本占位（`[图片]`）后送模型——原图直传档下那等于让模型凭空切题。**JSON 口径必须与 `response_format=json_object` 一致**：提示词要求输出 `{"questions":[...]}` 对象外壳（禁止要求"顶层数组"，二者互斥会让模型折中产出各种外壳）；解析侧 `parseSplitResultDetailed` 兼容 `questions`/`data`/`result`/`items`/`list` 等单键数组外壳，同时保留裸数组，键名不识别而只有一个数组值时兜底取用 |
 | ② 分类 | 每题打错因候选标签 | 0 次 | `classifyQuestions` 本地关键词规则，不花 token |
 | ③ 同类共享诊断 | 同一错因组只诊断一次 | 每组 1 次 | `buildGroupDiagnosePrompt`，组内共享同一结论 |
 | ④ 汇总 | 逐组引用 + 全局统计 | 1 次 | `buildSummaryPrompt`，产出 `content` 事件 |

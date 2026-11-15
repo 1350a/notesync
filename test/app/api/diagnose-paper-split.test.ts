@@ -125,4 +125,22 @@ describe('整卷诊断切题取材（真实编排分支）', () => {
     const warnCalls = warnSpy.mock.calls as unknown[][];
     expect(warnCalls.some((call) => String(call[0]).includes('切题失败 reason=empty'))).toBe(true);
   });
+
+  it('切题返回 {"questions":[...]} 对象外壳时可直接推进（回归：曾恒判 not_array）', async () => {
+    stub.completeDetailed
+      .mockResolvedValueOnce({
+        content: '{"questions":[{"number":"1","stem":"解方程 x+1=2"}]}',
+        finishReason: 'stop',
+      })
+      .mockResolvedValue({ content: '不是 JSON', finishReason: 'stop' });
+
+    const events = await readSse(
+      await post({ attachments: [{ name: '卷.txt', category: 'origin', text: '第一题 解方程' }] }),
+    );
+
+    expect(
+      events.some((e) => e.event === 'paper_step' && String(e.data.step).includes('切题完成：1 题')),
+    ).toBe(true);
+    expect(events.some((e) => e.event === 'error' && e.data.code === 'provider_error')).toBe(false);
+  });
 });

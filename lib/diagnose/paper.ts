@@ -67,15 +67,41 @@ function collectQuestions(parsed: readonly unknown[]): PaperQuestion[] {
 }
 
 /**
+ * 题目数组在包装对象里的常见键名。切题请求走 `response_format=json_object`，
+ * 顶层必须是对象，所以提示词要求 `{"questions":[...]}`；这里额外兼容模型自带的
+ * `data` / `result` / `items` 等外层键，避免换个键名就把有效题目判成 `not_array`。
+ */
+const QUESTION_ARRAY_KEYS = ['questions', 'data', 'result', 'items', 'list', 'paper'] as const;
+
+/**
+ * 取出题目数组：裸数组原样返回；对象则取已知键里的第一个数组；
+ * 键名不认识时只在「恰好一个数组值」的情况下兜底采用，多个数组无法判定哪个是题目。
+ */
+function extractQuestionArray(parsed: unknown): readonly unknown[] | null {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== 'object') return null;
+  const record = parsed as Record<string, unknown>;
+  for (const key of QUESTION_ARRAY_KEYS) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+  }
+  const arrays = Object.values(record).filter((value) => Array.isArray(value));
+  return arrays.length === 1 ? (arrays[0] as readonly unknown[]) : null;
+}
+
+/**
  * 解析切题结果并给出失败原因：`not_json`（无 JSON 可截取或损坏）、
- * `not_array`（返回了对象等非列表）、`empty`（空数组）、`no_stem`（列表里没有可用的题干）。
+ * `not_array`（对象里没有题目数组，例如只有 error/说明文字）、
+ * `empty`（数组为空）、`no_stem`（数组里没有可用的题干）。
+ * 既接受裸数组，也接受 `{"questions":[...]}` 这类单键数组外壳。
  */
 export function parseSplitResultDetailed(raw: string): SplitParseOutcome {
   const parsed = parseJsonLoose(raw);
   if (parsed === null) return { ok: false, reason: 'not_json' };
-  if (!Array.isArray(parsed)) return { ok: false, reason: 'not_array' };
-  if (parsed.length === 0) return { ok: false, reason: 'empty' };
-  const questions = collectQuestions(parsed);
+  const list = extractQuestionArray(parsed);
+  if (!list) return { ok: false, reason: 'not_array' };
+  if (list.length === 0) return { ok: false, reason: 'empty' };
+  const questions = collectQuestions(list);
   if (questions.length === 0) return { ok: false, reason: 'no_stem' };
   return { ok: true, questions };
 }
@@ -122,12 +148,17 @@ export function classifyQuestions(questions: PaperQuestion[]): Array<{ code: Err
   return [...groups.entries()].map(([code, groupQuestions]) => ({ code, questions: groupQuestions }));
 }
 
-/** ① 切题提示词：要求只输出 JSON 数组（低任务密度，题干保真、不解题） */
+/**
+ * ① 切题提示词：要求只输出 `{"questions":[...]}` 对象（低任务密度，题干保真、不解题）。
+ * 顶层必须是对象——切题调用带 `response_format=json_object`，要求顶层为数组的提示词
+ * 与之冲突，模型会折中输出 `{"questions":[...]}` 之类外壳，旧版又只认裸数组 → 恒判 not_array。
+ */
 export function buildSplitPrompt(): string {
   return [
-    '你是试卷切题器。从材料中把每一道题切分出来，只输出 JSON 数组，不要输出任何其他内容。',
-    '每项形如 {"number":"题号","stem":"题干原文（含小问，保真转写）","answer":"学生作答（有则转写，无则省略）","type":"题型"}。',
-    '不要解题、不要批改、不要遗漏小题；材料里没有学生作答的题省略 answer 字段。',
+    '你是试卷切题器。从材料中把每一道题切分出来，只输出一个 JSON 对象，格式为：',
+    '{"questions":[{"number":"题号","stem":"题干原文（含小问，保真转写）","answer":"学生作答（有则转写，无则省略）","type":"题型"}]}',
+    'questions 是题目数组，材料里的每一道题都要切出，不要遗漏小题；不要输出 JSON 之外的任何内容。',
+    '不要解题、不要批改；材料里没有学生作答的题省略 answer 字段。',
   ].join('\n');
 }
 
