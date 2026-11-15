@@ -293,8 +293,8 @@ export default function UploadArea() {
         await consumeSse(res, (event, data) => {
           const p = data as {
             step?: string;
-            current?: number;
-            total?: number;
+            progress?: string;
+            status?: string;
             result?: DiagnosisResult;
             questionNumbers?: string[];
             groupCode?: string;
@@ -302,7 +302,13 @@ export default function UploadArea() {
             error?: string;
           };
           if (event === 'paper_step' && p.step) {
-            view.steps = [...view.steps, { text: p.step, current: p.current, total: p.total }];
+            const failed = p.status === 'failed';
+            view.steps = [
+              ...view.steps,
+              { text: p.step, progress: p.progress, status: failed ? 'failed' : undefined },
+            ];
+            // 服务端终止步骤（如「切题失败」）：整块进度立刻标为已中断，不留「处理中」观感
+            if (failed) view.interrupted = true;
             setPaperView({ ...view });
           } else if (event === 'diagnosis' && p.result) {
             view.results = [
@@ -314,6 +320,9 @@ export default function UploadArea() {
             view.summary += p.delta;
             setPaperView({ ...view });
           } else if (event === 'error') {
+            // 兜底：即便服务端没发终止步骤，error 也是流程终点，不能继续显示为进行中
+            view.interrupted = true;
+            setPaperView({ ...view });
             setError(p.error ?? '整卷诊断失败');
           }
         });

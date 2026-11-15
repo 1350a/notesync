@@ -42,7 +42,7 @@ interface PaperRequest {
 
 ```
 event: paper_step
-data: {"step":"切题中…","current":1,"total":4}
+data: {"step":"切题中…","progress":"阶段 1/4"}
 
 event: diagnosis
 data: {"result":{...},"questionNumbers":["第1题","第3题"],"groupCode":"case_miss"}
@@ -59,13 +59,15 @@ data: {"code":"content_blocked","error":"...","model":"...","provider":"..."}
 
 | 事件 | 字段 | 语义 |
 |---|---|---|
-| `paper_step` | `step`（人读文案）、`detail?`、`current?`、`total?` | 步骤与分组进度。**跨阶段不可横向比较**：①②④ 阶段 `total` 固定 4，③ 分组阶段 `total` 为组数；前端只作进度条展示，不据此计算完成度 |
+| `paper_step` | `step`（人读文案）、`progress?`（进度口径文案）、`detail?`、`status?` | 步骤与分组进度。进度一律以**带口径前缀的字符串**下发，不用裸 `current/total`，避免分母被误读成上传文件数：阶段固定为 `阶段 i/4`（4 是四个固定阶段数，与附件数无关），分组为 `第 i/N 组`（N 是本次实际分组数）。**两套分母语义不同，跨阶段不可横向比较**。`status: "failed"` 表示流程在该步终止，前端据此把整个进度块标为「已中断」 |
 | `diagnosis` | `result`（`DiagnosisResult`）、`questionNumbers`、`groupCode` | 一组的共享诊断结论。结构复用单题卡片，前端同一套渲染 |
 | `content` | `delta` | 汇总正文，一次发出（非增量） |
 | `done` | `finishReason` 恒为 `"paper"`、`stats` | 正常收尾，见 §6 |
 | `error` | `code`、`error`（人读文案）、`model?`、`provider?` | 失败；`model` / `provider` 仅在 `content_blocked` 时携带 |
 
 事件顺序：若干 `paper_step` → 若干 `diagnosis`（0 到组数条）→ 可选 `content` → `done`；任何 `error` 之后不再有其他事件。
+
+**失败必发终态步骤**：每个 `error` 分支都必须在其之前补发一条 `paper_step`（`status: "failed"`，文案形如「切题失败（流程已中断）」），前端收到后立即把进度块标为「已中断」。禁止只发 `error` 就 `return`——那样前端会停在「切题中…（阶段 1/4）」的处理中观感上。
 
 ## 4. 四步流程与调用预算
 

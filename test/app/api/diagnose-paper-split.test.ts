@@ -126,6 +126,24 @@ describe('整卷诊断切题取材（真实编排分支）', () => {
     expect(warnCalls.some((call) => String(call[0]).includes('切题失败 reason=empty'))).toBe(true);
   });
 
+  it('切题失败补发明示终态的 paper_step（status=failed），进度不再停在「切题中…」', async () => {
+    stub.completeDetailed.mockResolvedValue({ content: '{"error":"无法识别题面"}', finishReason: 'stop' });
+
+    const events = await readSse(
+      await post({ attachments: [{ name: '卷.txt', category: 'origin', text: '第一题 解方程' }] }),
+    );
+
+    const steps = events.filter((e) => e.event === 'paper_step');
+    const lastStep = steps[steps.length - 1];
+    expect(lastStep.data.status).toBe('failed');
+    expect(String(lastStep.data.step)).toContain('切题失败');
+    // 终态步骤必须先于 error 下发，前端才能同时标记「已中断」并展示错误原因
+    const lastStepIndex = events.lastIndexOf(lastStep);
+    const errorIndex = events.findIndex((e) => e.event === 'error');
+    expect(lastStepIndex).toBeLessThan(errorIndex);
+    expect(events.some((e) => e.event === 'done')).toBe(false);
+  });
+
   it('切题返回 {"questions":[...]} 对象外壳时可直接推进（回归：曾恒判 not_array）', async () => {
     stub.completeDetailed
       .mockResolvedValueOnce({
