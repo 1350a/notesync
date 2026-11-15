@@ -3,7 +3,7 @@
  *
  * OpenAI 兼容端点 /chat/completions，Bearer 鉴权；支持 GET /models 在线枚举。
  * 配置通过环境变量注入（.env.local）：
- *   DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL
+ *   DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL / DEEPSEEK_SAFETY_CHECK
  */
 import { OpenAICompatProvider, PROBE_TIMEOUT_CLOUD } from "./openaiCompat";
 
@@ -13,6 +13,18 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 /** DeepSeek 首选模型（可选，经环境变量覆盖/附加） */
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "";
+
+/**
+ * 服务端内容安全审核档位（safety-protocol.md §3.2，DEEPSEEK_SAFETY_CHECK）。
+ * `high` 开启；`low` / `off` / 未配置 = 不发送（行为与不传一致）。
+ * 与 USER_FIELD_ENABLED 等开关同口径：严格字符串比较，不归一大小写——
+ * 填错的留痕在 lib/config/env.ts validateEnv，这里只按认可值收敛。
+ */
+export function resolveSafetyCheck(
+  raw: string | undefined,
+): 'low' | 'high' | undefined {
+  return raw === 'low' || raw === 'high' ? raw : undefined;
+}
 
 /**
  * DeepSeek 现行模型名（官方价目表口径）。
@@ -36,6 +48,8 @@ export class DeepSeekProvider extends OpenAICompatProvider {
       displayName: "DeepSeek",
       probeEnabled: true,
       probeTimeoutMs: PROBE_TIMEOUT_CLOUD,
+      // 服务端内容安全审核（safety-protocol.md §3.2）：默认不发送，DEEPSEEK_SAFETY_CHECK=high 开启
+      safetyCheck: resolveSafetyCheck(process.env.DEEPSEEK_SAFETY_CHECK),
     });
   }
 
