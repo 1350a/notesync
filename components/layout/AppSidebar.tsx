@@ -7,7 +7,7 @@ import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useChatStore } from '@/store/useChatStore';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -40,6 +40,8 @@ function SidebarContent() {
   const historySupported = useChatStore((s) => s.historySupported);
   const openSession = useChatStore((s) => s.openSession);
   const startNewChat = useChatStore((s) => s.startNewChat);
+  const requestNewChat = useChatStore((s) => s.requestNewChat);
+  const router = useRouter();
   const removeSession = useChatStore((s) => s.removeSession);
   const renameSession = useChatStore((s) => s.renameSession);
   const setSidebarOpen = useChatStore((s) => s.setSidebarOpen);
@@ -66,16 +68,26 @@ function SidebarContent() {
 
   const handleOpen = useCallback(
     (id: string) => {
+      // 打开信号（useChat 的 seenOpenSignalRef 恒以 0 初始化）在跨路由挂载后仍会被消费：
+      // 其他页（批量诊断/本地能力）点击时先跳回 /chat 再发信号——此前静默失效（§7.4）
+      if (pathname !== '/chat') router.push('/chat');
       openSession(id);
       if (isMobile) setSidebarOpen(false);
     },
-    [openSession, isMobile, setSidebarOpen]
+    [openSession, isMobile, setSidebarOpen, pathname, router]
   );
 
   const handleNewChat = useCallback(() => {
-    startNewChat();
+    if (pathname !== '/chat') {
+      // 新建不能走 newChatSignal 通道：聊天页消费 ref 以当前值初始化，挂载前 bump 会被吞。
+      // 改走打开信号通道的空目标语义（requestNewChat = 不落盘丢弃，磁盘上最后一份落盘快照不受影响）
+      router.push('/chat');
+      requestNewChat();
+    } else {
+      startNewChat();
+    }
     if (isMobile) setSidebarOpen(false);
-  }, [startNewChat, isMobile, setSidebarOpen]);
+  }, [startNewChat, requestNewChat, isMobile, setSidebarOpen, pathname, router]);
 
   const handleDelete = useCallback(
     async (meta: SessionMeta) => {
