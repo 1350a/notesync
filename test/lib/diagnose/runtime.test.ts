@@ -325,6 +325,43 @@ describe('证据与来源收集', () => {
     expect(evidence).toContain('机械判定');
     expect(buildVerifyEvidence(attachments.slice(0, 2))).toBe('');
   });
+
+  it('多标签：任一标签命中 wrong 即进作答来源', () => {
+    const multi: DiagnoseAttachment[] = [
+      { name: '题与解.txt', categories: ['origin', 'wrong'], text: 'x=2' },
+    ];
+    expect(collectStudentSources(multi, '')).toEqual(['x=2']);
+  });
+
+  it('多标签：仅标注 correct 的附件不算学生作答', () => {
+    const multi: DiagnoseAttachment[] = [
+      { name: '答案.txt', categories: ['origin', 'correct'], text: 'x=±2' },
+    ];
+    expect(collectStudentSources(multi, '')).toEqual([]);
+  });
+
+  it('多标签：同一附件兼含 wrong 与 correct 时仍能出机械判定证据', () => {
+    const multi: DiagnoseAttachment[] = [
+      { name: '一图两写.txt', categories: ['wrong', 'correct'], text: 'x=2' },
+      { name: '订正.txt', categories: ['correct'], text: 'x=±2' },
+    ];
+    const evidence = buildVerifyEvidence(multi);
+    // 两侧都按「取首份」命中同一份文件，机械判定两个答案一致
+    expect(evidence).toContain('机械判定参考');
+    expect(evidence).toContain('两个答案等价');
+  });
+
+  it('多份同标签附件：证据仍取首份（与多标签引入前语义一致）', () => {
+    const many: DiagnoseAttachment[] = [
+      { name: '答1.txt', category: 'wrong', text: 'x=2' },
+      { name: '答2.txt', category: 'wrong', text: 'x=99' },
+      { name: '准答案.txt', category: 'correct', text: 'x=±2' },
+    ];
+    const evidence = buildVerifyEvidence(many);
+    // 首份错误答案「x=2」进证据；第二份「x=99」不参与机械比对
+    expect(evidence).toContain('x=2');
+    expect(evidence).not.toContain('x=99');
+  });
 });
 
 describe('finalizeDiagnosis 编排', () => {

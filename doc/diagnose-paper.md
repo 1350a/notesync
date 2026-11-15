@@ -33,6 +33,9 @@ interface PaperRequest {
 ```
 
 - `attachments` 的单项结构与校验规则完全复用 `diagnose-file-intake.md` §5（`parseAttachments`）。
+- 标签自 2026-11-15 起可多值（`categories?: ReviseCategory[]`，首项为主标签、决定组装分组与
+  锚点计数，其余标签只写进文件描述行；同一文件内容只投喂一次）；旧单值 `category` 字段保留一个
+  版本做兼容解析，未传标签按 `['origin']` 兜底。详见 `diagnose-file-intake.md` §2/§5。
 - `attachments` 缺失或全部无效 → 直接发 `error: no_content`，不进入流程。
 - `user` 取自 `getUserId()`（localStorage `notesync-user-id`，纯随机 UUID，见 `user-settings.md` §4.1），
   长度 > 64 时服务端丢弃该字段继续流程（不报错）；随 Provider 请求体转发，是否上行受 `USER_FIELD_ENABLED` 控制。

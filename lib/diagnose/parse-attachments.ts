@@ -2,9 +2,8 @@
  * /api/chat 与 /api/diagnose-paper 共用的请求附件校验（从 chat route 抽出）。
  * 非法项一律丢弃（附 console.warn 便于排查），不因一条脏数据让整批诊断失败。
  */
-import type { DiagnoseAttachment, ReviseCategory } from './types.ts';
-
-const CATEGORIES = new Set<ReviseCategory>(['origin', 'wrong', 'correct', 'analysis']);
+import { DEFAULT_CATEGORY, normalizeCategories } from './category-tags.ts';
+import type { DiagnoseAttachment } from './types.ts';
 
 /** 单张图片 dataUrl 上限（约 9MB 原图），超出直接丢弃，防止请求体撑爆内存 */
 export const MAX_DATA_URL = 12 * 1024 * 1024;
@@ -14,10 +13,22 @@ export const MAX_DATA_URL = 12 * 1024 * 1024;
  *
  * 单图体积已限（MAX_DATA_URL），但数组长度此前不限：一次 POST 塞几百条附件照样能把
  * 内存与组装耗时打满，而投喂侧本来只用其中少数（doc/diagnose-file-intake.md：图片
- * 投喂上限 4 张，超出降级为文字占位）。取 12 = 四类标签各 3 张，比投喂上限宽 3 倍，
- * 正常整卷够用；超量部分丢弃并留痕，不静默。
+ * 投喂上限 4 张，超出降级为文字占位）。取 12 = 投喂上限的 3 倍余量，正常整卷够用；
+ * 2026-11-15 标签改多值后仍按「文件条数」计，一个文件不管打几个标签都只算 1 条。
+ * 超量部分丢弃并留痕，不静默。
  */
 export const MAX_ATTACHMENTS = 12;
+
+/** 收集请求里的标签原始值：categories 在前（首项即主标签），旧 category 单值在后 */
+function collectRawTags(record: Record<string, unknown>): unknown[] {
+  const raw: unknown[] = [];
+  for (const field of [record.categories, record.category]) {
+    if (field === undefined) continue;
+    if (Array.isArray(field)) raw.push(...field);
+    else raw.push(field);
+  }
+  return raw;
+}
 
 export function parseAttachments(raw: unknown): DiagnoseAttachment[] {
   if (!Array.isArray(raw)) return [];
@@ -34,11 +45,20 @@ export function parseAttachments(raw: unknown): DiagnoseAttachment[] {
     if (!item || typeof item !== 'object') continue;
     const record = item as Record<string, unknown>;
     const name = typeof record.name === 'string' ? record.name.trim() : '';
-    const category = record.category;
-    if (!name || typeof category !== 'string' || !CATEGORIES.has(category as ReviseCategory)) {
-      console.warn('[diagnose] 丢弃非法附件：缺少文件名或分类不属于四类标签');
+    if (!name) {
+      console.warn('[diagnose] 丢弃非法附件：缺少文件名');
       continue;
     }
+    // 标签多值（2026-11-15）：新字段 categories 为主，旧字段 category 单值兼容。
+    // 非法项只剔除该项（一个脏标签不牵连整条附件）；全部非法仍整条丢弃；
+    // 完全没传标签则按 origin 兜底——前端允许不打标签，不能因此让整批上传失败。
+    const rawTags = collectRawTags(record);
+    const categories = normalizeCategories(rawTags);
+    if (categories.length === 0 && rawTags.length > 0) {
+      console.warn(`[diagnose] 丢弃非法附件：${name} 的标签全部不属于四类标签`);
+      continue;
+    }
+    const effectiveCategories = categories.length > 0 ? categories : [DEFAULT_CATEGORY];
 
     const rawUrl = typeof record.dataUrl === 'string' ? record.dataUrl : '';
     const dataUrl = rawUrl.startsWith('data:image/') ? rawUrl : undefined;
@@ -58,7 +78,9 @@ export function parseAttachments(raw: unknown): DiagnoseAttachment[] {
 
     out.push({
       name,
-      category: category as ReviseCategory,
+      categories: effectiveCategories,
+      // 【legacy】旧字段取主标签：仍按单值读的下游（旧客户端/旧数据）兼容期一版
+      category: effectiveCategories[0],
       dataUrl,
       text,
       warning: typeof record.warning === 'string' ? record.warning : undefined,
