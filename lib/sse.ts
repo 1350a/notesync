@@ -55,11 +55,16 @@ export function errorStream(data: {
   model?: string;
   provider?: string;
   available?: string[];
-  /** 拦截来源（§3 证据字段）：input_guard = 服务端输入兜底；finish_reason / content = 上游 */
-  signal?: 'input_guard' | 'finish_reason' | 'content';
+  /**
+   * 拦截来源（§3 证据字段）：input_guard = 服务端输入兜底；finish_reason / content = 上游；
+   * upstream_400 = 上游输入未过审 400（DeepSeek safety_check，§3.2）
+   */
+  signal?: 'input_guard' | 'finish_reason' | 'content' | 'upstream_400';
   /** 输入拦截命中类别（structure / injection / hardRisk），供前端打标与日志归因 */
   category?: string;
   reason?: string;
+  /** 上游拒答说明（DeepSeek delta.refusal / message.refusal，图片被拦时指出位置，§3.2） */
+  refusal?: string;
 }): Response {
   return new Response(sse('error', data), { headers: SSE_HEADERS });
 }
