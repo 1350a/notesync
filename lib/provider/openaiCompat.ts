@@ -35,6 +35,7 @@ import type {
   TokenUsage,
 } from './types.ts';
 import { MAX_ERROR_LOG_CHARS, extractUpstreamMessage, redactUpstreamText } from '../safety/redact.ts';
+import { UpstreamContentBlockedError } from './errors.ts';
 
 /**
  * 思考强度 → Provider 请求体参数映射（doc/user-settings.md §2.1，协议预留的两个参数名）。
@@ -99,6 +100,32 @@ export function mapMaxTokens(
 }
 
 /**
+ * DeepSeek 服务端内容安全审核档位 → 请求体 safety_check 字段的映射
+ * （safety-protocol.md §3.2，DeepSeek 2026-11-13 新增）。
+ * 返回 null 表示本次不携带该字段（未配置 / off = 不发送，行为与不传一致）。
+ * 仅声明了档位的 Provider 下发（DeepSeek 专属字段）；智谱 / 自定义端点不认识该字段，
+ * 可能被严格校验拒绝——分流在 config 层完成（OpenAICompatConfig.safetyCheck），
+ * 与 thinking / user / stream_options 的 provider 分流同口径。
+ */
+export function mapSafetyCheckParam(
+  safetyCheck: 'low' | 'high' | undefined,
+): Record<string, unknown> | null {
+  if (safetyCheck !== 'low' && safetyCheck !== 'high') return null;
+  return { safety_check: { level: safetyCheck } };
+}
+
+/**
+ * 上游 400 是否为内容安全审核拒绝（safety-protocol.md §3.2）。
+ * DeepSeek 开启 safety_check 后，输入未过审返回 400 + 固定短语
+ * "Content Exists Risk"；大小写不敏感匹配（D 级口径：实测后修正）。
+ * 命中后抛 UpstreamContentBlockedError，由上层归一为 content_blocked——
+ * 重试只会被再拦一次，不能落进可重试的 provider_error。
+ */
+export function isContentExistsRisk(status: number, errText: string): boolean {
+  return status === 400 && /content exists risk/i.test(errText);
+}
+
+/**
  * OpenAI usage 字段 → TokenUsage 归一。
  * 三种上游形态都要能吃：非流式顶层 usage、流式末尾 chunk 的 usage、
  * 以及完全不返回 usage 的实现（返回 undefined，交由调用方标记「上游未提供」）。
@@ -151,6 +178,12 @@ export interface OpenAICompatConfig {
   probeHealthOnly?: boolean;
   /** 枚举超时（ms，默认 PROBE_TIMEOUT_CLOUD） */
   probeTimeoutMs?: number;
+  /**
+   * 服务端内容安全审核档位（safety-protocol.md §3.2）：声明后才在请求体下发
+   * safety_check 字段。仅 DeepSeek 子类设置——智谱 / 自定义端点对未知字段
+   * 可能严格校验（同 thinking / user 分流口径）。
+   */
+  safetyCheck?: 'low' | 'high';
 }
 
 /** 归一模型名：去首尾空格 + 小写，用于名称比较 */
@@ -223,6 +256,7 @@ export class OpenAICompatProvider implements LLMProvider {
   private readonly probeEnabled: boolean;
   private readonly probeHealthOnly: boolean;
   private readonly probeTimeoutMs: number;
+  private readonly safetyCheck: 'low' | 'high' | undefined;
 
   constructor(config: OpenAICompatConfig) {
     this.name = config.name;
@@ -236,6 +270,7 @@ export class OpenAICompatProvider implements LLMProvider {
     this.probeEnabled = config.probeEnabled ?? false;
     this.probeHealthOnly = config.probeHealthOnly ?? false;
     this.probeTimeoutMs = config.probeTimeoutMs ?? PROBE_TIMEOUT_CLOUD;
+    this.safetyCheck = config.safetyCheck;
   }
 
   isAvailable(): boolean {
@@ -509,6 +544,10 @@ export class OpenAICompatProvider implements LLMProvider {
     if (stream && this.name === 'deepseek') {
       body.stream_options = { include_usage: true };
     }
+    // 服务端内容安全审核（safety-protocol.md §3.2）：仅声明了档位的 Provider 下发，
+    // 映射在 mapSafetyCheckParam（未配置 / off 不发送，行为与不传一致）
+    const safetyParam = mapSafetyCheckParam(this.safetyCheck);
+    if (safetyParam) Object.assign(body, safetyParam);
     if (options.tools) {
       body.tools = options.tools;
       if (options.toolChoice) body.tool_choice = options.toolChoice;
@@ -581,13 +620,33 @@ export class OpenAICompatProvider implements LLMProvider {
     }`;
   }
 
+  /**
+   * 响应级错误 → Error（completeRaw / streamRaw 的 !res.ok 分支共用）。
+   * DeepSeek 输入未过审（400 Content Exists Risk，safety-protocol.md §3.2）升级为
+   * UpstreamContentBlockedError——调用方按 instanceof 归一为 content_blocked 拦截链路，
+   * 不落进可重试的 provider_error（重试只会被再拦一次，§2）。
+   */
+  private errorFromResponse(status: number, errText: string): Error {
+    if (isContentExistsRisk(status, errText)) {
+      return new UpstreamContentBlockedError(this.errorMessage(status, errText), status);
+    }
+    return new Error(this.errorMessage(status, errText));
+  }
+
   /** 解析响应 message/delta 中的内容与思考过程（兼容 reasoning_content / reasoning） */
   private parseReasoning(
-    m: { content?: string; reasoning_content?: string; reasoning?: string } | undefined
-  ): { content: string; reasoning?: string } {
+    m: {
+      content?: string;
+      reasoning_content?: string;
+      reasoning?: string;
+      refusal?: string;
+    } | undefined
+  ): { content: string; reasoning?: string; refusal?: string } {
     const content = m?.content?.trim() || '';
     const reasoning = (m?.reasoning_content ?? m?.reasoning)?.trim() || '';
-    return { content, reasoning: reasoning || undefined };
+    // 拒答说明不 trim 掉空串形态：仅在非空时透出（图片被拦位置说明，§3.2）
+    const refusal = m?.refusal?.trim() || undefined;
+    return { content, reasoning: reasoning || undefined, refusal };
   }
 
   async complete(options: CompleteOptions): Promise<string> {
@@ -604,7 +663,7 @@ export class OpenAICompatProvider implements LLMProvider {
     const res = await this.post(options, false);
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new Error(this.errorMessage(res.status, errText));
+      throw this.errorFromResponse(res.status, errText);
     }
     const data = (await res.json()) as {
       choices?: {
@@ -612,6 +671,7 @@ export class OpenAICompatProvider implements LLMProvider {
           content?: string;
           reasoning_content?: string;
           reasoning?: string;
+          refusal?: string;
           tool_calls?: Array<{
             id: string;
             type: 'function';
@@ -662,7 +722,7 @@ export class OpenAICompatProvider implements LLMProvider {
     const res = await this.post(options, true);
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new Error(this.errorMessage(res.status, errText));
+      throw this.errorFromResponse(res.status, errText);
     }
     const reader = res.body?.getReader();
     if (!reader) throw new Error(`${this.displayName} 流式响应缺少 body`);
@@ -687,6 +747,7 @@ export class OpenAICompatProvider implements LLMProvider {
                 content?: string;
                 reasoning_content?: string;
                 reasoning?: string;
+                refusal?: string;
                 tool_calls?: Array<{
                   index: number;
                   id?: string;
@@ -716,6 +777,11 @@ export class OpenAICompatProvider implements LLMProvider {
           const reasoning = delta.reasoning_content ?? delta.reasoning;
           if (typeof reasoning === 'string' && reasoning.length > 0) {
             yield { reasoning };
+          }
+          // DeepSeek 拒答说明（safety-protocol §3.2）：随最后一个 chunk 的 delta.refusal 下发，
+          // 仅证据增强——拦截判定仍走 finish_reason 路径（见 lib/tools/loop.ts 的旁路捕获）
+          if (typeof delta.refusal === 'string' && delta.refusal.length > 0) {
+            yield { refusal: delta.refusal };
           }
           if (Array.isArray(delta.tool_calls)) {
             for (const tc of delta.tool_calls) {
