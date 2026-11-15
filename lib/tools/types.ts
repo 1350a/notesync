@@ -160,8 +160,15 @@ export type ToolLoopEvent =
   /**
    * 上游拦截（content_blocked）：本轮内容不回填历史、请求终止（safety-protocol.md §3.1 硬项）。
    * 循环内检测到即丢弃本轮 assistant 消息——被拒内容回传上游会再拦甚至触发冷却。
+   * signal 三态：finish_reason 异常值 / 拒绝性文本 / 输入未过审 400（§3.2，DeepSeek safety_check）。
    */
-  | { type: 'blocked'; signal: 'finish_reason' | 'content'; finishReason?: string }
+  | {
+      type: 'blocked';
+      signal: 'finish_reason' | 'content' | 'upstream_400';
+      finishReason?: string;
+      /** 上游拒答说明（DeepSeek delta.refusal，图片被拦时指出位置；§3.2 证据增强） */
+      refusal?: string;
+    }
   /**
    * code 标注错误类别：解析兜底失败为 parse_error，模型请求失败为 provider_error。
    * 未标注时由路由层兜底为 provider_error（doc/tool-protocol.md §8.1）。
