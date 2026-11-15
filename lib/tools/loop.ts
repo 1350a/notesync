@@ -13,6 +13,8 @@
  */
 // 相对路径而非 @ 别名：smoke:loop 用 node --experimental-strip-types 直跑，不解析 tsconfig 别名
 import { resolveNonNegativeInt } from '../config/env.ts';
+// UpstreamContentBlockedError 是值导入（instanceof 判定），同样走相对路径（smoke 直跑兼容）
+import { UpstreamContentBlockedError } from '../provider/errors.ts';
 import type { LLMProvider, ProviderMessage, StreamDelta, TokenUsage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
 import { invokeTool } from './invoke.ts';
@@ -123,6 +125,11 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
 
     const queue = new AsyncQueue<ToolLoopEvent>();
 
+    // 本轮拒答说明（DeepSeek delta.refusal，safety-protocol §3.2）：随最后一个 chunk 下发，
+    // 与 usage 同款旁路捕获（适配器公共签名不动）。逐轮声明而非跨轮累积——refusal 只对
+    // 终止轮的拦截有证据意义，旧轮残留挂到新轮的 blocked 上会造成错误归因。
+    let roundRefusal: string | undefined;
+
     // 将返回值直接从 Promise 中抛出，避免外部变量在闭包中赋值导致 TS 类型收窄为 never
     const processPromise = (async (): Promise<ExtractedToolCalls> => {
       try {
@@ -135,6 +142,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         const stream: AsyncGenerator<StreamDelta> = (async function* () {
           for await (const delta of rawStream) {
             if (delta.usage) usage = delta.usage;
+            if (delta.refusal) roundRefusal = delta.refusal;
             yield delta;
           }
         })();
@@ -157,6 +165,16 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
     try {
       callsData = await processPromise;
     } catch (err) {
+      // DeepSeek 输入未过审（400 Content Exists Risk，safety-protocol §3.2）：归一为拦截
+      // 而非普通报错——重试只会被再拦一次（§2 不可重试），且被拒输入不该走解析重试链路
+      if (err instanceof UpstreamContentBlockedError) {
+        yield {
+          type: 'blocked',
+          signal: 'upstream_400',
+          ...(roundRefusal ? { refusal: roundRefusal } : {}),
+        };
+        return;
+      }
       yield {
         type: 'error',
         code: 'provider_error',
@@ -172,6 +190,7 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
         type: 'blocked',
         signal: callsData.finishReason ? 'finish_reason' : 'content',
         finishReason: callsData.finishReason,
+        ...(roundRefusal ? { refusal: roundRefusal } : {}),
       };
       return;
     }
@@ -264,8 +283,10 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
       // 收敛请求是纯文本补全：直接消费增量，不走适配器（无工具语义，忽略 toolCall 分片）
       let convergeText = '';
       let convergeFinish: string | undefined;
+      let convergeRefusal: string | undefined;
       for await (const delta of stream) {
         if (delta.finishReason) convergeFinish = delta.finishReason;
+        if (delta.refusal) convergeRefusal = delta.refusal;
         if (delta.reasoning) yield { type: 'reasoning', delta: delta.reasoning };
         if (delta.content) {
           convergeText += delta.content;
@@ -278,10 +299,16 @@ export async function* runToolLoop(options: RunToolLoopOptions): AsyncGenerator<
           type: 'blocked',
           signal: convergeFinish ? 'finish_reason' : 'content',
           finishReason: convergeFinish,
+          ...(convergeRefusal ? { refusal: convergeRefusal } : {}),
         };
         return;
       }
     } catch (err) {
+      // 输入未过审（§3.2）同样按拦截归一：收敛请求的历史里可能带 tool_result 内容
+      if (err instanceof UpstreamContentBlockedError) {
+        yield { type: 'blocked', signal: 'upstream_400' };
+        return;
+      }
       yield {
         type: 'error',
         code: 'provider_error',
