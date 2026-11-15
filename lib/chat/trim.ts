@@ -6,6 +6,7 @@
  * 最新一条用户消息永不裁（当前题的输入）；system 消息由调用方注入、不在裁剪范围。
  * 服务端纯函数：route.ts 在 buildProviderMessages 之后、runToolLoop 之前调用。
  */
+import { resolveNonNegativeInt } from '../config/env.ts';
 import type { ProviderMessage } from '../provider/types.ts';
 
 /** 字符预算（约 12k token 量级；TRIM_BUDGET_CHARS 可覆盖，0=禁用裁剪） */
@@ -26,10 +27,9 @@ export interface TrimResult {
   trimmed: boolean;
 }
 
+/** 裁剪预算：缺失静默用默认，填了非法值回落默认并 warn 一次（doc/help-about-.env.md §5.1 / §9.1） */
 export function resolveTrimBudget(): number {
-  const parsed = parseInt(process.env.TRIM_BUDGET_CHARS || '', 10);
-  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-  return DEFAULT_TRIM_BUDGET_CHARS;
+  return resolveNonNegativeInt('TRIM_BUDGET_CHARS', DEFAULT_TRIM_BUDGET_CHARS);
 }
 
 /**

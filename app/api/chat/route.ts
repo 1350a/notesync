@@ -58,7 +58,7 @@ import {
 import { getModelList, resolveProvider } from '@/lib/provider';
 import type { ProviderMessage } from '@/lib/provider/types';
 import { estimateCost, logCost } from '@/lib/chat/cost';
-import { trimMessages } from '@/lib/chat/trim';
+import { DEFAULT_TRIM_BUDGET_CHARS, trimMessages } from '@/lib/chat/trim';
 import { mockStream } from '@/lib/mock/chat';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
 import { MAX_ERROR_LOG_CHARS, redactUpstreamText } from '@/lib/safety/redact';
@@ -67,7 +67,7 @@ import { checkInputSafety } from '@/lib/safety/wordlist';
 import { createAdapter } from '@/lib/tools/adapters';
 import { registerBuiltinTools } from '@/lib/tools/builtin';
 import { createSubmissionStore, createSubmitDiagnosisTool } from '@/lib/tools/builtin/submit_diagnosis';
-import { runToolLoop } from '@/lib/tools/loop';
+import { resolveToolMaxRounds, runToolLoop } from '@/lib/tools/loop';
 import { getEnabledTools } from '@/lib/tools/registry';
 import type { ToolMode } from '@/lib/tools/types';
 import {
@@ -100,7 +100,7 @@ function collectUserInputText(body: ChatRequestBody): string {
 /** 裁剪预算标签（日志用；trim.ts 的 resolveTrimBudget 是运行时值，这里只做展示） */
 function resolveTrimBudgetLabel(): string {
   const parsed = parseInt(process.env.TRIM_BUDGET_CHARS || '', 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : '24000(默认)';
+  return Number.isFinite(parsed) && parsed >= 0 ? String(parsed) : `${DEFAULT_TRIM_BUDGET_CHARS}(默认)`;
 }
 
 export async function POST(request: Request) {
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
   // 工具配置判断
   const toolsEnabled = process.env.TOOLS_ENABLED !== 'false';
   const baseTools = toolsEnabled ? getEnabledTools() : [];
-  const maxRounds = parseInt(process.env.TOOL_MAX_ROUNDS || '3', 10);
+  const maxRounds = resolveToolMaxRounds();
   // submit_diagnosis 是逐请求工厂件（提交存储随请求走，避免并发覆盖），不走注册表单例
   const submissionStore = createSubmissionStore();
   const tools = diagnose ? [...baseTools, createSubmitDiagnosisTool(submissionStore)] : baseTools;

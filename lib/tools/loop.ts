@@ -11,6 +11,7 @@
  * 6. 达到最大轮数仍未结束：追加 system 提示后做一次不带 tools 的收敛请求，
  *    finishReason 仍为 'max_rounds'（doc/tool-protocol.md §8.3）。
  */
+import { resolveNonNegativeInt } from '@/lib/config/env.ts';
 import type { LLMProvider, ProviderMessage, StreamDelta, TokenUsage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
 import { invokeTool } from './invoke.ts';
@@ -55,6 +56,19 @@ class AsyncQueue<T> {
       }
     }
   }
+}
+
+/** 工具循环最大轮数默认值（环境变量 `TOOL_MAX_ROUNDS` 缺失或非法时回落，doc/help-about-.env.md §4.2） */
+export const DEFAULT_TOOL_MAX_ROUNDS = 5;
+
+/**
+ * 解析单轮对话的工具循环最大轮数。
+ * 与 `lib/chat/trim.ts` 的 `resolveTrimBudget()` 共用 `resolveNonNegativeInt()`：
+ * 读环境变量 → 解析成功且非负则采用 → 否则回落常量并 warn 一次（doc/help-about-.env.md §4.2 / §9.1）。
+ * `0` 是合法值（一轮工具都不执行），只有 NaN / 负数才回落默认。
+ */
+export function resolveToolMaxRounds(): number {
+  return resolveNonNegativeInt('TOOL_MAX_ROUNDS', DEFAULT_TOOL_MAX_ROUNDS);
 }
 
 export interface RunToolLoopOptions {
