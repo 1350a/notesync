@@ -61,8 +61,9 @@ DeepSeek 开启 `safety_check`（§3.2）后虽有显式信号，但只把它当
 ### 3.2 DeepSeek `safety_check` 显式信号（2026-11-13 API 更新实装）
 
 DeepSeek 2026-11-13 起提供服务端内容安全审核参数 `safety_check`（Chat Completions 等
-三协议通用）。本系统以环境变量 `DEEPSEEK_SAFETY_CHECK` 控制是否开启（`high` 开启；
-`low` / `off` / 未配置 = 不发送该字段，行为与更新前完全一致），仅 DeepSeek 下发——
+三协议通用）。本系统以环境变量 `DEEPSEEK_SAFETY_CHECK` 控制是否开启（`high` 开启基础风控；
+`low` / `off` / 未配置 = 不发送该字段，行为与更新前完全一致——官方口径 `low` 即 API
+默认内容检查，与不传 `safety_check` 相同，故一并收敛为不发送），仅 DeepSeek 下发——
 智谱与自定义端点不认识该字段，可能被严格校验拒绝（同 thinking / user 字段的分流口径）。
 
 开启后的上游行为与归一：
