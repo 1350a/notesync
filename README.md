@@ -110,7 +110,7 @@ npm run start
 
 模板见 [.env.example](./.env.example)。密钥只能来自服务端环境变量，禁止写入客户端代码或存储（`AGENTS.md` §7）。
 
-每个变量的语义、取值口径、必填判定、常见组合与排障对照见 [doc/help-about-.env.md](./doc/help-about-.env.md)（含本表未列的 `TRIM_BUDGET_CHARS`、`USER_FIELD_ENABLED`、`MOCK_OCR`）；下表只列最常用的概况。
+每个变量的语义、取值口径、必填判定、常见组合与排障对照见 [doc/help-about-.env.md](./doc/help-about-.env.md)（含本表未列的 `TRIM_BUDGET_CHARS`、`USER_FIELD_ENABLED`）；下表只列最常用的概况。
 
 | 变量 | 必填 | 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -124,21 +124,23 @@ npm run start
 | `CUSTOM_BASE_URL` | 否 | — | 自定义端点地址（须含版本前缀，如 `.../v1`） |
 | `CUSTOM_MODEL` | 否 | — | 自定义模型名 |
 | `TOOLS_ENABLED` | 否 | `true` | 是否向模型下发工具集 |
-| `TOOL_MAX_ROUNDS` | 否 | `3` | 工具调用最大循环轮数（防死循环） |
+| `TOOL_MAX_ROUNDS` | 否 | `5` | 工具调用最大循环轮数（防死循环） |
 | `CUSTOM_TOOL_MODE` | 否 | `native` | `native`（原生 tools 协议）/ `text`（文本 JSON 协议） |
 | `CUSTOM_ALLOW_IMAGES` | 否 | `false`（不设置或非 `1` 均视为 false） | 自定义端点是否接受图片直传；默认纯文本，图片先经本地 OCR 转文字，避免 `image_url` 被纯文本端点 400 |
 | `MOCK_MODEL` | 否 | `0` | 置 `1` 时不调用任何上游，仅回显组装后的发送结构（零 token 验证上传 → 组装 → 发送链路） |
 | `MOCK_IMAGE_MODE` | 否 | 空 | MOCK 下的图片投喂方式：`multimodal` / `text-only` |
+| `MOCK_OCR` | 否 | `0` | 置 `1` 时 OCR 走 MOCK 桩，不调用云端也不跑本地引擎 |
+| `MOCK_PARSE_DOC` | 否 | `0` | 置 `1` 时文件解析走 MOCK 桩，不真实解析文档（零 token 调试上传 → 解析链路） |
 | `HF_MIRROR` | 否 | — | 仅 `npm run local:assets` 使用，模型下载镜像基址 |
 
-`.env.example` 底部以注释保留了已停用旧链路（`lib/harness`、`lib/agent`、`lib/rag`、`lib/ocr.ts`、`lib/pdf.ts`）的历史参数，当前代码不再读取。
+已停用旧链路（`lib/harness`、`lib/agent`、`lib/rag`、`lib/ocr.ts`、`lib/pdf.ts`）的历史参数**在模板中已移除**，且对应源码已删除，当前代码不再读取；这类参数的全量与停用说明见 [doc/help-about-.env.md](./doc/help-about-.env.md) §7。
 
 ## 8. 分支与质量门禁约定
 
-- **当前工作分支**：`beta/browser-ocr-planb`（浏览器本地能力方向的 beta 线：本地 OCR + 浏览器端 embedding/RAG）。协议文档中若出现历史方向名 `feat/browser-ai-inference`，指同一方向的早期命名。
+- **当前工作分支**：`dev`（集成分支，CI 与 PR 默认目标；`main` 仅在发版时同步）。浏览器本地能力（本地 OCR + 浏览器端 embedding/RAG）已并入 `dev`。协议文档中若出现历史分支名 `beta/browser-ocr-planb` 或更早的 `feat/browser-ai-inference`，均指同一方向的历史命名。
 - **质量门禁**（`AGENTS.md` §5）：`npm run lint` 与 `npm run build` **均须退出码 0** 才算完成；提交前另跑 `npx tsc --noEmit`。任一失败先修，禁止只跑一项就宣称完成。
-- **冒烟脚本**（零依赖，`node --experimental-strip-types` 直跑）：`smoke:tools` / `smoke:adapters` / `smoke:loop` / `smoke:files` / `smoke:chat` / `smoke:settings` / `smoke:rag` / `smoke:xss`，另有 `scan:xss`。
-- **提交纪律**（`AGENTS.md` §6）：一文件一 commit；`git add` 与 `git commit` 分两行执行；message 形如 `<type>: <中文描述>`，`<type>` ∈ `feat|fix|refactor|style|docs|test|chore|revert`。
+- **冒烟脚本**（除 `smoke:ocr` 外均零依赖，`node --experimental-strip-types` 直跑）：`smoke:tools` / `smoke:adapters` / `smoke:loop` / `smoke:files` / `smoke:intake` / `smoke:chat` / `smoke:settings` / `smoke:ocr` / `smoke:rag` / `smoke:safety` / `smoke:xss` 共 11 项，另有 `scan:xss`（静态扫描，非同批冒烟）。其中 `smoke:ocr` 需真实云端 OCR API Key 与网络，**不进 CI**；CI 实跑其余 10 项。
+- **提交纪律**（`AGENTS.md` §6）：一文件一 commit；`git add` 与 `git commit` 分两行执行；message 形如 `<type>(<scope>): <中文描述>`（`<scope>` 可省略，省略时退化为 `<type>: <中文描述>`），`<type>` ∈ `feat|fix|refactor|style|docs|test|chore|revert`，`<scope>` 取改动落点目录或领域、小写不带路径分隔符。完整细则（正文与 footer 写法、禁提交项）见 [doc/git-commit-convention.md](./doc/git-commit-convention.md)。
 - **类型纪律**（§3）：`strict` 不放松，禁 `any` 与 `@ts-ignore`。
 - **协议先行**（§9）：诊断流程、API 契约、事件结构、数据模型等业务协议写在 `doc/`，**改协议先改 doc 再改代码**。
 
@@ -146,26 +148,45 @@ npm run start
 
 ```
 notesync/
-├── app/
+├── app/                        # Next.js App Router
+│   ├── layout.tsx              # 根布局（主题、字体、防闪烁脚本）
+│   ├── globals.css             # 全局样式与设计变量
 │   ├── page.tsx                # 首页
-│   ├── chat/page.tsx           # 单题对话诊断（SSE 流式）
-│   ├── diagnose/               # 批量试卷/文件诊断
-│   ├── ocr/page.tsx            # 本地 OCR 自检与试用
-│   └── api/
+│   ├── error.tsx / global-error.tsx / not-found.tsx   # 路由级兜底
+│   ├── (main)/                 # 主路由组（共用侧栏布局，含 loading 骨架）
+│   │   ├── layout.tsx / loading.tsx
+│   │   ├── chat/page.tsx       # 单题对话诊断（SSE 流式）
+│   │   ├── diagnose/           # 批量试卷/文件诊断（_components 内含上传区）
+│   │   ├── local/              # 浏览器本地能力页（OCR / embedding 自检）
+│   │   └── ocr/page.tsx        # 本地 OCR 自检与试用
+│   └── api/                    # 服务端路由
 │       ├── chat/route.ts       # 对话 SSE（附件/OCR/RAG/工具编排）
+│       ├── diagnose-paper/route.ts   # 整卷诊断 SSE
+│       ├── ocr/route.ts        # 云端 OCR 代理
+│       ├── parse-doc/route.ts  # 文件解析（文本/图片/Office）
 │       └── models/route.ts     # 三家 Provider 模型列表与健康状态
-├── components/                 # chat / settings / layout / ui 组件
+├── components/                 # chat / settings / layout / ui / upload 组件
 ├── hooks/                      # useChat、useModels、代码高亮
+├── store/                      # 客户端状态（Zustand）：useChatStore、useSettingsStore
 ├── lib/
-│   ├── local/                  # 浏览器端推理：assets / engine / embedding / worker / rag
-│   ├── ocr/                    # 本地 OCR 服务与图片发送模式派生
+│   ├── local/                  # 浏览器端推理：assets / engine / engine-lease / embedding / worker / rag
+│   ├── ocr/                    # 本地 + 云端 OCR 服务、引擎分流与图片发送模式派生
+│   ├── intake/                 # 文件接入：detect / decode-text / extract-image / extract-office
+│   ├── parse/                  # 文档解析
+│   ├── history/                # 会话历史本地持久化（IndexedDB / search / sanitize）
 │   ├── provider/               # deepseek / zhipu / custom 路由与探测
 │   ├── tools/                  # 工具调用（registry / adapters / loop / builtin）
-│   ├── chat/                   # 请求体校验与消息组装
-│   ├── diagnose/               # 附件分类、提取、组装
+│   ├── chat/                   # 请求体校验、消息组装、上下文裁剪
+│   ├── diagnose/               # 附件分类、提取、组装、卷级会话
+│   ├── safety/                 # 输入侧判定、上游拦截归一、导出脱敏
 │   ├── settings/               # 设置模型、存储、主题
-│   └── agent/ harness/ rag/    # 历史诊断链路（已停用，保留源码）
-├── scripts/                    # 资产派生脚本 + 冒烟/扫描脚本
+│   ├── markdown/               # Markdown 渲染管线
+│   ├── mock/                   # MOCK 桩（模型 / OCR / 文件解析）
+│   ├── ui/                     # 通用 UI 工具
+│   ├── client-id.ts            # 客户端标识
+│   └── sse.ts                  # SSE 编解码
+├── scripts/                    # 资产派生脚本（copy-*）+ 冒烟/扫描脚本（*-smoke、xss-scan）
+├── test/                       # 单元测试（app / lib / ui，与 lib 结构对齐）
 ├── doc/                        # 业务协议文档（唯一事实来源）
 ├── public/models、public/ocr   # 派生产物（不入库，由 §6 两步生成）
 ├── tessdata/                   # OCR 语言包源文件（入库）
@@ -181,9 +202,12 @@ notesync/
 | --- | --- |
 | [doc/browser-local-ocr.md](./doc/browser-local-ocr.md) | 浏览器端本地 OCR 协议：选型、资产分发、服务契约、能力页验收、`imageTexts` 接入、Provider 能力默认值 |
 | [doc/browser-local-inference.md](./doc/browser-local-inference.md) | 浏览器端本地推理协议：embedding + RAG、ORT 版本口径与资产自托管、服务契约、检索算法、`ragContexts` 契约、设置联动、挂账 |
+| [doc/cloud-ocr.md](./doc/cloud-ocr.md) | 云端 OCR 协议：服务端客户端与代理路由、engine 分流（云端 / 本地）、默认档口径、失败与降级语义 |
 | [doc/user-settings.md](./doc/user-settings.md) | 用户设置协议：`UserSettings` 结构、normalize 规则、存储接口、客户端标识、UI 分区与实装状态 |
+| [doc/chat-history.md](./doc/chat-history.md) | 会话历史本地持久化协议：`indexeddb` / `storage` 接口、`contract`（标题与消息结构）、`memory` 与 `search`（检索）、`sanitize` 逐字段校验、批次 1 存储层与批次 2 UI 接线 |
 | [doc/tool-protocol.md](./doc/tool-protocol.md) | 工具调用协议：native / text 双模式、`ask_user` 中断语义、SSE 事件扩展、错误码、扩展点与实现状态 |
 | [doc/diagnose-file-intake.md](./doc/diagnose-file-intake.md) | 诊断模式文件接入契约：四类标签、判定与提取规则、请求体、组装产物、MOCK 调试开关 |
+| [doc/file-intake.md](./doc/file-intake.md) | 文件上传统一接入契约：聊天输入框与诊断页两个入口共用的接入路径、四类判定、`parse-doc` 契约、MOCK 调试开关 |
 | [doc/diagnose-paper.md](./doc/diagnose-paper.md) | 整卷诊断协议：请求体、SSE 事件序列、四步流程（识卷 → 逐题 → 汇总 → 报告）、`stats` 口径、MOCK 标注 |
 | [doc/product-vision.md](./doc/product-vision.md) | 产品理念：诊断 vs 解析的分界、三档路径（全本地 / 多模态 / 混合）、演示主线、非目标 |
 | [doc/demo-script.md](./doc/demo-script.md) | 3 分钟演示分镜：诊断≠搜题主线、单题追问阶梯与错因、整卷四步、本地优先与外发代价、讲者禁忌与事故兜底 |
@@ -195,7 +219,7 @@ notesync/
 | [doc/mobile-ux.md](./doc/mobile-ux.md) | 移动端适配协议：断点、触屏热区、键盘与安全区、发送区与滚动行为 |
 | [doc/wrong-answer-set-template.md](./doc/wrong-answer-set-template.md) | 错题集录入模板：字段定义与示例 |
 | [doc/help-about-.env.md](./doc/help-about-.env.md) | 环境变量手册：变量总表与分组、Provider 配置与模型口径、工具调用/上下文/调试开关、历史遗留参数、常见配置组合、取值口径陷阱、排障对照 |
-| [doc/TECHNICAL_DOC.old.md](./doc/TECHNICAL_DOC.old.md) | 已归档的旧版技术文档（对应"简易重构前"的实现，含本地 ollama 回退链路），仅作历史参考 |
+| [doc/git-commit-convention.md](./doc/git-commit-convention.md) | Git 提交规范：`<type>(<scope>): <描述>` 格式、类型白名单、scope 约定、单次提交粒度、正文与 footer 写法、禁提交项 |
 
 ## 11. 已知挂账
 

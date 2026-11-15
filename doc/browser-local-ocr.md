@@ -13,8 +13,8 @@ AIGC:
 
 ## 1. 定位与范围
 
-本地能力底座（当前分支 `beta/browser-ocr-planb`；该方向早期命名为
-`feat/browser-ai-inference`，二者指同一条线）的第一块拼图：**OCR 完全在浏览器内完成，
+本地能力底座（当前分支 `dev`；该方向早期曾用分支名
+`beta/browser-ocr-planb` 与 `feat/browser-ai-inference`，均指同一条线）的第一块拼图：**OCR 完全在浏览器内完成，
 图片与识别文本均不经过服务器**。服务端只负责分发静态资产（模型/词库/wasm 文件），
 不参与推理、不接收图片。
 
