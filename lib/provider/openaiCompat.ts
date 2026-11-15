@@ -61,6 +61,27 @@ export function mapThinkingParam(
 }
 
 /**
+ * 请求体消息序列的 Provider 分流：思考回传字段 reasoning_content 仅 deepseek 下发，
+ * 且仅在该请求本身处于思考模式时携带——思考关闭的请求没有回传语义，非思考端点
+ * 收到无效字段反而可能被严格校验拒绝。zhipu / custom 对未知字段可能严格校验
+ * （与 user / thinking 字段同口径）。协议口径见 doc/tool-protocol.md §4.3。
+ */
+export function normalizeMessagesForRequestBody(
+  name: 'deepseek' | 'zhipu' | 'custom',
+  messages: ProviderMessage[],
+  thinking?: ThinkingEffort,
+): ProviderMessage[] {
+  const keepReasoning = name === 'deepseek' && mapThinkingParam(name, thinking) !== null;
+  if (keepReasoning) return messages;
+  return messages.map((m) => {
+    if (m.role !== 'assistant' || m.reasoning_content === undefined) return m;
+    const rest = { ...m };
+    delete rest.reasoning_content;
+    return rest;
+  });
+}
+
+/**
  * 思考/输出预算上限 → Provider 请求体 max_tokens 的映射（doc/user-settings.md §2.1）。
  * 返回 undefined 表示本次不携带该字段（跟随 provider 默认）。
  * - deepseek / zhipu：官方 OpenAI 兼容接口支持 max_tokens，按值下发；
@@ -467,7 +488,8 @@ export class OpenAICompatProvider implements LLMProvider {
   private buildBody(options: CompleteOptions, stream: boolean): string {
     const body: Record<string, unknown> = {
       model: options.model,
-      messages: options.messages as ProviderMessage[],
+      // 思考回传按 Provider 分流（仅 deepseek 且思考开启），见 normalizeMessagesForRequestBody
+      messages: normalizeMessagesForRequestBody(this.name, options.messages as ProviderMessage[], options.thinking),
       stream,
     };
     if (options.json) body.response_format = { type: 'json_object' };
@@ -492,8 +514,10 @@ export class OpenAICompatProvider implements LLMProvider {
       if (options.toolChoice) body.tool_choice = options.toolChoice;
     }
     if (!this.allowImages) {
-      body.messages = (options.messages as ProviderMessage[]).map((m) => ({
-        role: m.role,
+      // 降级重组 content；其余协议字段（tool_calls / tool_call_id / reasoning_content）必须原样保留，
+      // 否则带图历史的工具回放与思考回传会在这个分支被静默截丢
+      body.messages = (body.messages as ProviderMessage[]).map((m) => ({
+        ...m,
         content:
           typeof m.content === 'string'
             ? m.content
