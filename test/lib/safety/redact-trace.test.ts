@@ -23,11 +23,10 @@ describe('redactTraceText — 内部字段名与常量名', () => {
     expect(out).toContain('先调用');
   });
 
-  it('抹掉提示词常量名与 protocol 一类协议标记', () => {
-    const out = redactTraceText('DISCIPLINE_BLOCK 里的 protocol 分支要求 SCOPE_BOUNDARY_LINE 生效');
+  it('抹掉提示词常量名', () => {
+    const out = redactTraceText('DISCIPLINE_BLOCK 生效时要求 SCOPE_BOUNDARY_LINE 先生效');
     expect(out).not.toContain('DISCIPLINE_BLOCK');
     expect(out).not.toContain('SCOPE_BOUNDARY_LINE');
-    expect(out).not.toContain('protocol');
     expect(out).toContain('[内部字段]');
   });
 
@@ -50,6 +49,12 @@ describe('redactTraceText — 内部字段名与常量名', () => {
 
   it('普通英文单词 refused 不被抹（回归：曾当字段名把英文阅读文本改坏）', () => {
     const raw = '字符题：句子 He refused to open the door 中的动词是 refused，它的原形是 refuse。';
+    expect(redactTraceText(raw)).toBe(raw);
+  });
+
+  it('普通英文单词 protocol 不被抹（回归：同 refused，非标识符词不入表）', () => {
+    const raw =
+      '信息题：材料里的 protocol 一词指通信协议，句子 The TCP protocol ensures reliable delivery 中它是主语。';
     expect(redactTraceText(raw)).toBe(raw);
   });
 

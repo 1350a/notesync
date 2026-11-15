@@ -115,7 +115,8 @@ const PROTECTED_SEGMENT_PATTERNS: RegExp[] = [
 
 /** 内部字段名与工具名：命中即替换，避免把实现细节写进送审材料。
  *  只收真标识符（camelCase/snake_case 形态）——普通英文词一律不入表：
- *  `refused` 曾进表把英文阅读文本改成 [内部字段]（用户提问被改得不可读），已移除 */
+ *  `refused` 曾进表把英文阅读文本改成 [内部字段]（用户提问被改得不可读），已移除；
+ *  `protocol` 同款移除——全库无键值用法、提示词零出现，留表无脱敏收益只剩误伤 */
 const INTERNAL_FIELD_TOKENS = [
   'completeness',
   'hintLevel',
@@ -151,12 +152,9 @@ const INTERNAL_CONST_TOKENS = [
   'TRACE_MAX_CHARS',
 ];
 
-/** 该词在中英混排里几乎只作为协议/实现标记出现，抹掉不影响推理可读性 */
-const INTERNAL_FIELD_TOKENS_EXTRA = ['protocol'];
-
 /** 依次替换的规则表：只做实现细节层面的脱敏（字段名 / 工具名 / 常量名） */
 const TOKEN_PATTERNS: { pattern: RegExp; replacement: string }[] = [
-  ...[...INTERNAL_CONST_TOKENS, ...INTERNAL_FIELD_TOKENS, ...INTERNAL_FIELD_TOKENS_EXTRA].map((token) => ({
+  ...[...INTERNAL_CONST_TOKENS, ...INTERNAL_FIELD_TOKENS].map((token) => ({
     // 边界用「非标识符字符」而非 \b：`submit_diagnosis` 后接中文时 \b 不成立
     pattern: new RegExp(`(?<![A-Za-z0-9_])${token}(?![A-Za-z0-9_])`, 'g'),
     replacement: '[内部字段]',
