@@ -128,6 +128,11 @@ export interface ExtractedToolCalls {
   parseError?: string;
   /** 上游流终止原因（拦截判定路径之一，safety-protocol.md §3） */
   finishReason?: string;
+  /**
+   * 本轮思考过程全文（增量累积，与 SSE 转发同源）。回填 assistant 历史时挂到
+   * reasoning_content——DeepSeek 思考模式 + tools 的硬校验必需，doc/tool-protocol.md §4.3。
+   */
+  reasoning?: string;
 }
 
 /** 工具调用模式 */
