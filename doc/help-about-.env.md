@@ -52,7 +52,7 @@ Linux 或 macOS 用户直接 `cp .env.example .env` 就好了。
 #### `DEEPSEEK_MODEL` / `ZHIPU_MODEL` / `CUSTOM_MODEL`
 
 通常留空即可。
-添加自定义模型时，请自行确认自定义的模型提供商提供的模型名。项目支持 `GET /models` 的端点，但若不支持会导致配置失败。
+添加自定义模型时，请自行确认自定义的模型提供商提供的模型名，若未填写可能会导致配置失败。
 
 #### `DEEPSEEK_SAFETY_CHECK`（这一部分在13号DeepSeek更新后加入）
 
