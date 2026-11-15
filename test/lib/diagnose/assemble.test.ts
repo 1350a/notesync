@@ -100,7 +100,7 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
   it('模型不收图且无 OCR 文本：仍降级为文字占位', () => {
     const result = assembleDiagnoseMessage([plainImage], { imageMode: 'text-only' });
     expect(imageUrls(result)).toEqual([]);
-    expect(texts(result).join('\n')).toContain('[图片 a.png]');
+    expect(texts(result).join('\n')).toContain('[图片 a.png · 错题原题]');
     expect(result.warnings.join('\n')).toContain('已降级为文字占位');
   });
 
@@ -149,18 +149,18 @@ describe('OCR 标签按附件引擎分流（diagnose-file-intake.md §5 ocrEngin
 
   it('text-only 路径：云端引擎标注「云端OCR」', () => {
     const result = assembleDiagnoseMessage([ocrImage('cloud')], { imageMode: 'text-only' });
-    expect(texts(result).join('\n')).toContain('[文件 img.png · 云端OCR]');
+    expect(texts(result).join('\n')).toContain('[文件 img.png · 错题原题 · 云端OCR]');
   });
 
   it('text-only 路径：本地引擎标注「本地OCR」', () => {
     const result = assembleDiagnoseMessage([ocrImage('local')], { imageMode: 'text-only' });
-    expect(texts(result).join('\n')).toContain('[文件 img.png · 本地OCR]');
+    expect(texts(result).join('\n')).toContain('[文件 img.png · 错题原题 · 本地OCR]');
   });
 
   it('缺省引擎（旧客户端）：中性「OCR」，不写死引擎', () => {
     const result = assembleDiagnoseMessage([ocrImage(undefined)], { imageMode: 'text-only' });
     const joined = texts(result).join('\n');
-    expect(joined).toContain('[文件 img.png · OCR]');
+    expect(joined).toContain('[文件 img.png · 错题原题 · OCR]');
     expect(joined).not.toContain('云端OCR');
     expect(joined).not.toContain('本地OCR');
   });
