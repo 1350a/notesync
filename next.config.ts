@@ -37,6 +37,14 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // standalone 产物供 Release 打包发布（node server.js 直跑，免装 node_modules）；
+  // 对 dev 与 next start 均为增量输出，不改变现有流程
+  output: "standalone",
+  // 全仓零 next/image 使用（气泡缩略图为 data URL，见 ChatList.tsx 注释），
+  // 如实关掉优化器：unoptimized 下 image-optimizer 运行期永不加载 sharp，
+  // nft 仍会把它追进全局 next-server trace（config 层 excludes 够不着），
+  // 由发布打包脚本从 standalone 物理剔除，保产物跨平台
+  images: { unoptimized: true },
   async headers() {
     return [
       {
