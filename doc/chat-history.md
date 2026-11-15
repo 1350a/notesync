@@ -277,3 +277,5 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 **UI**：消息操作条在气泡**外**、正文下方一行（`components/chat/MessageActions.tsx`，2026-11-14 改版）：图标按钮（复制 / 编辑 / 重新生成），悬停/聚焦显形，触屏常显（同 `doc/mobile-ux.md` §4）。user 消息给「复制 / 编辑」，assistant 消息给「复制」，最后一条 assistant 额外给「重新生成」；无正文的消息不给复制。删除入口已停用（见上表）。
 
 **中止标记**：用户主动中止生成的后缀 `*[已中止]*`（`ABORTED_SUFFIX`，`lib/chat/messages.ts` 唯一文案出口）不再以斜体行渲染——渲染层用 `stripAbortedSuffix` 剥离后缀并在正文下展示「已中止」徽标；上行组装历史时同样剥离（标记不再进入模型上下文）。旧库遗留的「已停止生成」后缀（`ABORTED_SUFFIX_LEGACY`）在渲染层一并兼容。
+
+**思考过程上行（2026-11-15）**：assistant 消息的 `reasoning`（落库本就携带）随上行历史一并发出——`sendMessage` 的 messages map 对非空 reasoning 上行 `reasoning` 字段，服务端 `buildProviderMessages` 映射为 `reasoning_content` 回传上游。动因是 DeepSeek 思考模式 + tools 的硬校验（缺回传即 400，见 `doc/tool-protocol.md` §4.3）；字段原样透传不截断（官方要求完整传回），旧会话没有该值则缺省不上行。`reasoning` 与 `expiredImages` 一样属于「落库为真源、上行按需带」的字段，不影响落盘形态。
