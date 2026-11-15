@@ -379,10 +379,12 @@ export async function POST(request: Request) {
                 sse('error', {
                   code: 'content_blocked',
                   error: CONTENT_BLOCKED_MESSAGE,
-                  // 拦截归因（trace 观测面）：signal 区分「finish_reason 异常值」与「拒绝性文本」，
-                  // 两者处置相同但根因不同，缺了它线上只能猜（safety-protocol §3）
+                  // 拦截归因（trace 观测面）：signal 区分「finish_reason 异常值」「拒绝性文本」
+                  // 与「输入未过审 400」（§3.2），三者处置相同但根因不同，缺了它线上只能猜
                   signal: ev.signal,
                   ...(ev.finishReason ? { finishReason: ev.finishReason } : {}),
+                  // 拒答说明属上游文本，与错误正文同口径过一遍脱敏再下发（审查项 S2）
+                  ...(ev.refusal ? { refusal: redactUpstreamText(ev.refusal) } : {}),
                   model,
                   provider: provider.name,
                 })
