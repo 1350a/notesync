@@ -1,6 +1,6 @@
 name: CI
 
-# 门禁顺序与本地执行纪律一致：lint → tsc → test → build → 10 项 smoke
+# 门禁顺序与本地执行纪律一致：lint → tsc → test → build → 11 项 smoke
 # （smoke:ocr 需真实云端 OCR API Key 与网络，故不纳入 CI，本地按需手跑）
 # （见 doc/NEXT-TODO.md 批次 2、AGENTS.md §5 质量门禁）
 
@@ -48,7 +48,7 @@ jobs:
           ONNXRUNTIME_NODE_INSTALL: skip
 
       # 说明：本 workflow 不执行 local:assets / ocr:assets。
-      # public/models 与 public/ocr 是派生产物（不入库），而 10 项 smoke 与 build 都只
+      # public/models 与 public/ocr 是派生产物（不入库），而 11 项 smoke 与 build 都只
       # 依赖 lib/ 内纯函数与打包产物，不读取这些目录；加进来反而引入 HF 外网依赖。
       # 若将来有 smoke 开始读派生资产，必须同步修改此处。
       - name: Lint
@@ -63,7 +63,7 @@ jobs:
       - name: 生产构建
         run: npm run build
 
-      # 10 项 smoke 拆成独立 step：任一项红时能在 Actions 界面直接定位
+      # 11 项 smoke 拆成独立 step：任一项红时能在 Actions 界面直接定位
       - name: 冒烟·工具注册与渲染
         run: npm run smoke:tools
 
@@ -84,6 +84,11 @@ jobs:
 
       - name: 冒烟·用户设置
         run: npm run smoke:settings
+
+      # 只跑纯函数链（清洗 → 分段 → mock 占位 wav），不发上游 TTS 请求、不校验密钥，
+      # 故无需 MOCK_TTS=1；真实网络链路仍需本地 MOCK_TTS=1 起 dev 后人工点按钮验证
+      - name: 冒烟·TTS 合成
+        run: npm run smoke:tts
 
       - name: 冒烟·RAG 检索
         run: npm run smoke:rag
