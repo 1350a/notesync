@@ -39,12 +39,17 @@ export function parseJsonLoose(raw: string): unknown | null {
 }
 
 /**
- * 解析切题结果：数组、每项有非空 stem 即算有效；题号缺失按序补「第N题」。
- * 无有效题目 → null（调用方走 §5.2 降级提示，不静默继续）。
+ * 切题失败原因。调用方据此分层出文案：把「模型没回 JSON」「列表为空」「题干缺失」
+ * 和「材料本身没有文字/图片」分开，避免一律误报成「拍照模糊或排版过密」。
  */
-export function parseSplitResult(raw: string): PaperQuestion[] | null {
-  const parsed = parseJsonLoose(raw);
-  if (!Array.isArray(parsed)) return null;
+export type SplitFailureReason = 'not_json' | 'not_array' | 'empty' | 'no_stem';
+
+export type SplitParseOutcome =
+  | { ok: true; questions: PaperQuestion[] }
+  | { ok: false; reason: SplitFailureReason };
+
+/** 数组 → 题目列表；每项有非空 stem 才收，题号缺失按序补「第N题」 */
+function collectQuestions(parsed: readonly unknown[]): PaperQuestion[] {
   const questions: PaperQuestion[] = [];
   parsed.forEach((item, index) => {
     if (!item || typeof item !== 'object') return;
@@ -58,7 +63,31 @@ export function parseSplitResult(raw: string): PaperQuestion[] | null {
       type: typeof record.type === 'string' && record.type.trim() ? record.type.trim().slice(0, 20) : undefined,
     });
   });
-  return questions.length > 0 ? questions : null;
+  return questions;
+}
+
+/**
+ * 解析切题结果并给出失败原因：`not_json`（无 JSON 可截取或损坏）、
+ * `not_array`（返回了对象等非列表）、`empty`（空数组）、`no_stem`（列表里没有可用的题干）。
+ */
+export function parseSplitResultDetailed(raw: string): SplitParseOutcome {
+  const parsed = parseJsonLoose(raw);
+  if (parsed === null) return { ok: false, reason: 'not_json' };
+  if (!Array.isArray(parsed)) return { ok: false, reason: 'not_array' };
+  if (parsed.length === 0) return { ok: false, reason: 'empty' };
+  const questions = collectQuestions(parsed);
+  if (questions.length === 0) return { ok: false, reason: 'no_stem' };
+  return { ok: true, questions };
+}
+
+/**
+ * 解析切题结果：数组、每项有非空 stem 即算有效；题号缺失按序补「第N题」。
+ * 无有效题目 → null（调用方走 §5.2 降级提示，不静默继续）。
+ * 需要区分失败原因时改用 `parseSplitResultDetailed`。
+ */
+export function parseSplitResult(raw: string): PaperQuestion[] | null {
+  const outcome = parseSplitResultDetailed(raw);
+  return outcome.ok ? outcome.questions : null;
 }
 
 /** 分类关键词表（首条命中即归组；D 级实测可调；嵌入聚类挂账） */

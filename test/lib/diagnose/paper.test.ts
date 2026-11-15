@@ -4,6 +4,7 @@ import {
   classifyQuestions,
   parseJsonLoose,
   parseSplitResult,
+  parseSplitResultDetailed,
   type PaperQuestion,
 } from '../../../lib/diagnose/paper.ts';
 
@@ -35,6 +36,22 @@ describe('parseJsonLoose / parseSplitResult（切题解析）', () => {
   it('answer/type 缺省安全', () => {
     const parsed = parseSplitResult('[{"stem":"题","answer":"答","type":"解答题"}]');
     expect(parsed?.[0]).toMatchObject({ stem: '题', answer: '答', type: '解答题' });
+  });
+});
+
+describe('parseSplitResultDetailed（失败原因分层）', () => {
+  it('无 JSON / 非数组 / 空数组 / 全无题干 各给出独立原因', () => {
+    expect(parseSplitResultDetailed('没有结构化内容')).toEqual({ ok: false, reason: 'not_json' });
+    expect(parseSplitResultDetailed('{"questions":[]}')).toEqual({ ok: false, reason: 'not_array' });
+    expect(parseSplitResultDetailed('[]')).toEqual({ ok: false, reason: 'empty' });
+    expect(parseSplitResultDetailed('[{"type":"选择题"}]')).toEqual({ ok: false, reason: 'no_stem' });
+  });
+
+  it('成功时带题目列表，与 parseSplitResult 结果一致（兼容旧调用）', () => {
+    const raw = '[{"stem":"题一"},{"number":"3","stem":"题三"}]';
+    const outcome = parseSplitResultDetailed(raw);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.questions).toEqual(parseSplitResult(raw));
   });
 });
 
