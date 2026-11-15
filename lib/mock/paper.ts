@@ -19,19 +19,19 @@ export function runMockPaper(controller: ReadableStreamDefaultController<Uint8Ar
   const step = (detail: string, extra?: Record<string, unknown>) =>
     controller.enqueue(encoder.encode(sse('paper_step', { step: detail, ...extra })));
 
-  step('MOCK 仿真：切题完成（2 题）', { current: 1, total: 4 });
+  // 进度口径与真实链路一致：阶段用「阶段 i/4」，分组用「第 i/N 组」，不与文件数混读
+  step('MOCK 仿真：切题完成（2 题）', { progress: '阶段 1/4' });
   const mockQuestions: PaperQuestion[] = [
     { number: '第1题', stem: '（MOCK 仿真）解方程 2x²-5x+1=0', answer: 'x=(5±√33)/4', type: '解答题' },
     { number: '第2题', stem: '（MOCK 仿真）求 y=1/(x-2) 的定义域', type: '填空题' },
   ];
   const groups = classifyQuestions(mockQuestions);
-  step(`MOCK 仿真：分为 ${groups.length} 组`, { current: 2, total: 4 });
-  let current = 2;
+  step(`MOCK 仿真：分为 ${groups.length} 组`, { progress: '阶段 2/4' });
+  let groupIndex = 0;
   for (const group of groups) {
-    current += 1;
+    groupIndex += 1;
     step(`MOCK 仿真：诊断 ${group.questions.map((q) => q.number).join('、')}`, {
-      current,
-      total: groups.length + 3,
+      progress: `第 ${groupIndex}/${groups.length} 组`,
     });
     const parsed = parseSubmission({
       level: group.questions.some((q) => q.answer) ? 'L2' : 'L1',
@@ -60,7 +60,7 @@ export function runMockPaper(controller: ReadableStreamDefaultController<Uint8Ar
       );
     }
   }
-  step('MOCK 仿真：汇总', { current: groups.length + 3, total: groups.length + 3 });
+  step('MOCK 仿真：汇总', { progress: '阶段 4/4' });
   controller.enqueue(
     encoder.encode(
       sse('content', { delta: '（MOCK 仿真）整卷汇总：见上方各组卡片；剧本仅验证链路。' }),

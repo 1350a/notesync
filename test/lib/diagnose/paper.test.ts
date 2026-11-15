@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGroupDiagnosePrompt,
+  buildSplitPrompt,
   classifyQuestions,
   parseJsonLoose,
   parseSplitResult,
+  parseSplitResultDetailed,
   type PaperQuestion,
 } from '../../../lib/diagnose/paper.ts';
 
@@ -35,6 +37,68 @@ describe('parseJsonLoose / parseSplitResult（切题解析）', () => {
   it('answer/type 缺省安全', () => {
     const parsed = parseSplitResult('[{"stem":"题","answer":"答","type":"解答题"}]');
     expect(parsed?.[0]).toMatchObject({ stem: '题', answer: '答', type: '解答题' });
+  });
+});
+
+describe('parseSplitResultDetailed（失败原因分层）', () => {
+  it('无 JSON / 无题目数组 / 空数组 / 全无题干 各给出独立原因', () => {
+    expect(parseSplitResultDetailed('没有结构化内容')).toEqual({ ok: false, reason: 'not_json' });
+    expect(parseSplitResultDetailed('{"error":"无法识别题面"}')).toEqual({ ok: false, reason: 'not_array' });
+    expect(parseSplitResultDetailed('[]')).toEqual({ ok: false, reason: 'empty' });
+    expect(parseSplitResultDetailed('[{"type":"选择题"}]')).toEqual({ ok: false, reason: 'no_stem' });
+  });
+
+  it('成功时带题目列表，与 parseSplitResult 结果一致（兼容旧调用）', () => {
+    const raw = '[{"stem":"题一"},{"number":"3","stem":"题三"}]';
+    const outcome = parseSplitResultDetailed(raw);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.questions).toEqual(parseSplitResult(raw));
+  });
+});
+
+describe('parseSplitResultDetailed（json_object 对象外壳兼容）', () => {
+  const items = '[{"number":"1","stem":"解方程 x+1=2"}]';
+
+  it('提示词要求的 {"questions":[...]} 直接可用（回归：不再判 not_array）', () => {
+    const outcome = parseSplitResultDetailed(`{"questions":${items}}`);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.questions[0]).toMatchObject({ number: '1', stem: '解方程 x+1=2' });
+  });
+
+  it('data / result / items / list 等外层键同样识别', () => {
+    for (const key of ['data', 'result', 'items', 'list']) {
+      expect(parseSplitResultDetailed(`{"${key}":${items}}`).ok, key).toBe(true);
+    }
+  });
+
+  it('键名不认识但恰好只有一个数组值时兜底取用', () => {
+    expect(parseSplitResultDetailed(`{"切题结果":${items}}`).ok).toBe(true);
+  });
+
+  it('对象里有两个数组且键名未知 → not_array（无法判定哪个是题目）', () => {
+    expect(parseSplitResultDetailed('{"a":[1],"b":[2]}')).toEqual({ ok: false, reason: 'not_array' });
+  });
+
+  it('包装对象内空数组仍按 empty，缺题干仍按 no_stem', () => {
+    expect(parseSplitResultDetailed('{"questions":[]}')).toEqual({ ok: false, reason: 'empty' });
+    expect(parseSplitResultDetailed('{"questions":[{"type":"选择题"}]}')).toEqual({
+      ok: false,
+      reason: 'no_stem',
+    });
+  });
+
+  it('裸数组继续支持（向后兼容）', () => {
+    expect(parseSplitResultDetailed(items).ok).toBe(true);
+  });
+});
+
+describe('buildSplitPrompt（与 response_format=json_object 对齐）', () => {
+  const prompt = buildSplitPrompt();
+
+  it('要求 {"questions":[...]} 对象外壳，不再要求顶层数组', () => {
+    expect(prompt).toContain('{"questions"');
+    expect(prompt).toContain('JSON');
+    expect(prompt).not.toContain('只输出 JSON 数组');
   });
 });
 

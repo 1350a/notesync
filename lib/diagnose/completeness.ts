@@ -10,6 +10,7 @@
  * 这里以「传入列表里还有多少有效项」为准，故留 boolean[] 而非复用 AssembleResult.stats。
  */
 import type { DiagnosisCompleteness, ReviseCategory } from './types.ts';
+import { attachmentCategories } from './category-tags.ts';
 
 /** 空 text/dataUrl 的附件视为无效，不计入完整度 */
 function hasContent(item: { text?: string; dataUrl?: string }): boolean {
@@ -22,7 +23,14 @@ function hasContent(item: { text?: string; dataUrl?: string }): boolean {
  * hasProblem 对应 origin 类，hasStudentAnswer 对应 wrong 类。
  */
 export function deriveCompleteness(
-  items: ReadonlyArray<{ category: ReviseCategory; text?: string; dataUrl?: string }>,
+  items: ReadonlyArray<{
+    /** 多标签形态（2026-11-15 起）：首项为主标签 */
+    categories?: ReviseCategory[];
+    /** 【legacy】单标签形态，兼容期内仍可能只有它 */
+    category?: ReviseCategory;
+    text?: string;
+    dataUrl?: string;
+  }>,
 ): DiagnosisCompleteness {
   let hasProblem = false;
   let hasStudentAnswer = false;
@@ -30,10 +38,13 @@ export function deriveCompleteness(
   let hasAnalysis = false;
   for (const item of items) {
     if (!hasContent(item)) continue;
-    if (item.category === 'origin') hasProblem = true;
-    else if (item.category === 'wrong') hasStudentAnswer = true;
-    else if (item.category === 'correct') hasCorrectAnswer = true;
-    else if (item.category === 'analysis') hasAnalysis = true;
+    // 多标签（2026-11-15 起）：同一附件可同时承担多个角色，故四项独立判断，
+    // 不能再用 else-if 链——一份「原题 + 错误答案」的附件要同时点亮两个布尔。
+    const tags = attachmentCategories(item);
+    if (tags.includes('origin')) hasProblem = true;
+    if (tags.includes('wrong')) hasStudentAnswer = true;
+    if (tags.includes('correct')) hasCorrectAnswer = true;
+    if (tags.includes('analysis')) hasAnalysis = true;
   }
   return { hasProblem, hasStudentAnswer, hasCorrectAnswer, hasAnalysis };
 }
