@@ -351,6 +351,7 @@ export default function ChatList({
                 canRegenerate={m.role === 'assistant' && i === messages.length - 1 && Boolean(onRegenerate)}
                 disabled={loading}
                 copyText={(isUser ? m.content : renderContent) || undefined}
+                messageId={`msg-${i}`}
                 onEdit={isUser && onEditResend ? () => setEditingIndex(i) : undefined}
                 onRegenerate={onRegenerate}
               />
