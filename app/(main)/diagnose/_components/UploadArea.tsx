@@ -8,7 +8,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
-import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
+import type { DiagnoseKind, DiagnosisResult, PaperViewState, ReviseCategory } from '@/lib/diagnose/types';
 import type { OcrEngine } from '@/lib/settings/types';
 import { generateId, getUserId } from '@/lib/client-id';
 import { FILE_ACCEPT, FILE_ACCEPT_NO_IMAGE } from '@/lib/intake/detect';
@@ -21,7 +21,7 @@ import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { rehypeSanitizeMarkdown } from '@/lib/markdown/sanitize';
-import PaperResultPanel, { type PaperViewState } from './PaperResultPanel';
+import PaperResultPanel from './PaperResultPanel';
 import {
   convertImagesToTexts,
   mergeOcrText,

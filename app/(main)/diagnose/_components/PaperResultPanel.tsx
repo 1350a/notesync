@@ -8,25 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import type { DiagnosisResult } from '@/lib/diagnose/types';
-
-export interface PaperStep {
-  text: string;
-  current?: number;
-  total?: number;
-}
-
-export interface PaperGroupResult {
-  result: DiagnosisResult;
-  questionNumbers: string[];
-  groupCode: string;
-}
-
-export interface PaperViewState {
-  steps: PaperStep[];
-  results: PaperGroupResult[];
-  summary: string;
-}
+import type { PaperViewState } from '@/lib/diagnose/types';
 
 const GROUP_LABEL: Record<string, string> = {
   general: '综合组',
