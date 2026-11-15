@@ -213,8 +213,9 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 | 元素 | 行为 |
 | --- | --- |
-| 会话项 | 单行标题（`truncate`）+ 相对时间；当前 `currentSessionId` 高亮；点击即 §7.2 流程 |
-| 删除 | 悬停/聚焦显示删除按钮 → `window.confirm` → `storage.deleteSession(id)` → `refreshSessions()`；删的若是当前会话，一并 `clearMessages()` |
+| 会话项 | 单行标题（`truncate`）+ 相对时间；当前 `currentSessionId` 高亮；点击即 §7.2 流程。**非 `/chat` 路由**（批量诊断/本地能力）下点击：先 `router.push('/chat')` 再 `openSession(id)`——`openSessionSignal` 跨路由保留在 store，由 `/chat` 挂载后的 `useChat` 消费（修复此前在其他页点击静默失效） |
+| 会话操作菜单（2026-11-15 改版） | 行内三图标收进单个省略号按钮（`⋯`，悬停/聚焦显形、触屏常显）；点击弹**纯文字菜单**（重命名 / 下载 / 删除，无图标）。菜单 `createPortal` 到 `document.body` 定位：列表容器 `overflow-y-auto` 会裁剪 absolute 定位，移动端抽屉 Popup 常驻 transform 会劫持 fixed 定位，portal 一并规避；透明点击层 / Esc / 容器滚动即关；视口底部向上翻折 |
+| 删除 | 菜单内「删除」项 → `window.confirm` → `storage.deleteSession(id)` → `refreshSessions()`；删的若是当前会话，一并 `clearMessages()` |
 | 降级提示 | `historySupported === false` 时列表区顶部固定一条「当前浏览器不支持本地保存，本次对话不会留存」，列表区显示空态 |
 
 列表首次挂载即 `refreshSessions()`（读 `meta` 表，不碰消息体）；每次落盘成功后同步刷新一次，保证新会话立刻出现在列表。
@@ -222,6 +223,16 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 ### 7.5 过期图片占位
 
 `ChatList` 对用户消息的 `images.map`：`src === ''` 且 `expiredImages.includes(idx)` → 渲染 `h-24 w-24` 灰底虚线块（文案「图片已过期」，`title` 说明"会话容量超限，此图已被清理"）；`src === ''` 且未登记 → 返回 `null` 跳过该槽位（不渲染破图）。其余情况照旧 `<img>`。
+
+### 7.6 地址栏会话定位（`?s=`，2026-11-15）
+
+`/chat?s=<会话id>` 把当前会话写进地址栏。数据全在本机 IndexedDB，**不构成跨设备分享链接**——URL 的价值只有两件事：刷新后回到当前对话、地址栏可存为书签。
+
+| 环节 | 口径 |
+| --- | --- |
+| 写入 | chat 页订阅 store `currentSessionId`，变化即 `window.history.replaceState` 同步：非 null → `/chat?s=<id>`（id `encodeURIComponent`），null（新建/丢弃）→ `/chat`。**首帧跳过写入**：挂载读取 effect 已按 `?s=` 处理过一次，且新建对话首帧的 null 不能把待恢复的参数抢先抹掉。用 `replaceState` 不产生历史栈条目——前进/后退不切换会话，会话切换自有 §7.2 信号链路，不与浏览器历史纠缠 |
+| 读取 | chat 页挂载时读一次 `location.search` 的 `s`：先 `storage.listSessions()` 验证记录存在才 `openSession(id)`（复用 §7.2 信号链路载入）；不存在（已删/他处粘贴/脏值）直接抹掉参数回 `/chat`，不摆空壳 |
+| 边界 | 诊断会话上下文不随 URL 恢复（与 §7.2 `loadSession` 的 `setDiagnoseContext(null)` 同口径：状态机是服务端会话态，刷新即作废）；Next 16 官方支持原生 history API 与 Router 同步（`node_modules/next/dist/docs/01-app/02-guides/single-page-applications.md`），不引入 `useSearchParams`（免 Suspense 约束） |
 
 ---
 
@@ -233,7 +244,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 | --- | --- |
 | 契约 | `storage.renameSession(id, title)`：`normalizeTitle` 规整（折叠空白 + 20 码点截断），空输入返回 `false` 表示拒绝；成功即置 `titleEdited = true` |
 | 排序 | **不更新 `updatedAt`**：改标题不是会话活动，不应把旧会话顶到列表首位 |
-| UI | 侧栏会话项双击标题进入内联输入；`Enter`/失焦提交，`Esc` 取消；提交值与原值相同或规整后为空 → 直接退出不写库 |
+| UI | 侧栏会话操作菜单「重命名」（§7.4，2026-11-15 起收敛进菜单）进入内联输入；`Enter`/失焦提交，`Esc` 取消；提交值与原值相同或规整后为空 → 直接退出不写库 |
 | 内存同步 | 改的是当前会话时，`useChat` 的 `sessionMetaRef` 必须同步 `{ title, titleEdited: true }`，否则下次 `flushSession` 会用旧标题覆盖（`store` 以 `renameSignal` + `renamedSession` 广播，规则同 §7.1 的 signal 模式） |
 | 兜底 | 即便内存没同步到，`writeSession` 也以 `previousMeta.titleEdited` 优先取旧标题，避免"改完名又被自动派生覆盖" |
 
@@ -242,7 +253,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 - 纯函数 `buildSessionMarkdown(meta, messages)`：标题 + 创建/更新时间 + 消息数，逐条输出角色、正文、思考过程（折叠引用块）、工具调用摘要、诊断结果、附件清单；图片一律输出占位标记 `[图片]`，命中 `expiredImages` 的槽位输出 `[图片已过期]`，**不内联 dataURL**（导出物是给人读的文本，塞 base64 会让文件膨胀到不可用）。
 - 文件名 `buildSessionFileName(meta, now)` → `notesync-<标题>-<yyyyMMdd-HHmm>.md`；标题里的路径分隔符与空白一律替换为 `-`，避免落盘失败。
 - 导出内容取自**库内已落盘快照**（`storage.loadSession`），不读内存态：侧栏与聊天页不共享 `messages`，也不应为导出新增跨组件读取通道。若当前会话正在生成，导出物缺末尾未落盘部分——这属于已知取舍，UI 用 `title` 说明。
-- 触发入口：侧栏会话项悬停的第二枚图标（`↓`）。
+- 触发入口：侧栏会话操作菜单「下载」项（§7.4，2026-11-15 起自悬停图标收进菜单）。
 
 ### 8.3 消息级操作
 
