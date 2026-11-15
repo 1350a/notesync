@@ -54,6 +54,12 @@ export interface ProviderMessage {
   content: ProviderContent;
   /** assistant 消息中的工具调用列表（native 模式历史回放用） */
   tool_calls?: ProviderToolCall[];
+  /**
+   * assistant 消息的思考过程回传（DeepSeek 思考模式 + tools 的硬校验必需，
+   * 协议口径见 doc/tool-protocol.md §4.3）。仅 assistant 消息携带；
+   * 下发分流（仅 deepseek 且思考开启）在 openaiCompat.ts 统一承担。
+   */
+  reasoning_content?: string;
   /** role="tool" 时，对应发起该工具调用的 tool_call.id */
   tool_call_id?: string;
   /** role="tool" 时的工具名（部分端点要求，便于 debug） */
