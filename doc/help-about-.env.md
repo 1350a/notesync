@@ -54,7 +54,7 @@ Linux 或 macOS 用户直接 `cp .env.example .env` 就好了。
 通常留空即可。
 添加自定义模型时，请自行确认自定义的模型提供商提供的模型名。项目支持 `GET /models` 的端点，但若不支持会导致配置失败。
 
-#### `DEEPSEEK_SAFETY_CHECK`
+#### `DEEPSEEK_SAFETY_CHECK`（这一部分在13号DeepSeek更新后加入）
 
 DeepSeek 服务端内容安全审核（仅对 DeepSeek 生效）。填 `high` 开启：平台会审核请求的输入与输出，命中风险时拒答（输入未过审直接报 400，已生成的回答被丢弃并展示拦截说明）。`low` / `off` / 注释掉该行 = 不发送，行为与开启前完全一致。
 
