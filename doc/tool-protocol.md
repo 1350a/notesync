@@ -99,6 +99,8 @@ DeepSeek 在思考模式（请求带 `reasoning_effort`，见 doc/user-settings.
 2. **finalize 注入轮**（诊断补交 / guard 重试）：`LoopRunResult.reasoning` 汇总一次 loop 运行的思考全文，注入 assistant 正文时同源携带。
 3. **跨请求多轮**：客户端上行历史携带 `reasoning`（`ChatMsg` 落库已有该值），`buildProviderMessages` 映射为 `reasoning_content`。
 
+**注入轮的收尾角色（2026-11-15 修订）**：注入轮请求形状为 `[…base, assistant(正文+reasoning_content), 重试指令]`。重试指令原本以 `system` 角色收尾，实测 DeepSeek 正在灰度的新校验会把「assistant 之后未紧跟 tool/user」的请求判为前缀续写语义并返回 400（"the last message is an `assistant` message; to continue it, set `prefix: true` on it (beta api)"）——该口径按账号逐步生效，无法稳定复现（同形状请求在不同 key 下 200/400 并存）。故重试指令改用 `user` 角色收尾：assistant 后随 user 在新旧两种口径下都合法，注入的 `reasoning_content` 同源携带不变（本节要求只约束 assistant 历史消息本身，与后继消息角色无关）。
+
 下发分流由 provider 层统一承担（`lib/provider/openaiCompat.ts`）：`reasoning_content` **仅 DeepSeek 且该请求本身处于思考模式时下发**——zhipu / custom 对未知字段可能严格校验（与 user / thinking 字段同口径），思考关闭的请求没有回传语义。历史中本就没有 reasoning 的消息（旧会话、中途开档的轮次）无法凭空补齐，只能缺省上行；上游对其校验粒度以真机实测为准。
 
 ## 5. text 模式
