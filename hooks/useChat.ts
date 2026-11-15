@@ -659,13 +659,20 @@ export function useChat(selectedModel: string) {
               break;
             } else if (parsed.event === 'error') {
               if (parsed.data.code === 'content_blocked') {
-                // 拦截归因先入 trace（signal 区分 finish_reason 与拒绝性文本），再展示固定说明；
-                // finalize 在 finally，先记录可保证归因不因 break 提前退出而丢失
+                // 拦截归因先入 trace（signal 区分 finish_reason / upstream_400 / 拒绝性文本），
+                // 再展示固定说明；finalize 在 finally，先记录可保证归因不因 break 提前退出而丢失。
+                // signal 归一：结构化上游信号透传，其余（含缺省 content 路径）兜底为 'content'
                 const blockedInfo: TraceBlocked = {
-                  signal: parsed.data.signal === 'finish_reason' ? 'finish_reason' : 'content',
+                  signal:
+                    parsed.data.signal === 'finish_reason' || parsed.data.signal === 'upstream_400'
+                      ? parsed.data.signal
+                      : 'content',
                   code: 'content_blocked',
                   ...(typeof parsed.data.finishReason === 'string'
                     ? { finishReason: parsed.data.finishReason }
+                    : {}),
+                  ...(typeof parsed.data.refusal === 'string'
+                    ? { refusal: parsed.data.refusal }
                     : {}),
                 };
                 trace.blocked = blockedInfo;
