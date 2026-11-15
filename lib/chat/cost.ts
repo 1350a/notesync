@@ -39,8 +39,13 @@ export function estimateCost(input: {
   clientId: string;
   calls: number;
   messages: ReadonlyArray<{ content: unknown }>;
+  /**
+   * 请求字符数覆盖值。多模态附件按口径折算时使用（如图片按张计占位），
+   * 缺省由 messages 推导。
+   */
+  requestChars?: number;
 }): CostRecord {
-  const requestChars = charsOf(input.messages);
+  const requestChars = input.requestChars ?? charsOf(input.messages);
   return {
     route: input.route,
     calls: input.calls,

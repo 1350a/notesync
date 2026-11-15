@@ -218,8 +218,10 @@ export interface DiagnoseRequestPayload {
 /** 整卷结果面板的步骤条目（doc/diagnose-paper.md §3 paper_step） */
 export interface PaperStep {
   text: string;
-  current?: number;
-  total?: number;
+  /** 进度口径文案（服务端下发，如「阶段 1/4」「第 2/3 组」），避免分母与上传文件数混读 */
+  progress?: string;
+  /** 终止态步骤：流程在此中断（切题失败等），渲染为警示色 */
+  status?: 'failed';
 }
 
 /** 整卷切题分类后一组共享诊断的结果（同类题只诊断一次，doc/diagnose-paper.md §4） */
@@ -234,4 +236,6 @@ export interface PaperViewState {
   steps: PaperStep[];
   results: PaperGroupResult[];
   summary: string;
+  /** 流程已中断：任一 error 终止后置真，标题明确标注「已中断」，不再有「处理中」观感 */
+  interrupted?: boolean;
 }

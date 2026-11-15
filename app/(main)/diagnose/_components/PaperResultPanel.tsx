@@ -18,16 +18,21 @@ export default function PaperResultPanel({ view }: { view: PaperViewState }) {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-4">
-        <h3 className="mb-2 font-semibold text-foreground">处理进度</h3>
+        <h3 className="mb-2 font-semibold text-foreground">
+          处理进度
+          {view.interrupted && (
+            <span className="ml-2 rounded-full border border-destructive/40 px-2 py-0.5 text-xs font-normal text-destructive">
+              已中断
+            </span>
+          )}
+        </h3>
         <ol className="space-y-1 text-sm text-muted-foreground">
           {view.steps.map((stepItem, i) => (
-            <li key={i}>
+            <li key={i} className={stepItem.status === 'failed' ? 'text-destructive' : undefined}>
               <span className="mr-1 text-muted-foreground/70">{i + 1}.</span>
               {stepItem.text}
-              {stepItem.current !== undefined && stepItem.total !== undefined && (
-                <span className="ml-1 text-xs text-muted-foreground/70">
-                  ({stepItem.current}/{stepItem.total})
-                </span>
+              {stepItem.progress && (
+                <span className="ml-1 text-xs text-muted-foreground/70">（{stepItem.progress}）</span>
               )}
             </li>
           ))}

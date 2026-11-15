@@ -48,6 +48,15 @@ describe('整卷诊断四步流程（MOCK 剧本）', () => {
     const steps = events.filter((e) => e.event === 'paper_step');
     expect(steps.length).toBeGreaterThanOrEqual(3); // 切题/分类/组诊断/汇总至少三步留痕
 
+    // 进度口径：阶段固定「阶段 i/4」，分组用「第 i/N 组」——两套分母语义不同，且都与上传文件数无关
+    const progresses = steps.map((s) => String(s.data.progress ?? ''));
+    expect(progresses.every((p) => p.length > 0)).toBe(true);
+    expect(progresses).toContain('阶段 1/4');
+    expect(progresses).toContain('阶段 4/4');
+    expect(progresses.some((p) => /^第 \d+\/\d+ 组$/.test(p))).toBe(true);
+    // 不再下发 current/total：分母不会被误读成上传文件数
+    expect(steps.every((s) => s.data.current === undefined && s.data.total === undefined)).toBe(true);
+
     const diagnoses = events.filter((e) => e.event === 'diagnosis');
     expect(diagnoses.length).toBeGreaterThanOrEqual(1);
     for (const d of diagnoses) {
