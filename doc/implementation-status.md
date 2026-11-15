@@ -106,6 +106,7 @@ AIGC:
 | 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板与聊天输入区均全档可选；off 档文案随 Provider 变（deepseek「关闭」、其余「默认」），仅改文案不锁档 | ✅ | `lib/settings/types.ts` |
 | 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 在所有 Provider 均不下发参数（zhipu 的 `disabled` 实测关不掉思考，2026-11-15 摘除） | ✅ | `lib/provider/openaiCompat.ts` |
 | 思考预算 `maxTokens` | 已实装：`normalizeMaxTokens` 归一（≤0/NaN/非数值视为未设置，超上限钳制），`mapMaxTokens` 按 Provider 分流下发 `max_tokens`（**custom 恒不发**，未知字段严格校验风险），经工具循环与收敛请求一并透传；设置页「思考预算」下拉提供跟随模型默认 / 1024 / 4096 / 8192 | ✅ | `lib/settings/types.ts`、`lib/provider/openaiCompat.ts`、`lib/tools/loop.ts` |
+| TTS 朗读 | 已实装（2026-11-15）：双云端引擎（zhipu GLM-TTS / deepseek，key 不出服务端）+ 消息气泡朗读按钮 + 回复完成后整段合成；服务端统一 markdown 朗读清洗与按句分段（单段 zhipu 1000 / deepseek 4000 字符，防呆 20000 字符 / 20 段）；`MOCK_TTS=1` 清洗分段真跑、音频占位；语速 UI / 边生成边读 / 本地合成挂账 doc/tts.md §8 | ✅ | `lib/tts/`、`app/api/tts/route.ts`、`store/useTtsStore.ts`、`hooks/useTts.ts`、`components/chat/MessageActions.tsx`、`components/settings/GeneralSection.tsx` |
 | `systemPrompt` / `temperature` | 未接线（协议标注未接，服务端注入待做） | 🧊 | `doc/user-settings.md` |
 
 ## 6. 工程与质量
