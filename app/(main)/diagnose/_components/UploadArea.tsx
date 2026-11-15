@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import ModelSelect from '@/components/ModelSelect';
 import UploadPrivacyNotice from '@/components/upload/UploadPrivacyNotice';
@@ -8,6 +8,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
 import { extractAttachment } from '@/lib/diagnose/extract';
+import { clearPaperReport, loadPaperReport, savePaperReport } from '@/lib/diagnose/paper-cache';
 import type { DiagnoseKind, DiagnosisResult, PaperViewState, ReviseCategory } from '@/lib/diagnose/types';
 import type { OcrEngine } from '@/lib/settings/types';
 import { generateId, getUserId } from '@/lib/client-id';
@@ -98,6 +99,8 @@ export default function UploadArea() {
   /** 诊断模式：single 单题（对话式组装）/ paper 整卷（四步流程，agent-workflow.md §5） */
   const [mode, setMode] = useState<'single' | 'paper'>('single');
   const [paperView, setPaperView] = useState<PaperViewState | null>(null);
+  /** 当前展示的 paperView 是否来自本机暂存恢复（决定「清除暂存」横条显隐，doc/diagnose-paper.md §8） */
+  const [restoredReport, setRestoredReport] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 移动端相册选图入口（accept=image/* 无 capture，直进照片选择器，doc/file-intake.md §9） */
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +148,17 @@ export default function UploadArea() {
   // 图片路径全自动派生（product-vision.md P4，2026-11-14）：多模态直传、其余 OCR 转写。
   // 无当次覆盖与档位控件——UI 只展示派生结果与代价（诚实接线）
   const imageMode: ImageSendMode = resolveImageSendMode(currentModel);
+
+  // 进入页面恢复上次整卷报告（doc/diagnose-paper.md §8）：仅回看，不拦新诊断。
+  // 放进微任务：effect 体内同步 setState 会触发级联渲染（react-hooks 规则，同 useChat 信号消费手法）
+  useEffect(() => {
+    const saved = loadPaperReport();
+    if (!saved) return;
+    queueMicrotask(() => {
+      setPaperView(saved);
+      setRestoredReport(true);
+    });
+  }, []);
 
   /** 加入文件：先判定类型（魔数嗅探，异步），再把可支持的文件送去提取内容 */
   const addFiles = async (incoming: File[]) => {
@@ -227,6 +241,7 @@ export default function UploadArea() {
     setResult('');
     setError('');
     setPaperView(null);
+    setRestoredReport(false);
 
     try {
       let prepared = readyRows;
@@ -317,6 +332,8 @@ export default function UploadArea() {
             setError(p.error ?? '整卷诊断失败');
           }
         });
+        // 整卷结束即暂存最终快照（含部分失败的中途态）：刷新/跳走后可回看（doc/diagnose-paper.md §8）
+        savePaperReport(view);
         return;
       }
 
@@ -624,6 +641,23 @@ export default function UploadArea() {
       {error && (
         <div className="bg-card p-6 rounded-2xl shadow-sm border border-border">
           <p className="text-sm text-destructive whitespace-pre-wrap">{error}</p>
+        </div>
+      )}
+
+      {restoredReport && paperView && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <span className="flex-1">已恢复上次整卷诊断报告（仅保存在本机浏览器，不上传）</span>
+          <button
+            type="button"
+            onClick={() => {
+              clearPaperReport();
+              setPaperView(null);
+              setRestoredReport(false);
+            }}
+            className="shrink-0 font-medium text-foreground underline underline-offset-2 hover:opacity-80"
+          >
+            清除暂存
+          </button>
         </div>
       )}
 
