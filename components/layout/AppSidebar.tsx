@@ -9,6 +9,7 @@ import { useChatStore } from '@/store/useChatStore';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const NAV_ITEMS = [
   { name: '单题对话', path: '/chat', icon: '💬' },
@@ -51,6 +52,12 @@ function SidebarContent() {
   /** Esc 取消时 input 会跟着失焦，用它压掉 blur 的提交 */
   const cancelRenameRef = useRef(false);
 
+  // 会话操作菜单（doc/chat-history.md §7.4）：一次只开一个；定位用 createPortal 挂到
+  // body——列表容器 overflow-y-auto 会裁剪 absolute，移动端抽屉 Popup 常驻 transform
+  // 会劫持 fixed，portal 一并规避
+  const [menuFor, setMenuFor] = useState<SessionMeta | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
+
   // 列表首次挂载即刷新（§7.4）：store 快照原本只在 /chat 的 useChat 里刷，直接进
   // /diagnose、/local 时快照为空，列表会整体空转，故收口到侧栏自身挂载
   useEffect(() => {
@@ -84,6 +91,25 @@ function SidebarContent() {
     const ok = await exportSessionMarkdown(meta);
     if (!ok) window.alert('该会话内容已不存在，无法导出。');
   }, []);
+
+  /** 打开菜单：锚定省略号按钮矩形，贴近视口底部向上翻折（128 ≈ 三个菜单项的估高） */
+  const openMenu = useCallback((meta: SessionMeta, anchor: DOMRect) => {
+    const flipUp = anchor.bottom + 128 > window.innerHeight;
+    setMenuPos({
+      top: flipUp ? undefined : anchor.bottom + 4,
+      bottom: flipUp ? window.innerHeight - anchor.top + 4 : undefined,
+      right: Math.max(8, window.innerWidth - anchor.right),
+    });
+    setMenuFor(meta);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setMenuFor(null);
+    setMenuPos(null);
+  }, []);
+
+  // 菜单目标实时取列表项：会话被别处删除时菜单立即失效，不对着幽灵会话操作
+  const menuItem = menuFor ? (sessions.find((s) => s.id === menuFor.id) ?? null) : null;
 
   const beginRename = useCallback((meta: SessionMeta) => {
     cancelRenameRef.current = false;
@@ -135,7 +161,11 @@ function SidebarContent() {
         </Button>
       </div>
 
-      <div className="p-4 flex-1 flex flex-col gap-6 overflow-y-auto">
+      <div
+        className="p-4 flex-1 flex flex-col gap-6 overflow-y-auto"
+        // 菜单是 fixed 定位，列表一滚就与锚点脱节，滚动即关
+        onScroll={menuFor ? closeMenu : undefined}
+      >
         {/* 导航区 */}
         <div>
           <h3 className="text-xs font-semibold text-muted-foreground mb-2">功能导航</h3>
@@ -218,7 +248,7 @@ function SidebarContent() {
                         type="button"
                         onClick={() => handleOpen(item.id)}
                         title={item.title}
-                        className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-3 pr-20 text-left transition-colors ${
+                        className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-3 pr-10 text-left transition-colors ${
                           active
                             ? 'bg-background shadow-sm border border-border/50'
                             : 'border border-transparent hover:bg-muted/60'
@@ -231,34 +261,19 @@ function SidebarContent() {
                       </button>
                     )}
                     {renamingId === item.id ? null : (
-                      // 三个动作按钮：桌面 hover / 键盘聚焦才显形，触屏常显（doc/mobile-ux.md §4）
-                      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
+                      // 省略号入口：动作收进纯文字菜单（doc/chat-history.md §7.4）；
+                      // 桌面 hover / 键盘聚焦才显形，触屏常显（doc/mobile-ux.md §4）
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
                         <button
                           type="button"
-                          onClick={() => beginRename(item)}
-                          title="重命名会话"
-                          aria-label={`重命名会话 ${item.title}`}
+                          onClick={(e) => openMenu(item, e.currentTarget.getBoundingClientRect())}
+                          title="会话操作"
+                          aria-label={`会话操作 ${item.title}`}
+                          aria-haspopup="menu"
+                          aria-expanded={menuFor?.id === item.id}
                           className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                         >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleExport(item)}
-                          title="导出为 Markdown"
-                          aria-label={`导出会话 ${item.title}`}
-                          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(item)}
-                          title="删除会话"
-                          aria-label={`删除会话 ${item.title}`}
-                          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        >
-                          ×
+                          ⋯
                         </button>
                       </div>
                     )}
@@ -269,6 +284,63 @@ function SidebarContent() {
           )}
         </div>
       </div>
+
+      {/* 会话操作菜单：纯文字三项（无图标，2026-11-15 改版）；portal 到 body，
+          不被列表容器裁剪也不受移动端抽屉 transform 影响 */}
+      {menuItem && menuPos &&
+        createPortal(
+          <>
+            {/* 透明点击层：点菜单外任意处关闭（手法同 ChatInput 移动端附件菜单） */}
+            <div className="fixed inset-0 z-[60]" onClick={closeMenu} />
+            <div
+              role="menu"
+              aria-label={`会话操作 ${menuItem.title}`}
+              className="fixed z-[60] w-28 overflow-hidden rounded-xl border border-border bg-background py-1 shadow-lg"
+              style={{ top: menuPos.top, bottom: menuPos.bottom, right: menuPos.right }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  closeMenu();
+                }
+              }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  beginRename(menuItem);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted touch:py-2.5"
+              >
+                重命名
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  void handleExport(menuItem);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted touch:py-2.5"
+              >
+                下载
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  void handleDelete(menuItem);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted touch:py-2.5"
+              >
+                删除
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
