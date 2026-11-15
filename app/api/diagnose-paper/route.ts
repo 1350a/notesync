@@ -30,6 +30,7 @@ import {
 import { runMockPaper } from '@/lib/mock/paper';
 import { isBlockedSignal } from '@/lib/safety/block-detect';
 import { getModelList, resolveProvider } from '@/lib/provider';
+import { UpstreamContentBlockedError } from '@/lib/provider/errors';
 import type { LLMProvider, ProviderMessage } from '@/lib/provider/types';
 import {
   buildDiagnosisResult,
@@ -260,6 +261,19 @@ export async function POST(request: Request) {
         // 上游异常原文只进服务端日志，响应给脱敏摘要（审查项 S2）
         const raw = err instanceof Error ? err.message : String(err ?? '');
         if (raw) console.error(`[paper] 整卷诊断请求失败：${raw.slice(0, MAX_ERROR_LOG_CHARS)}`);
+        // DeepSeek 输入未过审（400 Content Exists Risk，safety-protocol §3.2）：与 /api/chat
+        // 同口径归一为 content_blocked——材料含违规内容时重试只会再被拦一次（§2 不可重试）
+        if (err instanceof UpstreamContentBlockedError) {
+          controller.enqueue(
+            encoder.encode(
+              sse('error', {
+                code: 'content_blocked',
+                error: CONTENT_BLOCKED_MESSAGE,
+              }),
+            ),
+          );
+          return;
+        }
         const summary = redactUpstreamText(raw);
         controller.enqueue(
           encoder.encode(
