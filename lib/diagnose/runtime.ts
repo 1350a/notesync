@@ -498,7 +498,9 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
           content: outputText,
           ...(outputReasoning ? { reasoning_content: outputReasoning } : {}),
         },
-        { role: 'system', content: SUBMISSION_RETRY_PROMPT },
+        // 重试指令用 user 收尾而非 system：DeepSeek 灰度中的新校验把「assistant 之后
+        // 未紧跟 tool/user」判为前缀续写并 400（部分账号已生效，见 doc/tool-protocol.md §4.3）
+        { role: 'user', content: SUBMISSION_RETRY_PROMPT },
       ],
       { silent: hasMainText },
     );
@@ -556,7 +558,8 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
             content: outputText,
             ...(outputReasoning ? { reasoning_content: outputReasoning } : {}),
           },
-          { role: 'system', content: GUARD_RETRY_PROMPT },
+          // 同补交轮：user 收尾规避上游灰度中的「assistant 悬空 = 前缀续写」校验（§4.3）
+          { role: 'user', content: GUARD_RETRY_PROMPT },
         ]);
         outputText += run.outputText;
         const resubmission = submissionStore.args;
