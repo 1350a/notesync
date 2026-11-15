@@ -5,6 +5,7 @@ import ChatInput from '@/components/chat/ChatInput';
 import ChatList from '@/components/chat/ChatList';
 import { useChat } from '@/hooks/useChat';
 import { useModels } from '@/hooks/useModels';
+import { getHistoryStorage } from '@/lib/history/storage';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import type { DiagnoseRequestEvent } from '@/lib/diagnose/types';
@@ -71,6 +72,7 @@ export default function ChatPage() {
   };
 
   const currentSessionId = useChatStore((s) => s.currentSessionId);
+  const openSession = useChatStore((s) => s.openSession);
 
   // 会话切换复位跟随态：上一会话的打断态不带入新会话，
   // 否则重新打开会话后下一次吸底会失灵，落在顶部而不是最新消息
@@ -79,6 +81,37 @@ export default function ChatPage() {
     if (seenSessionRef.current === currentSessionId) return;
     seenSessionRef.current = currentSessionId;
     followState.current = { interrupted: false, atBottom: true, lastTop: 0 };
+  }, [currentSessionId]);
+
+  // —— 地址栏会话定位（doc/chat-history.md §7.6）——
+  // 挂载读一次 ?s=：记录存在才走打开信号链路载入；不存在（已删/他处粘贴/脏值）抹掉参数
+  // 回 /chat，不摆空壳。不引入 useSearchParams（免 Suspense 约束），Next 16 支持原生
+  // history API 与 Router 同步（node_modules/next/dist/docs single-page-applications.md）
+  useEffect(() => {
+    const target = new URLSearchParams(window.location.search).get('s');
+    if (!target) return;
+    void (async () => {
+      const sessions = await getHistoryStorage().listSessions();
+      if (sessions.some((meta) => meta.id === target)) openSession(target);
+      else window.history.replaceState(null, '', '/chat');
+    })();
+  }, [openSession]);
+
+  // currentSessionId 变化即同步地址栏。首帧只记录不写入：挂载读取 effect 已按 ?s= 处理过，
+  // 且新建对话首帧的 null 不能把待恢复的参数抢先抹掉；replaceState 不产生历史栈条目
+  const seenUrlSessionRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (seenUrlSessionRef.current === undefined) {
+      seenUrlSessionRef.current = currentSessionId;
+      return;
+    }
+    if (seenUrlSessionRef.current === currentSessionId) return;
+    seenUrlSessionRef.current = currentSessionId;
+    window.history.replaceState(
+      null,
+      '',
+      currentSessionId ? `/chat?s=${encodeURIComponent(currentSessionId)}` : '/chat'
+    );
   }, [currentSessionId]);
 
   // 跟随新内容：流式即时贴底（不用 smooth，连续动画观感发飘）
