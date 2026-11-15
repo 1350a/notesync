@@ -38,8 +38,13 @@ jobs:
 
       # 不注入任何 API_* / MOCK_* 变量：lib/provider/* 与 app/api/* 的 process.env 读取
       # 全部带 '' 兜底，缺变量只让模型列表为空，不阻断构建（AGENTS.md §7：密钥只在环境变量）
+      # ONNXRUNTIME_NODE_INSTALL=skip：onnxruntime-node 的 postinstall 默认会去 NuGet feed
+      # 下载未打包的 CUDA 附加二进制，CI 用不到（浏览器端走 onnxruntime-web），曾因 runner
+      # 连不上 MS CDN 挂掉整个安装（run 43606597245）。跳过后安装完全离线确定化
       - name: 安装依赖
         run: npm ci --no-audit --no-fund
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       # 说明：本 workflow 不执行 local:assets / ocr:assets。
       # public/models 与 public/ocr 是派生产物（不入库），而 8 项 smoke 与 build 都只
