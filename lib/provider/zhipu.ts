@@ -35,11 +35,11 @@ export interface ZhipuModelMeta {
   free?: boolean;
 }
 
-/** 智谱聚焦模型目录（顺序即下拉展示顺序） */
+/** 智谱聚焦模型目录（顺序即下拉展示顺序；纯文本款排在多模态同代之后，2026-11-15 微调） */
 export const ZHIPU_CATALOG: ZhipuModelMeta[] = [
-  { name: "glm-5.3", vision: false },
   { name: "glm-5.3-flash", vision: true },
   { name: "glm-5.3-flashx", vision: true },
+  { name: "glm-5.3", vision: false },
   { name: "glm-4.7-flash", vision: false, free: true },
 ];
 
