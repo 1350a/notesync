@@ -23,10 +23,12 @@ AIGC:
 
 | Provider | 输入侧拦截 | 流式中拦截 | 可观测信号 |
 |---|---|---|---|
-| DeepSeek | 无专门错误码 | 无专门错误码 | 只能靠响应形态推断（空 content / `finish_reason` 异常 / 拒绝性文本） |
+| DeepSeek | 无专门错误码；开启 `safety_check`（§3.2）后输入未过审返回 `400 Content Exists Risk` | 无专门错误码；开启后以 `finish_reason=content_filter` 拒答收尾（§3.2） | 未开启：只能靠响应形态推断（空 content / `finish_reason` 异常 / 拒绝性文本）；开启后另有显式信号（§3.2） |
 | 智谱 | 有错误码 | **只返回理由，不返回错误码** | 同上 |
 
 因此不采用「有错误码才处理」的策略，改为**响应形态信号 → 统一 `error.code`**。
+DeepSeek 开启 `safety_check`（§3.2）后虽有显式信号，但只把它当作**新增证据源**而非替代：
+判定仍走 §3 两路归一，智谱与未开启时的行为完全不变。
 
 ## 2. 错误码扩展
 
@@ -55,6 +57,31 @@ AIGC:
 否则下一轮会把被拒内容原样回传上游，轻则再次被拦，重则触发用户级冷却。
 
 实现要点：`runToolLoop` 需要在流中断时丢弃本轮追加的 assistant 消息，而不是照常 `appendResults` 或保留半截内容。
+
+### 3.2 DeepSeek `safety_check` 显式信号（2026-11-13 API 更新实装）
+
+DeepSeek 2026-11-13 起提供服务端内容安全审核参数 `safety_check`（Chat Completions 等
+三协议通用）。本系统以环境变量 `DEEPSEEK_SAFETY_CHECK` 控制是否开启（`high` 开启；
+`low` / `off` / 未配置 = 不发送该字段，行为与更新前完全一致），仅 DeepSeek 下发——
+智谱与自定义端点不认识该字段，可能被严格校验拒绝（同 thinking / user 字段的分流口径）。
+
+开启后的上游行为与归一：
+
+| 上游行为 | 归一 |
+|---|---|
+| 输入（用户消息 / `tool_result` 内容等）未过审：`400 Content Exists Risk`，输入 token 照常计费（按缓存命中价） | `error.code=content_blocked`，`signal=upstream_400`（新信号值） |
+| 输出拒答：`finish_reason=content_filter`，content 与思考被清空，连接保持到输出审核结束 | 既有 `finish_reason` 路径命中（词表本就含 `content_filter`），`signal=finish_reason` |
+| 图片被拦说明：流式最后 chunk 的 `delta.refusal` / 非流式 `message.refusal`（指出被拦图片位置） | 随 blocked 事件透传进 trace 的 `blocked.refusal`（证据增强，不改变判定） |
+
+要点：
+
+- 已流式下发的文本无法撤回——处置仍是 §3.1：前端丢弃已流出片段、展示固定话术、本轮历史回滚。
+  链路不变，DeepSeek 官方文档对前端的拒答处置要求由现有 block 事件承担。
+- 拒答时思考被清空：该轮 trace 缺思维链证据，属预期行为，非缺陷。
+- 审核 token 计入 `usage.completion_tokens`（明细字段 `safety_tokens`，本系统不单独记账）。
+- 开启后 `tool_choice` 只能为 `auto` / `none`，否则上游 400；本系统工具模式恒发 `auto`，天然满足。
+- 内容路径正则对 `delta.refusal` 的英文说明不敏感（说明指向图片位置而非拒答话术），
+  依赖的是 `finish_reason` 路径兜住——两路设计的价值正在于此。
 
 ## 4. 输入侧本地前置过滤
 
