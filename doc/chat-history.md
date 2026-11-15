@@ -230,7 +230,7 @@ type BlobKey = `${sessionId}:${msgIndex}:${imgIndex}`
 
 | 环节 | 口径 |
 | --- | --- |
-| 写入 | chat 页订阅 store `currentSessionId`，变化即 `window.history.replaceState` 同步：非 null → `/chat?s=<id>`（id `encodeURIComponent`），null（新建/丢弃）→ `/chat`。**首帧跳过写入**：挂载读取 effect 已按 `?s=` 处理过一次，且新建对话首帧的 null 不能把待恢复的参数抢先抹掉。用 `replaceState` 不产生历史栈条目——前进/后退不切换会话，会话切换自有 §7.2 信号链路，不与浏览器历史纠缠 |
+| 写入 | chat 页订阅 store `currentSessionId`，变化即 `window.history.replaceState` 同步：非 null → `/chat?s=<id>`（id `encodeURIComponent`），null（新建/丢弃）→ `/chat`。**首帧跳过写入**：挂载读取 effect 已按 `?s=` 处理过一次，且新建对话首帧的 null 不能把待恢复的参数抢先抹掉。**重入态对齐**：首帧若 store 已有当前会话而地址栏无参（从其他页点开"已是当前"的会话跳回、SPA 返回聊天页——此场景 `loadSession` 目标即当前会话，`currentSessionId` 不变化、永远等不到变化写入），先按 store 补齐 `?s=`；地址栏已有 `?s=` 时不写（挂载读取 effect 正在按参数恢复，不能抢跑）。用 `replaceState` 不产生历史栈条目——前进/后退不切换会话，会话切换自有 §7.2 信号链路，不与浏览器历史纠缠 |
 | 读取 | chat 页挂载时读一次 `location.search` 的 `s`：先 `storage.listSessions()` 验证记录存在才 `openSession(id)`（复用 §7.2 信号链路载入）；不存在（已删/他处粘贴/脏值）直接抹掉参数回 `/chat`，不摆空壳 |
 | 边界 | 诊断会话上下文不随 URL 恢复（与 §7.2 `loadSession` 的 `setDiagnoseContext(null)` 同口径：状态机是服务端会话态，刷新即作废）；Next 16 官方支持原生 history API 与 Router 同步（`node_modules/next/dist/docs/01-app/02-guides/single-page-applications.md`），不引入 `useSearchParams`（免 Suspense 约束） |
 
