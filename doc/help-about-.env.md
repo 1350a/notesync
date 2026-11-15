@@ -60,7 +60,7 @@ AIGC:
 | `CUSTOM_BASE_URL` | Provider | **用 custom 时必填，无默认** | 空（不可用） | `http://localhost:11434/v1` |
 | `CUSTOM_MODEL` | Provider | 可选 | 空（取 `/models` 枚举） | `qwen3:8b` |
 | `TOOLS_ENABLED` | 工具调用 | 可选 | `true` | 仅 `false` 关闭 |
-| `TOOL_MAX_ROUNDS` | 工具调用 | 可选 | `3` | 正整数 |
+| `TOOL_MAX_ROUNDS` | 工具调用 | 可选 | `5` | 正整数 |
 | `CUSTOM_TOOL_MODE` | 工具调用 | 可选 | `native` | `native` / `text` |
 | `CUSTOM_ALLOW_IMAGES` | 工具调用 | 可选 | `0`（false） | 仅 `1` 开启 |
 | `TRIM_BUDGET_CHARS` | 上下文 | 可选 | `24000` | 字符数；`0` 禁用裁剪 |
@@ -143,12 +143,13 @@ AIGC:
 `0`、`no`、`off`、空值都会被当作开启。关闭后 `getEnabledTools()` 返回空集，模型拿到的是无工具
 请求体。
 
-### 4.2 `TOOL_MAX_ROUNDS`（默认 `3`）
+### 4.2 `TOOL_MAX_ROUNDS`（默认 `5`）
 
 单轮对话内工具执行的最大循环轮数，防无限循环。达上限后走"收敛请求"（追加 system 提示再做一次
 不带 tools 的请求），因此它是**轮数兜底而非诊断完成**（`doc/agent-workflow.md` §4）。
 
-- 解析用 `parseInt`：非法值得到 `NaN`，比较恒假 → 等价于 0 轮，即**工具一个都不执行**。填就填正整数。
+- 解析用 `parseInt`：非负整数（含 `0` = 一轮工具都不执行）原样采用；**非法值 / 负数回落默认 `5`**，
+  并在服务端 warn 一次 `[env] TOOL_MAX_ROUNDS：…` 留痕（§9.1）。填就填非负整数。
 - 诊断模式的 `submit_diagnosis` 是逐请求工厂件（提交存储随请求走，避免并发覆盖），不参与注册表单例。
 
 ### 4.3 `CUSTOM_TOOL_MODE`（默认 `native`）
@@ -180,7 +181,7 @@ AIGC:
 （`lib/chat/trim.ts`，总账 §9.1）。
 
 - `0` = **禁用裁剪**（全文上行，注意费用与上下文上限）。
-- 非法值 / 负数 → 回落 24000。
+- 非法值 / 负数 → 回落 24000，并 warn 一次 `[env] TRIM_BUDGET_CHARS：…` 留痕（§9.1）。
 - 裁剪发生在 `buildProviderMessages` 之后、`runToolLoop` 之前，命中时服务端打印一条
   `[chat] 会话超预算，裁剪 N 条早期消息` 警告。
 
@@ -305,7 +306,7 @@ MOCK_OCR=1
 
 ## 9. 取值口径陷阱
 
-多个开关是**严格字符串比较**，不是"真值判断"，填错值会静默失效；模型名类变量则要求落在枚举内（见末行）：
+多个开关是**严格字符串比较**，不是"真值判断"，填错值不会改变判定结果（该开还开、该关还关），也不阻断启动，但启动期会被挑出来 warn 一条（§9.1），不再完全无声；模型名类变量则要求落在枚举内（见末行）：
 
 | 变量 | 生效条件 | 填这些**不会**生效 |
 | --- | --- | --- |
@@ -322,6 +323,24 @@ MOCK_OCR=1
 
 - `.env` 里不要给值加引号或行内注释以外的修饰；`MOCK_IMAGE_MODE=` 留空表示"自动"，不是"关闭"。
 - 修改后必须重启进程。`next dev` 下改动 `.env*` 会自动重启，`next start` 下不会。
+
+### 9.1 启动期校验与留痕
+
+判定口径不变，但填错不再完全无声：进程启动时 `instrumentation.ts` 的 `register()` 调用
+`validateEnv()`（`lib/config/env.ts`），扫一遍开关与 Base URL，有问题的各 warn 一条 `[env]` 记录。
+同一进程内每个变量只报一次，不抛错、不改变任何行为。
+
+- **数值型**（`TRIM_BUDGET_CHARS` / `TOOL_MAX_ROUNDS`）：在首次读取时解析，**落回默认值的那一次**
+  才 warn；`0` 是合法值，不报。未配置与空串也不报。
+- **布尔 / 枚举开关**：写错时报出**实际落到的方向**。要特别留意两个危险方向：
+  `TOOLS_ENABLED=False` 仍然开启（想关没关）、`MOCK_*=true` 仍然真实调用上游（以为在 mock，实际扣额度）。
+- **Base URL**（`DEEPSEEK_BASE_URL` / `ZHIPU_BASE_URL` / `CUSTOM_BASE_URL`）：必须是以 `http://`
+  或 `https://` 开头、不带引号与空白的完整地址（`.env` 里给值加引号是常见坑），否则该 Provider
+  的请求会直接失败。
+- **未配置的变量一律不报**——"没配"是正常状态，不是故障。
+
+> 定位口径：这是**告警，不是校验阻断**。配置写错属于运维问题，不该让一次对话 500
+> （与 `lib/provider/index.ts` 的 `getModelList()` 同源：可选状态不当作故障噪音）。
 
 ## 10. 非运行时变量
 
@@ -359,6 +378,7 @@ Next.js 框架内置的运行环境判定（`next dev` 为 `development`、`next
 | 自定义端点 400 且文案提到 `user` | 设 `USER_FIELD_ENABLED=0`（§5.2） |
 | 自定义端点 400 且文案提到图片 | 把 `CUSTOM_ALLOW_IMAGES` 改回 `0`，图片改走本地 OCR（§4.4） |
 | 工具一次都没触发 | `TOOLS_ENABLED` 是否被写成 `false`；`TOOL_MAX_ROUNDS` 是否填成非数字（§4.1、§4.2） |
+| 启动日志出现 `[env] …` | 该变量填了但不会按预期生效：按提示里的"实际落到的方向"改写法（§9.1） |
 | 图片没直传、只有文字 | 当前模型不在视觉名单：DeepSeek 名字无 `flash`/`vision`（如 `deepseek-v4-pro`）；智谱不在 `ZHIPU_CATALOG` 视觉项；custom 未开 `CUSTOM_ALLOW_IMAGES` |
 | 长会话早期内容丢失 | `TRIM_BUDGET_CHARS` 过低（默认 24000 字符），见 §8.5 |
 
@@ -368,6 +388,4 @@ Next.js 框架内置的运行环境判定（`next dev` 为 `development`、`next
 - `.env.example` 只写"变量名 + 示例值 + 分组标题"，不写语义说明；语义一律落本文件，避免两处漂移。
 - 变量总数核对口径：`.env.example` 中有效的 `KEY=` 行数，等于 §2 表格逐条列出的变量行数
   （「其余 9 个」这类历史遗留汇总行不计）；当前为 20 行 = 20 个变量。
-*（内容由AI生成，仅供参考）*
-*（内容由AI生成，仅供参考）*
 *（内容由AI生成，仅供参考）*
