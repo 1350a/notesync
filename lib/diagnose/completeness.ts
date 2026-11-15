@@ -22,7 +22,14 @@ function hasContent(item: { text?: string; dataUrl?: string }): boolean {
  * hasProblem 对应 origin 类，hasStudentAnswer 对应 wrong 类。
  */
 export function deriveCompleteness(
-  items: ReadonlyArray<{ category: ReviseCategory; text?: string; dataUrl?: string }>,
+  items: ReadonlyArray<{
+    /** 多标签形态（2026-11-15 起）：首项为主标签 */
+    categories?: ReviseCategory[];
+    /** 【legacy】单标签形态，兼容期内仍可能只有它 */
+    category?: ReviseCategory;
+    text?: string;
+    dataUrl?: string;
+  }>,
 ): DiagnosisCompleteness {
   let hasProblem = false;
   let hasStudentAnswer = false;

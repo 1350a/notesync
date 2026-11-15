@@ -32,7 +32,17 @@ export interface DetectResult {
  */
 export interface DiagnoseAttachment {
   name: string;
-  category: ReviseCategory;
+  /**
+   * 该文件的全部标签（2026-11-15 起支持一个文件打多个标签）。
+   * 首项为主标签，决定组装分块与锚点计数；其余标签只写进文件描述行，
+   * 图片/文本身份仍只投喂一次。允许为空数组/缺省：服务端按 origin 兜底。
+   */
+  categories?: ReviseCategory[];
+  /**
+   * 【legacy】单标签形态，仅为旧客户端与旧数据兼容保留一版。
+   * 新代码读标签请用 category-tags.ts 的 attachmentCategories（自动兼容本字段）。
+   */
+  category?: ReviseCategory;
   /** 图片 dataUrl，形如 data:image/png;base64,... */
   dataUrl?: string;
   /** PDF / 纯文本提取出的正文 */
