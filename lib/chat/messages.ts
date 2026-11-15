@@ -136,6 +136,12 @@ export interface ChatRequestBody {
     /** 本地 OCR 转文字产物：与 images 对应的识别文本；非空时服务端忽略 images 本体（doc/browser-local-ocr.md §6.2） */
     imageTexts?: unknown;
     files?: unknown;
+    /**
+     * assistant 消息的思考过程（落库字段原样上行）：服务端校验后映射为
+     * reasoning_content 回传上游——DeepSeek 思考模式 + tools 的硬校验，
+     * doc/tool-protocol.md §4.3。unknown 交由服务端窄化，客户端不在信任边界内。
+     */
+    reasoning?: unknown;
   }>;
   content?: string;
   attachments?: unknown;
@@ -412,6 +418,10 @@ export function buildProviderMessages(
     return {
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content,
+      // 思考过程原样回传（官方要求完整传回，不截断）；非字符串/空值视为未携带
+      ...(m.role === 'assistant' && typeof m.reasoning === 'string' && m.reasoning.trim()
+        ? { reasoning_content: m.reasoning }
+        : {}),
     };
   }).filter((m): m is ProviderMessage => m !== null);
 
