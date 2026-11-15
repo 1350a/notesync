@@ -345,7 +345,7 @@ function SidebarContent() {
                   closeMenu();
                   void handleDelete(menuItem);
                 }}
-                className="block w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted touch:py-2.5"
+                className="block w-full px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-muted touch:py-2.5"
               >
                 删除
               </button>
