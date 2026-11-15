@@ -581,7 +581,8 @@ export default function ChatInput({
             </span>
           )}
           {/* 诊断模式开关（对话模式主线，product-vision.md §3.3）：
-              开启后发送即开启/延续诊断会话（错因归因，不给答案开场） */}
+              开启后发送即开启/延续诊断会话（错因归因，不给答案开场）。
+              2026-11-15 改版：文案改「启用诊断模式/已启用诊断」，悬浮 title 说明结构化输出 */}
           <button
             type="button"
             onClick={() => setDiagnosisMode((v) => !v)}
@@ -591,9 +592,13 @@ export default function ChatInput({
                 ? 'bg-foreground/10 font-medium text-foreground'
                 : 'text-muted-foreground hover:bg-muted'
             }`}
-            title="诊断模式：先定位你为什么错，再按需给分级提示（答案须主动索取）"
+            title={
+              diagnosisMode || diagnosisActive
+                ? '已开启诊断：回复将结构化输出（错因定位、知识点、分级提示）；点击关闭回到普通对话'
+                : '开启后，回复将结构化输出：先定位你为什么错，再按需给分级提示（答案须主动索取）；可随时关闭'
+            }
           >
-            🩺 {diagnosisMode || diagnosisActive ? '诊断中' : '诊断模式'}
+            🩺 {diagnosisMode || diagnosisActive ? '已启用诊断' : '启用诊断模式'}
           </button>
           {diagnosisActive && (
             <span className="hidden text-[10px] text-muted-foreground sm:inline">会话进行中</span>
