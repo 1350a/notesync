@@ -102,15 +102,16 @@ export function mapMaxTokens(
 /**
  * DeepSeek 服务端内容安全审核档位 → 请求体 safety_check 字段的映射
  * （safety-protocol.md §3.2，DeepSeek 2026-11-13 新增）。
- * 返回 null 表示本次不携带该字段（未配置 / off = 不发送，行为与不传一致）。
+ * 仅 `high` 会到达这里（low 与不传同义，在 resolveSafetyCheck 已收敛为不发送）；
+ * 返回 null 表示本次不携带该字段。
  * 仅声明了档位的 Provider 下发（DeepSeek 专属字段）；智谱 / 自定义端点不认识该字段，
  * 可能被严格校验拒绝——分流在 config 层完成（OpenAICompatConfig.safetyCheck），
  * 与 thinking / user / stream_options 的 provider 分流同口径。
  */
 export function mapSafetyCheckParam(
-  safetyCheck: 'low' | 'high' | undefined,
+  safetyCheck: 'high' | undefined,
 ): Record<string, unknown> | null {
-  if (safetyCheck !== 'low' && safetyCheck !== 'high') return null;
+  if (safetyCheck !== 'high') return null;
   return { safety_check: { level: safetyCheck } };
 }
 
@@ -180,10 +181,11 @@ export interface OpenAICompatConfig {
   probeTimeoutMs?: number;
   /**
    * 服务端内容安全审核档位（safety-protocol.md §3.2）：声明后才在请求体下发
-   * safety_check 字段。仅 DeepSeek 子类设置——智谱 / 自定义端点对未知字段
-   * 可能严格校验（同 thinking / user 分流口径）。
+   * safety_check 字段。仅 `high` 会到达这里——low 与不传同义（官方口径），
+   * 在 resolveSafetyCheck 已收敛为不发送。仅 DeepSeek 子类设置——智谱 /
+   * 自定义端点对未知字段可能严格校验（同 thinking / user 分流口径）。
    */
-  safetyCheck?: 'low' | 'high';
+  safetyCheck?: 'high';
 }
 
 /** 归一模型名：去首尾空格 + 小写，用于名称比较 */
@@ -256,7 +258,7 @@ export class OpenAICompatProvider implements LLMProvider {
   private readonly probeEnabled: boolean;
   private readonly probeHealthOnly: boolean;
   private readonly probeTimeoutMs: number;
-  private readonly safetyCheck: 'low' | 'high' | undefined;
+  private readonly safetyCheck: 'high' | undefined;
 
   constructor(config: OpenAICompatConfig) {
     this.name = config.name;

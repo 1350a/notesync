@@ -16,14 +16,15 @@ const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "";
 
 /**
  * 服务端内容安全审核档位（safety-protocol.md §3.2，DEEPSEEK_SAFETY_CHECK）。
- * `high` 开启；`low` / `off` / 未配置 = 不发送（行为与不传一致）。
+ * `high` 开启；`low` / `off` / 未配置 = 不发送（行为与不传一致）——官方口径
+ * `low` 即 API 默认内容检查，与不传 `safety_check` 相同，故一并收敛为不发送。
  * 与 USER_FIELD_ENABLED 等开关同口径：严格字符串比较，不归一大小写——
  * 填错的留痕在 lib/config/env.ts validateEnv，这里只按认可值收敛。
  */
 export function resolveSafetyCheck(
   raw: string | undefined,
-): 'low' | 'high' | undefined {
-  return raw === 'low' || raw === 'high' ? raw : undefined;
+): 'high' | undefined {
+  return raw === 'high' ? 'high' : undefined;
 }
 
 /**

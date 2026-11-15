@@ -13,12 +13,12 @@ import { resolveSafetyCheck } from '../../../lib/provider/deepseek.ts';
 import { UpstreamContentBlockedError } from '../../../lib/provider/errors.ts';
 
 describe('resolveSafetyCheck（DEEPSEEK_SAFETY_CHECK 收敛，严格字符串比较）', () => {
-  it('high / low：认可值原样采用', () => {
+  it('high：认可值原样采用', () => {
     expect(resolveSafetyCheck('high')).toBe('high');
-    expect(resolveSafetyCheck('low')).toBe('low');
   });
 
-  it('off / 未配置 / 空串：不发送（行为与不传一致）', () => {
+  it('low / off / 未配置 / 空串：不发送（官方口径 low 即 API 默认内容检查，与不传相同）', () => {
+    expect(resolveSafetyCheck('low')).toBeUndefined();
     expect(resolveSafetyCheck('off')).toBeUndefined();
     expect(resolveSafetyCheck(undefined)).toBeUndefined();
     expect(resolveSafetyCheck('')).toBeUndefined();
@@ -32,9 +32,8 @@ describe('resolveSafetyCheck（DEEPSEEK_SAFETY_CHECK 收敛，严格字符串比
 });
 
 describe('mapSafetyCheckParam（safety_check 请求体映射）', () => {
-  it('low / high：下发 { safety_check: { level } }', () => {
+  it('high：下发 { safety_check: { level: "high" } }', () => {
     expect(mapSafetyCheckParam('high')).toEqual({ safety_check: { level: 'high' } });
-    expect(mapSafetyCheckParam('low')).toEqual({ safety_check: { level: 'low' } });
   });
 
   it('未配置：不携带该字段（智谱 / 自定义端点未知字段严格校验风险）', () => {
