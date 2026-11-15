@@ -19,7 +19,7 @@ import { extractImageIntake } from '@/lib/intake/extract-image';
 import { extractOfficeText } from '@/lib/intake/extract-office';
 import { extractPdfText } from '@/lib/intake/extract-pdf';
 import { parseDocViaServer } from '@/lib/intake/parse-doc-client';
-import { THINKING_EFFORTS, type OcrEngine, type ThinkingEffort } from '@/lib/settings/types';
+import { THINKING_EFFORTS, thinkingOffMeansDisabled, type OcrEngine, type ThinkingEffort } from '@/lib/settings/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import {
   convertImagesToTexts,
@@ -76,10 +76,13 @@ function ThinkingEffortSelect({
   value,
   onChange,
   disabled,
+  /** off 档在该 Provider 上是否等于「真关闭」；否时文案显示为「默认」，四档仍全可切 */
+  offMeansDisabled,
 }: {
   value: ThinkingEffort;
   onChange: (v: ThinkingEffort) => void;
   disabled: boolean;
+  offMeansDisabled: boolean;
 }) {
   return (
     <select
@@ -87,12 +90,16 @@ function ThinkingEffortSelect({
       onChange={(e) => onChange(e.target.value as ThinkingEffort)}
       disabled={disabled}
       aria-label="思考强度"
-      title="思考强度：高=答得更准但更慢更贵；关闭=无思维链（部分模型仅支持开/关粒度，自定义端点不发送该参数）"
+      title={
+        offMeansDisabled
+          ? '思考强度：高=答得更准但更慢更贵；关闭=不产生思维链'
+          : '思考强度：高=答得更准但更慢更贵；默认=不指定思考参数、跟随模型服务商默认（该模型无法真正关闭思考）'
+      }
       className="rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] font-medium text-muted-foreground outline-none touch:px-3 touch:py-2"
     >
       {THINKING_EFFORTS.map((level) => (
         <option key={level} value={level}>
-          思考·{THINKING_LABEL[level]}
+          思考·{level === 'off' && !offMeansDisabled ? '默认' : THINKING_LABEL[level]}
         </option>
       ))}
     </select>
@@ -343,6 +350,12 @@ export default function ChatInput({
   };
 
   const currentModel = models.find((m) => m.name === selectedModel);
+  /**
+   * 思考 off 档文案口径（doc/user-settings.md §2.1）：deepseek 上确为「关闭」，
+   * 其余 Provider 关不掉思考，同一档显示「默认」（不发参数、跟随服务商默认）。
+   * 只影响文案，四档始终可切。
+   */
+  const offMeansDisabled = thinkingOffMeansDisabled(currentModel?.provider);
   // 图片路径全自动派生（product-vision.md P4，2026-11-14）：多模态直传、其余 OCR 转写。
   // 无当次覆盖、无档位控件——UI 只展示派生结果与代价（诚实接线）
   const imageMode: ImageSendMode = resolveImageSendMode(currentModel);
@@ -735,7 +748,12 @@ export default function ChatInput({
 
           {loading ? (
             <div className="flex items-center gap-2">
-              <ThinkingEffortSelect value={thinkingEffort} onChange={setThinkingEffort} disabled={loading || ocrBusy !== null} />
+              <ThinkingEffortSelect
+                value={thinkingEffort}
+                onChange={setThinkingEffort}
+                disabled={loading || ocrBusy !== null}
+                offMeansDisabled={offMeansDisabled}
+              />
               <Button
                 onClick={onStop}
                 variant="destructive"
@@ -746,7 +764,12 @@ export default function ChatInput({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <ThinkingEffortSelect value={thinkingEffort} onChange={setThinkingEffort} disabled={loading || ocrBusy !== null} />
+              <ThinkingEffortSelect
+                value={thinkingEffort}
+                onChange={setThinkingEffort}
+                disabled={loading || ocrBusy !== null}
+                offMeansDisabled={offMeansDisabled}
+              />
               <Button
                 onClick={() => void handleSend()}
                 disabled={!hasPayload || !selectedModel || ocrBusy !== null}

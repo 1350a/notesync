@@ -53,10 +53,11 @@ interface UserSettings {
 - **默认值真源与保活**：`DEFAULT_SETTINGS.generation` 保持空对象（语义为「用户未设置」），默认 `'medium'` 由消费侧兜底——`components/chat/ChatInput.tsx` 取 `generation.thinkingEffort ?? 'medium'`。用户一旦在输入区改档，即由 `updateSettings` 写入 `generation.thinkingEffort` 并持久化到 `notesync-settings.v1`，此后一律以其选择为准、不再回落 `medium`（2026-11-12 拍板）。
 - 请求链路：设置 → 请求体 `thinkingEffort` → `/api/chat` → `CompleteOptions.thinking` → Provider 请求体。
 - Provider 映射（`lib/provider/openaiCompat.ts` 的 `mapThinkingParam`，协议预留的两个参数名）：
-  - **zhipu**：`thinking: { type: 'disabled' | 'enabled' }`——GLM 官方口径只有开/关粒度，low/medium/high 统一映射 enabled，选择「关闭」才能真正生效；
+  - **zhipu**：`thinking: { type: 'enabled' }`——GLM 官方口径只有开/关粒度，low/medium/high 统一映射 enabled；`off` **不下发**（实测 `thinking.type: 'disabled'` 关不掉 glm-5.3-flashx，下发只会制造「已关闭」的假象）；
   - **deepseek**：`reasoning_effort: 'low' | 'medium' | 'high'`；`off` 不发送参数（关闭语义 = 选用非推理模型，由模型下拉承担）；
   - **custom**：**不发送**——自定义端点对未知字段可能严格校验（与 user 字段开关同口径），思考由端点自身的模型/参数控制。
-- 思维链（reasoning_content）是否出现由该档位决定：`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（product-vision 理念：思维链是调试设施，不是产品功能）。
+- **off 档文案随 Provider 变（2026-11-15 拍板）**：同一「第四档」，deepseek 上确为真关闭，文案显示「思考·关闭」；其余 Provider（zhipu / custom / 未选模型）关不掉思考，文案显示「**思考·默认**」（含义：不指定思考参数、跟随服务商默认）。判定真源 `lib/settings/types.ts` 的 `THINKING_OFF_PROVIDERS` + `thinkingOffMeansDisabled()`。**四档在所有 Provider 上始终可切，文案差异不构成锁档**。
+- 思维链（reasoning_content）是否出现：deepseek 上由该档位决定，`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（product-vision 理念：思维链是调试设施，不是产品功能）；zhipu 上思考恒由服务商默认开启，档位只影响是否显式下发 enabled。
 
 ### 2.2 主题四档（theme，色值真源 `app/globals.css`）
 

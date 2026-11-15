@@ -24,6 +24,20 @@ export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 export const THINKING_EFFORTS: readonly ThinkingEffort[] = ['off', 'low', 'medium', 'high'];
 
 /**
+ * `off` 档能「真正关闭思考」的 Provider 名单（doc/user-settings.md §2.1）。
+ * 名单外的 Provider，`off` 只是「不主动下发思考参数、跟随服务商默认」（实测智谱
+ * thinking.type=disabled 关不掉 glm-5.3-flashx），因此 UI 把该档文案显示为「默认」。
+ * 注意：这只是文案与参数口径的差异，四档在任何 Provider 上均可切换，不存在锁档。
+ */
+export const THINKING_OFF_PROVIDERS: readonly string[] = ['deepseek'];
+
+/** 「off 档 = 真关闭」判定：未选中模型（provider 未知）时按「默认」处理，避免虚标「关闭」 */
+export function thinkingOffMeansDisabled(provider?: string | null): boolean {
+  if (!provider) return false;
+  return THINKING_OFF_PROVIDERS.includes(provider);
+}
+
+/**
  * OCR 转写引擎（doc/cloud-ocr.md §4）：决定「谁来转写」。
  * 「要不要转写」不由设置决定——按所选模型能力自动路由（多模态直传、纯文本转写，
  * product-vision.md P4，2026-11-14 拍板）。cloud 档图片像素上行至智谱 glm-ocr，
