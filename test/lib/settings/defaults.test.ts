@@ -63,3 +63,47 @@ describe('图片路径派生：只看模型能力（product-vision.md P4）', ()
     expect(resolveImageSendMode(undefined)).toBe('ocr-text');
   });
 });
+
+/*
+ * 朗读设置（doc/tts.md §5，2026-11-15）：引擎非法回落 zhipu；音色不属于所选
+ * 引擎目录回落该引擎默认音色——引擎切换后旧音色自动随迁，不残留失效值。
+ */
+describe('朗读设置 normalize（doc/tts.md §5）', () => {
+  it('DEFAULT_SETTINGS 默认 zhipu 引擎 + 其默认音色', () => {
+    expect(DEFAULT_SETTINGS.tts).toEqual({ engine: 'zhipu', voice: 'tongtong' });
+  });
+
+  it('缺省 / 坏值 / 非对象回落默认引擎与默认音色', () => {
+    expect(normalizeSettings({}).tts).toEqual({ engine: 'zhipu', voice: 'tongtong' });
+    expect(normalizeSettings({ tts: null }).tts).toEqual({ engine: 'zhipu', voice: 'tongtong' });
+    expect(normalizeSettings({ tts: { engine: 'bogus' } }).tts).toEqual({
+      engine: 'zhipu',
+      voice: 'tongtong',
+    });
+    expect(normalizeSettings({ tts: 'deepseek' }).tts).toEqual({
+      engine: 'zhipu',
+      voice: 'tongtong',
+    });
+  });
+
+  it('显式引擎生效；音色不在该引擎目录时回落该引擎默认音色', () => {
+    expect(normalizeSettings({ tts: { engine: 'deepseek', voice: 'stella' } }).tts).toEqual({
+      engine: 'deepseek',
+      voice: 'stella',
+    });
+    // stella 不属于 zhipu：随迁回落 tongtong
+    expect(normalizeSettings({ tts: { engine: 'zhipu', voice: 'stella' } }).tts).toEqual({
+      engine: 'zhipu',
+      voice: 'tongtong',
+    });
+    // tongtong 不属于 deepseek：随迁回落 stella
+    expect(normalizeSettings({ tts: { engine: 'deepseek', voice: 'tongtong' } }).tts).toEqual({
+      engine: 'deepseek',
+      voice: 'stella',
+    });
+    expect(normalizeSettings({ tts: { engine: 'deepseek', voice: 42 } }).tts).toEqual({
+      engine: 'deepseek',
+      voice: 'stella',
+    });
+  });
+});
