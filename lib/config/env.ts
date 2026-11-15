@@ -106,6 +106,12 @@ const SWITCH_SPECS: readonly SwitchSpec[] = [
     actual: 'native（原生 tools 字段）',
     impact: '不支持 tools 的端点会拿不到工具调用',
   },
+  {
+    name: 'DEEPSEEK_SAFETY_CHECK',
+    accepted: ['high', 'low', 'off'],
+    actual: '关闭（不发送 safety_check，行为与不传一致）',
+    impact: '想开启 DeepSeek 服务端内容安全审核时写错会静默不生效',
+  },
 ];
 
 /** 三家 Provider 的 Base URL：填错会让所有请求直接失败，属 B 类必须拦在前面的坑 */
