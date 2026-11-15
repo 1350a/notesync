@@ -333,8 +333,9 @@ describe('finalizeDiagnosis 编排', () => {
     { name: '作答.png', category: 'wrong', text: 'x=2' },
   ];
   const baseMessages = [{ role: 'system' as const, content: '诊断提示词' }, { role: 'user' as const, content: '题面' }];
-  const doneRun = (outputText: string): LoopRunResult => ({
+  const doneRun = (outputText: string, reasoning = ''): LoopRunResult => ({
     outputText,
+    reasoning,
     done: { usedRounds: 1, finishReason: 'stop' },
     awaitingUser: false,
     failed: false,
@@ -534,12 +535,56 @@ describe('finalizeDiagnosis 编排', () => {
     expect(fin.diagnosis).toBeNull();
     expect(fin.context.state).toBe('intake');
   });
+
+  it('注入轮携带思考回传（reasoning_content），正文与思考同源', async () => {
+    // doc/tool-protocol.md §4.3：DeepSeek 思考模式 + tools 下，注入的 assistant 上下文
+    // 缺 reasoning_content 会被上游 400；正文换成补交轮产出时思考必须跟着换
+    const store: { args: Record<string, unknown> | null } = { args: null };
+    const seen: Array<Array<{ role: string; reasoning_content?: string; content?: unknown }>> = [];
+    const fin = await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: FULL },
+      baseMessages,
+      mainRun: doneRun('主轮正文', '主轮思考全文'),
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async (messages) => {
+        seen.push(messages);
+        store.args = { level: 'L1', knowledgePoints: ['二次方程'] };
+        return doneRun('（补交段）', '补交思考');
+      },
+    });
+    expect(fin.retried).toBe('submission');
+    const injected = seen[0].find((m) => m.role === 'assistant');
+    expect(injected?.content).toBe('主轮正文');
+    expect(injected?.reasoning_content).toBe('主轮思考全文');
+  });
+
+  it('主轮无思考（思考关闭）时注入轮不挂 reasoning_content', async () => {
+    const store: { args: Record<string, unknown> | null } = { args: null };
+    let injected: { reasoning_content?: string } | undefined;
+    await finalizeDiagnosis({
+      session: { context: context({ state: 'intake' }), completeness: FULL },
+      baseMessages,
+      mainRun: doneRun('主轮正文'),
+      attachments,
+      submissionStore: store,
+      lastUserText: '',
+      runLoop: async (messages) => {
+        injected = messages.find((m) => m.role === 'assistant');
+        store.args = { level: 'L1', knowledgePoints: ['二次方程'] };
+        return doneRun('（补交段）');
+      },
+    });
+    expect(injected && 'reasoning_content' in injected).toBe(false);
+  });
 });
 
 describe('完整度两套链路（附件权威 / 聊天模型判定）', () => {
   const baseMessages = [{ role: 'system' as const, content: '诊断提示词' }, { role: 'user' as const, content: '题面' }];
-  const doneRun = (outputText: string): LoopRunResult => ({
+  const doneRun = (outputText: string, reasoning = ''): LoopRunResult => ({
     outputText,
+    reasoning,
     done: { usedRounds: 1, finishReason: 'stop' },
     awaitingUser: false,
     failed: false,
