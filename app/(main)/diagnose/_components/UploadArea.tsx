@@ -44,7 +44,12 @@ type RowStatus = 'extracting' | 'ready' | 'failed';
 interface Row {
   id: string;
   name: string;
-  category: ReviseCategory;
+  /**
+   * 该文件的全部标签（2026-11-15 起多值）：顺序即用户添加顺序，
+   * 首项为「主标签」，决定服务端组装落在哪个分块；其余标签只写进文件描述行。
+   * 允许为空——服务端 parseAttachments 会兜底为 ['origin']，前端不因此阻断提交。
+   */
+  categories: ReviseCategory[];
   kind: DiagnoseKind;
   /** detect 判定是否接得住；false 时不允许提交 */
   supported: boolean;
@@ -125,6 +130,8 @@ export default function UploadArea() {
    * 列表（列表式非弹窗）；桌面点上传区直开文件选择，该状态不参与
    */
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** 正在展开「添加标签」气泡的行 id；null 表示全部收起（一次只开一个） */
+  const [tagPickerRowId, setTagPickerRowId] = useState<string | null>(null);
 
   // 派生选中值：用户手选的仍有效则沿用；否则用设置里的默认模型（也须在列表中）；
   // 再回落到首个可用模型（不保留过期模型名）
@@ -156,7 +163,7 @@ export default function UploadArea() {
           // 抛 TypeError，且 addFiles 的 rejection 被 handleFileSelect 静默吞掉（2026-11-14）
           id: generateId(),
           name: file.name,
-          category: 'origin',
+          categories: [],
           kind: detected.kind,
           supported: detected.supported,
           status: detected.supported ? 'extracting' : 'failed',
@@ -170,7 +177,12 @@ export default function UploadArea() {
 
     for (const { file, detected, row } of drafts) {
       if (!detected.supported) continue;
-      const attachment = await extractAttachment(file, row.category, detected.kind, detected.format);
+      const attachment = await extractAttachment(
+        file,
+        row.categories[0] ?? 'origin',
+        detected.kind,
+        detected.format
+      );
       const ready = Boolean(attachment.dataUrl || attachment.text);
       setRows((prev) =>
         prev.map((item) =>
@@ -201,8 +213,32 @@ export default function UploadArea() {
     void addFiles(picked);
   };
 
-  const changeCategory = (id: string, category: ReviseCategory) => {
-    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, category } : row)));
+  /**
+   * 追加一个标签（多值，不可重复）：
+   * includes 判重放在状态更新回调里，拿的是最新数组，避免连点或与移除交错时重复写入。
+   * 已达 4 个（四类标签全选）时按钮本身不渲染，这里再兜一层防越界。
+   */
+  const addCategory = (id: string, category: ReviseCategory) => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+        if (row.categories.includes(category)) return row;
+        if (row.categories.length >= CATEGORIES.length) return row;
+        return { ...row, categories: [...row.categories, category] };
+      })
+    );
+    setTagPickerRowId(null);
+  };
+
+  /** 移除一个标签：只删该项，剩余标签保持原顺序（首项被删则下一项递补为主标签） */
+  const removeCategory = (id: string, category: ReviseCategory) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === id
+          ? { ...row, categories: row.categories.filter((item) => item !== category) }
+          : row
+      )
+    );
   };
 
   const removeRow = (id: string) => {
@@ -273,7 +309,8 @@ export default function UploadArea() {
         model: selectedModel,
         attachments: prepared.map((row) => ({
           name: row.name,
-          category: row.category,
+          // 多标签契约：数组上行，首项为主标签；空数组由服务端兜底为 ['origin']
+          categories: row.categories,
           dataUrl: row.dataUrl,
           text: row.text,
           warning: row.warning,
@@ -531,7 +568,12 @@ export default function UploadArea() {
 
           <div className="space-y-3">
             {rows.map((row) => {
-              const current = CATEGORIES.find((item) => item.id === row.category) ?? CATEGORIES[0];
+              // 已选标签按用户添加顺序展示；首项为主标签（决定服务端分块）
+              const selectedTags = row.categories
+                .map((id) => CATEGORIES.find((item) => item.id === id))
+                .filter((item): item is (typeof CATEGORIES)[number] => Boolean(item));
+              // 气泡只列未选类别，天然避免重复添加
+              const remainingTags = CATEGORIES.filter((item) => !row.categories.includes(item.id));
               const statusText =
                 row.status === 'extracting'
                   ? '正在提取内容…'
@@ -556,18 +598,55 @@ export default function UploadArea() {
                       <span className="text-xl">📄</span>
                       <span className="text-sm text-foreground truncate max-w-50">{row.name}</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <select
-                        value={row.category}
-                        onChange={(e) => changeCategory(row.id, e.target.value as ReviseCategory)}
-                        className={`text-sm px-3 py-1.5 rounded-lg border font-medium outline-none cursor-pointer ${current.color}`}
-                      >
-                        {CATEGORIES.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.label}
-                          </option>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        {selectedTags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium ${tag.color}`}
+                          >
+                            {tag.label}
+                            <button
+                              type="button"
+                              onClick={() => removeCategory(row.id, tag.id)}
+                              className="opacity-60 hover:opacity-100 transition-opacity"
+                              title={`移除「${tag.label}」标签`}
+                              aria-label={`移除「${tag.label}」标签`}
+                            >
+                              ✕
+                            </button>
+                          </span>
                         ))}
-                      </select>
+                        {remainingTags.length > 0 && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTagPickerRowId((prev) => (prev === row.id ? null : row.id))
+                              }
+                              className="text-xs px-2 py-1 rounded-lg border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                              title="给这个文件再加一个标签"
+                              aria-expanded={tagPickerRowId === row.id}
+                            >
+                              + 添加标签
+                            </button>
+                            {tagPickerRowId === row.id && (
+                              <div className="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1 p-1 rounded-lg border border-border bg-background shadow-lg">
+                                {remainingTags.map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => addCategory(row.id, item.id)}
+                                    className={`text-xs px-2 py-1 rounded-md border text-left font-medium ${item.color}`}
+                                  >
+                                    {item.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={() => removeRow(row.id)}
                         className="text-muted-foreground/70 hover:text-destructive transition-colors p-2"
