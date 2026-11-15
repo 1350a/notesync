@@ -58,6 +58,7 @@ interface UserSettings {
   - **custom**：**不发送**——自定义端点对未知字段可能严格校验（与 user 字段开关同口径），思考由端点自身的模型/参数控制。
 - **off 档文案随 Provider 变（2026-11-15 拍板）**：同一「第四档」，deepseek 上确为真关闭，文案显示「思考·关闭」；其余 Provider（zhipu / custom / 未选模型）关不掉思考，文案显示「**思考·默认**」（含义：不指定思考参数、跟随服务商默认）。判定真源 `lib/settings/types.ts` 的 `THINKING_OFF_PROVIDERS` + `thinkingOffMeansDisabled()`。**四档在所有 Provider 上始终可切，文案差异不构成锁档**。
 - 思维链（reasoning_content）是否出现：deepseek 上由该档位决定，`off` 时模型不产生思维链，从源头消除其内容泄漏与额外费用（product-vision 理念：思维链是调试设施，不是产品功能）；zhipu 上思考恒由服务商默认开启，档位只影响是否显式下发 enabled。
+- **思考模式 + 工具的回传约束（2026-11-15）**：deepseek 思考模式下请求带 `tools` 时，上游要求历史 assistant 消息完整回传 `reasoning_content`，缺失即 HTTP 400。全链路按此接线：工具循环轮间、诊断补交 / guard 轮、跨请求历史上行，下发分流统一在 `lib/provider/openaiCompat.ts`（仅 deepseek 且思考开启时携带），协议细节见 `doc/tool-protocol.md` §4.3。
 
 ### 2.2 主题四档（theme，色值真源 `app/globals.css`）
 
