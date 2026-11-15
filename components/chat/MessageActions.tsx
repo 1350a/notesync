@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTts } from '@/hooks/useTts';
 
 /**
  * 消息操作条（doc/chat-history.md §8.3）。
@@ -9,6 +10,9 @@ import { useState } from 'react';
  * 删除入口已下线（用户要求，见 §8.3 表格）。复制从 ChatList 收编到这里，
  * 避免两套复制按钮并存。交互口径不变：桌面端 hover / 键盘聚焦才显示，
  * 触屏常显（`touch:` 变体，同 doc/mobile-ux.md §4）。
+ *
+ * 2026-11-15 增加朗读按钮（doc/tts.md §7）：仅 assistant 且有正文渲染时显示，
+ * 引擎/音色由设置（tts.engine/tts.voice）决定，互斥由全局单例保证。
  *
  * 图标用内联 SVG（feather 线条风格），与 ChatInput 既有图标同一画法
  * （fill=none + stroke=currentColor + 24 viewBox）；不引图标库，零新增依赖。
@@ -50,6 +54,65 @@ function RegenerateIcon() {
       <polyline points="1 20 1 14 7 14" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
       <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
     </svg>
+  );
+}
+
+function SpeakerIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+      <path d="M15.54 8.46a5 5 0 010 7.07" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+      <path d="M19.07 4.93a10 10 0 010 14.14" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <rect x="6" y="6" width="12" height="12" rx="2" ry="2" strokeWidth={2} />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+      <line x1="12" y1="8" x2="12" y2="12" strokeLinecap="round" strokeWidth={2} />
+      <line x1="12" y1="16" x2="12.01" y2="16" strokeLinecap="round" strokeWidth={2} />
+    </svg>
+  );
+}
+
+/**
+ * 朗读按钮（doc/tts.md §7）：合成中脉动提示，播放中变停止方块，失败显感叹号
+ * 并在 title 带错误信息；再次点击失败态 = 用当前设置重试。
+ */
+function SpeakAction({ messageId, text, disabled }: { messageId: string; text: string; disabled: boolean }) {
+  const { phase, errorMessage, toggle } = useTts(messageId);
+  const title =
+    phase === 'error'
+      ? `朗读失败：${errorMessage}（点击重试）`
+      : phase === 'loading'
+        ? '正在合成朗读…（点击取消）'
+        : phase === 'playing'
+          ? '停止朗读'
+          : '朗读这条回复';
+  const label =
+    phase === 'error' ? '朗读失败，重试' : phase === 'playing' ? '停止朗读' : '朗读';
+  return (
+    <button
+      type="button"
+      onClick={() => toggle(text)}
+      disabled={disabled}
+      className={ICON_BUTTON_CLASS + (phase === 'loading' ? ' animate-pulse' : '')}
+      style={{ color: phase === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}
+      title={title}
+      aria-label={label}
+    >
+      {phase === 'playing' ? <StopIcon /> : phase === 'error' ? <AlertIcon /> : <SpeakerIcon />}
+    </button>
   );
 }
 
@@ -121,6 +184,8 @@ export interface MessageActionsProps {
   disabled: boolean;
   /** 复制用的 markdown 源文本；缺省（无正文/纯附件消息）不渲染复制按钮 */
   copyText?: string;
+  /** 朗读用的消息标识（互斥键）；缺省不渲染朗读按钮（如非聊天列表场景） */
+  messageId?: string;
   onEdit?: () => void;
   onRegenerate?: () => void;
 }
@@ -130,6 +195,7 @@ export default function MessageActions({
   canRegenerate,
   disabled,
   copyText,
+  messageId,
   onEdit,
   onRegenerate,
 }: MessageActionsProps) {
@@ -137,6 +203,9 @@ export default function MessageActions({
     <div className="mt-1 flex items-center gap-0.5 transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100 opacity-0">
       {copyText ? <CopyAction text={copyText} disabled={disabled} /> : null}
       {role === 'user' && onEdit ? <EditAction onClick={onEdit} disabled={disabled} /> : null}
+      {role === 'assistant' && copyText && messageId ? (
+        <SpeakAction messageId={messageId} text={copyText} disabled={disabled} />
+      ) : null}
       {role === 'assistant' && canRegenerate && onRegenerate ? (
         <RegenerateAction onClick={onRegenerate} disabled={disabled} />
       ) : null}
