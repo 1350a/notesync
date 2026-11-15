@@ -416,6 +416,11 @@ export function advanceAfterResponse(input: {
 export interface LoopRunResult {
   /** 本段新增的正文全文（guard 判据的比对对象） */
   outputText: string;
+  /**
+   * 本段思考过程全文（跨轮累积，与正文同源）。注入 assistant 上下文时挂到
+   * reasoning_content——DeepSeek 思考模式 + tools 的硬校验，doc/tool-protocol.md §4.3。
+   */
+  reasoning: string;
   done: {
     usedRounds: number;
     finishReason: string;
@@ -465,6 +470,9 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
   let context = session.context;
   let retried: FinalizeResult['retried'] = null;
   let outputText = mainRun.outputText;
+  // 与 outputText 同源追踪：注入 assistant 上下文时挂 reasoning_content（§4.3 思考回传），
+  // 正文换成补交轮产出时思考也必须跟着换成补交轮的，否则正文与思考对不上号
+  let outputReasoning = mainRun.reasoning;
   let guardPassed = true;
 
   // ① 该交没交：带上下文补一次（模型看得见自己刚输出的内容）
@@ -477,12 +485,19 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
     const run = await runLoop(
       [
         ...baseMessages,
-        { role: 'assistant', content: outputText },
+        {
+          role: 'assistant',
+          content: outputText,
+          ...(outputReasoning ? { reasoning_content: outputReasoning } : {}),
+        },
         { role: 'system', content: SUBMISSION_RETRY_PROMPT },
       ],
       { silent: hasMainText },
     );
-    if (!hasMainText) outputText = run.outputText;
+    if (!hasMainText) {
+      outputText = run.outputText;
+      outputReasoning = run.reasoning;
+    }
   }
 
   let diagnosis: DiagnosisResult | null = null;
@@ -528,7 +543,11 @@ export async function finalizeDiagnosis(input: FinalizeInput): Promise<FinalizeR
         retried = 'guard';
         const run = await runLoop([
           ...baseMessages,
-          { role: 'assistant', content: outputText },
+          {
+            role: 'assistant',
+            content: outputText,
+            ...(outputReasoning ? { reasoning_content: outputReasoning } : {}),
+          },
           { role: 'system', content: GUARD_RETRY_PROMPT },
         ]);
         outputText += run.outputText;

@@ -291,6 +291,9 @@ export async function POST(request: Request) {
         runOpts?: { silent?: boolean },
       ): Promise<LoopRunResult> => {
         let outputText = '';
+        // 思考全文跨轮累积（与正文同源）：finalize 注入 assistant 上下文时挂 reasoning_content，
+        // DeepSeek 思考模式 + tools 下缺失回传会被上游 400（doc/tool-protocol.md §4.3）
+        let reasoningText = '';
         let done: LoopRunResult['done'] = null;
         let awaitingUser = false;
         let failed = false;
@@ -323,6 +326,7 @@ export async function POST(request: Request) {
               controller.enqueue(encoder.encode(sse('content', { delta: ev.delta })));
             }
           } else if (ev.type === 'reasoning') {
+            reasoningText += ev.delta;
             if (!runOpts?.silent) {
               controller.enqueue(encoder.encode(sse('reasoning', { delta: ev.delta })));
             }
@@ -386,7 +390,7 @@ export async function POST(request: Request) {
             );
           }
         }
-        return { outputText, done, awaitingUser, failed };
+        return { outputText, reasoning: reasoningText, done, awaitingUser, failed };
       };
 
       try {
