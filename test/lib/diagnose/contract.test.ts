@@ -59,6 +59,28 @@ describe('完整度推导（diagnosis-model.md §1.2 注）', () => {
     expect(c.hasStudentAnswer).toBe(false);
   });
 
+  it('多标签：一份附件同时点亮多个布尔（不再 else-if 互斥）', () => {
+    const c = deriveCompleteness([{ categories: ['origin', 'wrong'], text: '题目与我的错解' }]);
+    expect(c).toEqual({
+      hasProblem: true,
+      hasStudentAnswer: true,
+      hasCorrectAnswer: false,
+      hasAnalysis: false,
+    });
+  });
+
+  it('多标签：四类全打在同一份文件上也全部点亮', () => {
+    const c = deriveCompleteness([
+      { categories: ['origin', 'wrong', 'correct', 'analysis'], text: '一图四用' },
+    ]);
+    expect(c).toEqual({
+      hasProblem: true,
+      hasStudentAnswer: true,
+      hasCorrectAnswer: true,
+      hasAnalysis: true,
+    });
+  });
+
   it('判级：仅原题 L1，有作答 L2，解析有无不影响', () => {
     expect(resolveDiagnosisLevel(deriveCompleteness([{ category: 'origin', text: '题' }]))).toBe('L1');
     expect(

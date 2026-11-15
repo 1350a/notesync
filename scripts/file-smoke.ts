@@ -93,6 +93,24 @@ console.log('\n[2] 四类标签分组顺序与锚点');
   );
   assert(parts.some((p) => p.type === 'image_url'), '图片以 image_url part 发出');
   assert(anchors[0].includes('1 个文件'), '锚点标注该组文件数');
+
+  // 多标签（2026-11-15）：主标签定组，其余标签只写进描述行，内容不得重复投喂
+  const multiTexts = partsOf([
+    { name: 'mix.txt', categories: ['wrong', 'correct'], text: '同一份文件的错解与订正' },
+  ])
+    .filter((p) => p.type === 'text')
+    .map(textOf);
+  assertEqual(
+    multiTexts
+      .filter((t) => t.includes('【'))
+      .map((t) => t.slice(t.indexOf('【'), t.indexOf('】') + 1)),
+    ['【我的错误答案】'],
+    '多标签文件只落在首标签所在分组'
+  );
+  assert(
+    multiTexts.includes('[文件 mix.txt · 错误答案/正确答案]\n同一份文件的错解与订正'),
+    '描述行列出全部标签，且正文只出现一次'
+  );
 }
 
 console.log('\n[3] 文本预算均分与截断');

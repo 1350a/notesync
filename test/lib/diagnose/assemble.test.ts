@@ -138,6 +138,78 @@ describe('混合档组装：OCR 文本打底 + 原图补充', () => {
   });
 });
 
+describe('多标签：主标签定组、描述行体现全部标签（2026-11-15）', () => {
+  const multiText = (categories: DiagnoseAttachment['categories']): DiagnoseAttachment => ({
+    name: 'p.pdf',
+    categories,
+    text: '一份文件同时说明题目与我的错误解法',
+  });
+
+  it('只落进首标签所在分块，不在其它分组重复出现', () => {
+    const result = assembleDiagnoseMessage([multiText(['wrong', 'correct'])], {
+      imageMode: 'text-only',
+    });
+    const joined = texts(result).join('\n');
+    expect(joined).toContain('【我的错误答案】（1 个文件）');
+    expect(joined).not.toContain('【正确答案】');
+    expect(joined).not.toContain('【错题原题】');
+  });
+
+  it('锚点计数按文件条数，同一文件只计一次', () => {
+    const result = assembleDiagnoseMessage(
+      [multiText(['wrong', 'correct']), { name: 'q.pdf', categories: ['wrong'], text: '第二份' }],
+      { imageMode: 'text-only' },
+    );
+    expect(texts(result).join('\n')).toContain('【我的错误答案】（2 个文件）');
+  });
+
+  it('文件描述行按标签顺序列出全部标签，主标签在首', () => {
+    const result = assembleDiagnoseMessage([multiText(['wrong', 'correct'])], {
+      imageMode: 'text-only',
+    });
+    expect(texts(result).join('\n')).toContain('[文件 p.pdf · 错误答案/正确答案]');
+  });
+
+  it('内容只投喂一次：同一份正文不因多标签重复上行', () => {
+    const result = assembleDiagnoseMessage([multiText(['origin', 'wrong', 'analysis'])], {
+      imageMode: 'text-only',
+    });
+    const joined = texts(result).join('\n');
+    const occurrences = joined.split('一份文件同时说明题目与我的错误解法').length - 1;
+    expect(occurrences).toBe(1);
+    expect(result.stats.texts).toBe(1);
+  });
+
+  it('图片描述占位同样带全部标签', () => {
+    const result = assembleDiagnoseMessage(
+      [{ name: 'x.png', categories: ['correct', 'analysis'], dataUrl: IMG }],
+      { imageMode: 'text-only' },
+    );
+    expect(texts(result).join('\n')).toContain('[图片 x.png · 正确答案/标准解析]');
+  });
+
+  it('旧单值 category 与多值混批：各自落组，互不影响', () => {
+    const result = assembleDiagnoseMessage(
+      [
+        { name: 'legacy.png', category: 'origin', text: '旧客户端附件' },
+        multiText(['analysis', 'correct']),
+      ],
+      { imageMode: 'text-only' },
+    );
+    const joined = texts(result).join('\n');
+    expect(joined).toContain('【错题原题】（1 个文件）');
+    expect(joined).toContain('【标准解析】（1 个文件）');
+    expect(joined).toContain('[文件 legacy.png · 错题原题]');
+    expect(joined).toContain('[文件 p.pdf · 标准解析/正确答案]');
+  });
+
+  it('空标签数组不落任何分组（兜底由 parseAttachments 负责）', () => {
+    const result = assembleDiagnoseMessage([multiText([])], { imageMode: 'text-only' });
+    expect(texts(result)).toEqual([]);
+    expect(result.stats.texts).toBe(0);
+  });
+});
+
 describe('OCR 标签按附件引擎分流（diagnose-file-intake.md §5 ocrEngine）', () => {
   const ocrImage = (engine: 'local' | 'cloud' | undefined): DiagnoseAttachment => ({
     name: 'img.png',
