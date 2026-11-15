@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mapThinkingParam } from '../../../lib/provider/openaiCompat.ts';
 
 describe('mapThinkingParam（思考强度 → Provider 请求参数，doc/user-settings.md §2.1）', () => {
-  it('zhipu：只有开/关粒度，off 发 disabled，其余统一 enabled', () => {
-    expect(mapThinkingParam('zhipu', 'off')).toEqual({ thinking: { type: 'disabled' } });
+  it('zhipu：只有开/关粒度，low/medium/high 统一 enabled；off 不下发（disabled 关不掉思考）', () => {
+    expect(mapThinkingParam('zhipu', 'off')).toBeNull();
     expect(mapThinkingParam('zhipu', 'low')).toEqual({ thinking: { type: 'enabled' } });
     expect(mapThinkingParam('zhipu', 'medium')).toEqual({ thinking: { type: 'enabled' } });
     expect(mapThinkingParam('zhipu', 'high')).toEqual({ thinking: { type: 'enabled' } });

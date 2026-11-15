@@ -101,8 +101,8 @@ AIGC:
 | 主题三选 + 水合 + 反闪烁 | 已实装 | ✅ | `lib/settings/theme.ts` |
 | 默认模型下拉 | 已实装 | ✅ | `components/ModelSelect.tsx` |
 | 取消首次引导，改默认档 | 已实装：不弹首次引导，冷启即保守档（图片默认先本地转文字，原图不出端；只有显式 `false` 才切外发） | ✅ | `lib/settings/types.ts`、`test/lib/settings/defaults.test.ts` |
-| 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板可选 | ✅ | `lib/settings/types.ts` |
-| 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 不发参数 | ✅ | `lib/provider/openaiCompat.ts` |
+| 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板与聊天输入区均全档可选；off 档文案随 Provider 变（deepseek「关闭」、其余「默认」），仅改文案不锁档 | ✅ | `lib/settings/types.ts` |
+| 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 在所有 Provider 均不下发参数（zhipu 的 `disabled` 实测关不掉思考，2026-11-15 摘除） | ✅ | `lib/provider/openaiCompat.ts` |
 | 思考预算 `maxTokens` | 已实装：`normalizeMaxTokens` 归一（≤0/NaN/非数值视为未设置，超上限钳制），`mapMaxTokens` 按 Provider 分流下发 `max_tokens`（**custom 恒不发**，未知字段严格校验风险），经工具循环与收敛请求一并透传；设置页「思考预算」下拉提供跟随模型默认 / 1024 / 4096 / 8192 | ✅ | `lib/settings/types.ts`、`lib/provider/openaiCompat.ts`、`lib/tools/loop.ts` |
 | `systemPrompt` / `temperature` | 未接线（协议标注未接，服务端注入待做） | 🧊 | `doc/user-settings.md` |
 

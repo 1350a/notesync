@@ -39,7 +39,9 @@ import { MAX_ERROR_LOG_CHARS, extractUpstreamMessage, redactUpstreamText } from 
 /**
  * 思考强度 → Provider 请求体参数映射（doc/user-settings.md §2.1，协议预留的两个参数名）。
  * 返回 null 表示本次不携带思考参数（跟随 provider 默认）。
- * - zhipu：GLM 官方口径只有开/关粒度——off 发 disabled，low/medium/high 统一 enabled；
+ * - zhipu：GLM 官方口径只有开/关粒度——low/medium/high 统一 enabled；
+ *   off 不发送（实测 thinking.type=disabled 关不掉 glm-5.3-flashx，下发只会制造「已关闭」的假象，
+ *   UI 该档因此标注为「默认」而非「关闭」，见 lib/settings/types.ts 的 THINKING_OFF_PROVIDERS）；
  * - deepseek：reasoning_effort 档位；off 不发送（关闭语义 = 选用非推理模型，由模型下拉承担）；
  * - custom：恒不发送——自定义端点对未知字段可能严格校验（与 user 字段开关同口径）。
  */
@@ -50,7 +52,8 @@ export function mapThinkingParam(
   if (!thinking) return null;
   if (name === 'custom') return null;
   if (name === 'zhipu') {
-    return { thinking: { type: thinking === 'off' ? 'disabled' : 'enabled' } };
+    if (thinking === 'off') return null;
+    return { thinking: { type: 'enabled' } };
   }
   // deepseek
   if (thinking === 'off') return null;
