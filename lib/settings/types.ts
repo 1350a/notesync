@@ -5,6 +5,12 @@
  * 声明但未接线的字段（systemPrompt/generation）仅做类型占位与
  * normalize 钳制，UI 与服务端消费按文档 §6 挂账逐步落地。
  */
+import {
+  defaultTtsVoice,
+  engineHasVoice,
+  isTtsEngineId,
+  type TtsEngineId,
+} from '../tts/catalog.ts';
 
 /**
  * 主题偏好（doc/user-settings.md §2/§4）：四档互斥。
@@ -82,6 +88,8 @@ export interface UserSettings {
    * 多模态模型直传原图、无转写（自动路由，2026-11-14 拍板）
    */
   ocr: { engine: OcrEngine };
+  /** 朗读设置（已接线 2026-11-15，doc/tts.md §5）：引擎 + 音色，消息气泡朗读按钮消费 */
+  tts: { engine: TtsEngineId; voice: string };
   /** 本地知识检索（已接线，doc/browser-local-inference.md §7）：true=发送前浏览器内检索并注入命中片段 */
   rag: { enabled: boolean };
 }
@@ -94,6 +102,9 @@ export const DEFAULT_SETTINGS: UserSettings = {
   // 引擎默认云端（2026-11-14 拍板，质量优先）：转写只发生在纯文本模型路径，
   // 多模态模型直传原图不经此配置（product-vision.md P4）
   ocr: { engine: 'cloud' },
+  // 朗读默认 zhipu（2026-11-15 拍板：音色多、可调速、单价低，doc/tts.md §5）；
+  // 默认音色从目录真源派生，避免两处硬编码漂移
+  tts: { engine: 'zhipu', voice: defaultTtsVoice('zhipu') },
   rag: { enabled: false },
 };
 
@@ -107,12 +118,13 @@ export const MAX_TOKENS_MAX = 200_000;
 
 const THEMES: readonly ThemePreference[] = ['light', 'dark', 'sky', 'mint'];
 
-/** 深拷贝默认值，避免消费方误改共享嵌套对象（generation/ocr/rag） */
+/** 深拷贝默认值，避免消费方误改共享嵌套对象（generation/ocr/tts/rag） */
 export function cloneDefaults(): UserSettings {
   return {
     ...DEFAULT_SETTINGS,
     generation: { ...DEFAULT_SETTINGS.generation },
     ocr: { ...DEFAULT_SETTINGS.ocr },
+    tts: { ...DEFAULT_SETTINGS.tts },
     rag: { ...DEFAULT_SETTINGS.rag },
   };
 }
@@ -180,6 +192,23 @@ function normalizeRag(raw: unknown): UserSettings['rag'] {
 }
 
 /**
+ * 朗读设置规整（doc/tts.md §5）：引擎非法回落默认引擎；音色不属于所选引擎
+ * 目录时回落该引擎默认音色——引擎切换后旧音色自动随迁，不残留失效值。
+ */
+function normalizeTts(raw: unknown): UserSettings['tts'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { engine: 'zhipu', voice: defaultTtsVoice('zhipu') };
+  }
+  const record = raw as Record<string, unknown>;
+  const engine = isTtsEngineId(record.engine) ? record.engine : 'zhipu';
+  const voice =
+    typeof record.voice === 'string' && engineHasVoice(engine, record.voice)
+      ? record.voice
+      : defaultTtsVoice(engine);
+  return { engine, voice };
+}
+
+/**
  * 把任意来源（localStorage JSON / 将来的服务端响应）规整为合法设置。
  * 未知字段一律丢弃，保证前向兼容；永不抛错。
  */
@@ -207,6 +236,7 @@ export function normalizeSettings(raw: unknown): UserSettings {
     systemPrompt,
     generation: normalizeGeneration(record.generation),
     ocr: normalizeOcr(record.ocr),
+    tts: normalizeTts(record.tts),
     rag: normalizeRag(record.rag),
   };
 }
