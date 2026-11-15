@@ -73,14 +73,19 @@ export interface TraceEvent {
 
 /** 本轮被拦截的归因（safety-protocol §3：两条路径处置相同，根因不同） */
 export interface TraceBlocked {
-  /** finish_reason 异常值 = 'finish_reason'；拒绝性文本 = 'content'；服务端输入兜底 = 'input_guard' */
-  signal: 'finish_reason' | 'content' | 'input_guard';
+  /**
+   * finish_reason 异常值 = 'finish_reason'；拒绝性文本 = 'content'；
+   * 服务端输入兜底 = 'input_guard'；上游输入未过审 400 = 'upstream_400'（§3.2）
+   */
+  signal: 'finish_reason' | 'content' | 'input_guard' | 'upstream_400';
   /** 归一后的错误码：content_blocked / input_blocked（预留给后续细分） */
   code?: string;
   /** 上游 finish_reason 原值（signal='finish_reason' 时有值） */
   finishReason?: string;
   /** 输入兜底命中的类别（signal='input_guard' 时有值）：structure / injection / psych / hardRisk */
   category?: string;
+  /** 上游拒答说明（DeepSeek delta.refusal / message.refusal，图片被拦时指出位置，§3.2） */
+  refusal?: string;
 }
 
 export interface Trace {
