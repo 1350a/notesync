@@ -11,7 +11,7 @@ AIGC:
 
 # 用户设置（User Settings）协议
 
-> 状态：P1（抽象层 + 侧栏 UI 落地；generation.thinkingEffort / generation.maxTokens 已接线，systemPrompt / temperature 未接线）｜最后更新：2026-11-14
+> 状态：P1（抽象层 + 侧栏 UI 落地；generation.thinkingEffort / generation.maxTokens / tts.engine+voice 已接线，systemPrompt / temperature 未接线）｜最后更新：2026-11-15
 > 对应代码：`lib/settings/`、`store/useSettingsStore.ts`、`components/settings/`、`lib/client-id.ts`、`components/layout/AppLayout.tsx`（水合与主题收口）
 
 本文件是用户设置的**唯一事实来源**。修改协议必须先改本文件，再改代码（见 `AGENTS.md` §9）。
@@ -42,6 +42,10 @@ interface UserSettings {
     engine: 'local' | 'cloud';        //   转写引擎：cloud=智谱 glm-ocr（默认）；local=tesseract.js（doc/cloud-ocr.md §4）。
                                       //   2026-11-14 拍板：preferLocal 档位偏好已删——要不要转写由模型能力自动路由
                                       //   （多模态直传、纯文本转写，product-vision.md P4），本字段只决定谁来转写
+  };
+  tts: {                              // 【已接线 2026-11-15】朗读（doc/tts.md §5）
+    engine: 'zhipu' | 'deepseek';     //   朗读引擎：zhipu=GLM-TTS（默认）；deepseek=DeepSeek TTS
+    voice: string;                    //   音色 id，默认随引擎（zhipu: 'tongtong'；deepseek: 'stella'）
   };
   rag: { enabled: boolean };          // 【已接线】true=发送前浏览器本地检索知识库并注入命中片段（见 doc/browser-local-inference.md §6）
 }
@@ -87,6 +91,8 @@ interface UserSettings {
 | generation.maxTokens | 非有限数字 / ≤0 → 丢弃；向下取整并钳制到 1–200_000 |
 | ocr.engine | 非 `'local'/'cloud'` → 回落 `'cloud'`（2026-11-14 起默认档为云端；旧存储无此字段同样补默认，doc/cloud-ocr.md §4）。旧存量 `ocr.preferLocal` 键按未知字段自然丢弃 |
 | ocr.preferLocal | ~~已删除（2026-11-14）~~：不再读取，存量键随 normalize 丢弃 |
+| tts.engine | 非 `'zhipu'/'deepseek'` → 回落 `'zhipu'`（2026-11-15 实装，doc/tts.md §5） |
+| tts.voice | 不属于所选引擎音色目录 → 回落该引擎默认音色（引擎切换时旧音色自动随迁回落） |
 | rag.enabled | 严格 `=== true` 才为 true |
 | 未知字段 | 一律丢弃（前向兼容：新版本读旧数据补默认，旧版本读新数据不崩） |
 
@@ -129,7 +135,7 @@ interface SettingsStorage {
 
 | 分区 | 状态 | 内容 |
 | --- | --- | --- |
-| 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；朗读音色一行禁用 + "未实装"标注 |
+| 通用设置 | **实装** | 主题四选卡片（浅色/深色/天空/薄荷）；默认模型下拉（选项来自 GET /api/models，含"跟随后端推荐"）；朗读引擎 + 朗读音色下拉（2026-11-15 实装，引擎/音色联动，未配置密钥的引擎禁用并标注，见 doc/tts.md §5） |
 | 本地能力 | **实装** | 按任务四行（见 doc/browser-local-inference.md §7）：图片处理（OCR，写 `ocr.engine`：本地/云端，默认云端；2026-11-14 起取代旧「自动/优先本地OCR」两行）、知识检索（开关写 `rag.enabled` + 引擎/资产状态展示）、本地引擎（预加载/重试 + 进度）、本地对话（禁用 + "未实装"标注，v2 小 LLM） |
 | 账号管理 | 占位 | 文案说明：无账号体系，配置仅存本浏览器 |
 | 数据管理 | **实装** | 恢复默认设置（storage.clear）；重置设备标识（`resetUserId()`，仅清 `notesync-user-id`，不动设置，见 §4.1）；清除全部本地数据（遍历清除 `notesync` 前缀 key 后刷新，含旧版 `notesync_config` 与客户端标识） |
@@ -149,7 +155,7 @@ interface SettingsStorage {
   引擎默认档改 `'cloud'`，发送路由改为按模型能力自动派生（多模态直传 / 纯文本转写，
   混合档下线），契约见 doc/cloud-ocr.md §4 与 product-vision.md P4。
 - RAG `rag.enabled` 已接线（2026-11-10，语义见 doc/browser-local-inference.md §6）；查询侧触发阈值 `RAG_MIN_QUERY_CHARS = 8` 已接线（2026-11-12，见同文档 §5.4）；云端 embedding 与对话本地档位挂账（同文档 §8）。
-- 朗读音色（TTS）实装。
+- ~~朗读音色（TTS）实装~~ **已实装（2026-11-15）**：双云端引擎（GLM-TTS + DeepSeek）+ 消息气泡朗读按钮 + 完成后整段合成，协议与挂账见 doc/tts.md（§8：语速 UI、边生成边读、本地合成等）。
 - ~~界面语言（i18n）~~ **占位已移除（2026-11-14 拍板砍掉多语言方向）**：`language`
   字段与设置页「语言」行已删，界面仅中文；旧存量里的 `language` 键由 normalize
   按"未知字段丢弃"自然清除，无需迁移脚本。若将来重启 i18n，需重新走文档先行流程。
