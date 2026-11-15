@@ -225,7 +225,7 @@ notesync/
 
 - 本地小模型对话（v2，Qwen3-0.6B / Qwen2.5-0.5B-Instruct ONNX 待评测）、云端 embedding、云 OCR 两段管线。
 - `disposeLocalEngine()` 已接线：走 `lib/local/engine-lease.ts` 的租约引用计数，`acquireLocalEngine` / `releaseLocalEngine` 归零时释放，能力页、设置分区与聊天链路共用同一份租约；OCR 侧 `disposeOcrWorker()` 已在 `/ocr` 页面接入。
-- 设置中的 `generation.thinkingEffort` / `generation.maxTokens` 已接线：前者按 provider 映射为 `reasoning_effort` / `thinking.type`（custom 不发；zhipu 的 `off` 档不下发——关不掉思考，UI 该档因此显示「思考·默认」而非「关闭」，四档仍全可切），后者映射为 `max_tokens`（custom 不发；设置页三档预设 1024 / 4096 / 8192 或跟随模型默认）；`generation.temperature`、`systemPrompt`、语言、朗读音色仍未接线（服务端注入待做）。会话历史已改为浏览器本地持久化（`doc/chat-history.md`），服务端 `/api/sessions` 与跨设备同步不做。
+- 设置中的 `generation.thinkingEffort` / `generation.maxTokens` 已接线：前者按 provider 映射为 `reasoning_effort` / `thinking.type`（custom 不发；zhipu 的 `off` 档不下发——关不掉思考，UI 该档因此显示「思考·默认」而非「关闭」，四档仍全可切），后者映射为 `max_tokens`（custom 不发；设置页三档预设 1024 / 4096 / 8192 或跟随模型默认）；`generation.temperature`、`systemPrompt` 仍未接线（服务端注入待做）。TTS 朗读已实装（2026-11-15，双云端引擎 + 消息气泡朗读按钮，协议 `doc/tts.md`；语速 UI / 边生成边读 / 本地合成挂账同文档 §8）。会话历史已改为浏览器本地持久化（`doc/chat-history.md`），服务端 `/api/sessions` 与跨设备同步不做。
 - 工具调用：多工具并行、外部 MCP server 注册未实现。
 - 思考面板与 trace 导出：面板改三级展示（默认折叠 → 前 400 字预览 +「共 N 字」→「展开完整推理」），避免长推理一次铺满屏幕；trace 的 `reasoning` 仍全量落盘（保留本地分析能力），只在导出出口经 `lib/safety/redact.ts` 的 `redactTraceText()` 脱敏副本，公式/代码/URL 走白名单不改写（详见 `doc/safety-design.md` §5.1）。脱敏靠词表与句式，新增内部常量名需同步补表。
 - Safari WebGPU EP 内存问题（onnxruntime #26827）跟踪中，届时可能对 Safari 强制 q8/WASM。
