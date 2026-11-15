@@ -11,7 +11,8 @@
  * 6. 达到最大轮数仍未结束：追加 system 提示后做一次不带 tools 的收敛请求，
  *    finishReason 仍为 'max_rounds'（doc/tool-protocol.md §8.3）。
  */
-import { resolveNonNegativeInt } from '@/lib/config/env.ts';
+// 相对路径而非 @ 别名：smoke:loop 用 node --experimental-strip-types 直跑，不解析 tsconfig 别名
+import { resolveNonNegativeInt } from '../config/env.ts';
 import type { LLMProvider, ProviderMessage, StreamDelta, TokenUsage } from '@/lib/provider/types.ts';
 import type { ToolAdapter } from './adapters/types.ts';
 import { invokeTool } from './invoke.ts';
