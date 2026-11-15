@@ -536,6 +536,10 @@ export function useChat(selectedModel: string) {
                   role: m.role,
                   // 中止标记是纯展示态：剥掉后再上行，标记文本不进模型上下文（§8.3）
                   content: stripAbortedSuffix(m.content).text,
+                  // 思考过程随历史上行（落库已有该值）：DeepSeek 思考模式 + tools 要求完整回传
+                  // reasoning_content，缺失会被上游 400（doc/tool-protocol.md §4.3）；
+                  // 旧会话/思考关闭的轮次没有该值，缺省即不上行
+                  reasoning: m.role === 'assistant' && m.reasoning?.trim() ? m.reasoning : undefined,
                   // 【legacy 分支保留】旧混合档消息（imageSendMode==='mixed'）重发时原图仍随行，
                   // 不丢历史内容；新发送不再产出该形态。全本地：仅 imageTexts（图片仅本地展示）；
                   // 直传：仅原图（doc/browser-local-ocr.md §6.2）
