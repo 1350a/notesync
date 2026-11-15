@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { useChatStore } from '@/store/useChatStore';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 type AppHeaderProps = {
   /**
@@ -19,13 +19,20 @@ export default function AppHeader({
   showSidebarToggle = true,
   showNewChat = true,
 }: AppHeaderProps) {
-  const { setSettingsOpen, isSidebarOpen, toggleSidebar, startNewChat } = useChatStore();
+  const { setSettingsOpen, isSidebarOpen, toggleSidebar, startNewChat, requestNewChat } = useChatStore();
   const router = useRouter();
+  const pathname = usePathname();
 
-  // 新建对话：清空当前会话并回到对话页
+  // 新建对话：清空当前会话并回到对话页。
+  // 跨路由不能走 newChatSignal：聊天页消费 ref 以当前值初始化，挂载前 bump 会被吞，
+  // 改走打开信号通道的空目标语义（requestNewChat，不落盘丢弃）
   const handleNewChat = () => {
-    startNewChat();
-    router.push('/chat');
+    if (pathname !== '/chat') {
+      requestNewChat();
+      router.push('/chat');
+    } else {
+      startNewChat();
+    }
   };
 
   return (
