@@ -91,6 +91,16 @@ interface ExtractedToolCall {
 }
 ```
 
+### 4.3 思考内容回传（reasoning_content，2026-11-15）
+
+DeepSeek 在思考模式（请求带 `reasoning_effort`，见 doc/user-settings.md §2.1）下有一道硬校验：**请求携带 `tools` 时，后续所有请求必须把 assistant 历史消息的 `reasoning_content` 完整传回**，缺失即 HTTP 400（"The reasoning_content in the thinking mode must be passed back to the API"）；不带 `tools` 的请求忽略该字段、不报错。由此 `ProviderMessage` 增加可选字段 `reasoning_content?`（仅 assistant 消息携带），三条链路必须同源回传：
+
+1. **循环轮间**：native 适配器 `processStream` 在转发增量之外累积本轮 reasoning，经 `ExtractedToolCalls.reasoning` 带出；`appendResults` 回填 assistant（含 tool_calls）消息时挂载到 `reasoning_content`。
+2. **finalize 注入轮**（诊断补交 / guard 重试）：`LoopRunResult.reasoning` 汇总一次 loop 运行的思考全文，注入 assistant 正文时同源携带。
+3. **跨请求多轮**：客户端上行历史携带 `reasoning`（`ChatMsg` 落库已有该值），`buildProviderMessages` 映射为 `reasoning_content`。
+
+下发分流由 provider 层统一承担（`lib/provider/openaiCompat.ts`）：`reasoning_content` **仅 DeepSeek 且该请求本身处于思考模式时下发**——zhipu / custom 对未知字段可能严格校验（与 user / thinking 字段同口径），思考关闭的请求没有回传语义。历史中本就没有 reasoning 的消息（旧会话、中途开档的轮次）无法凭空补齐，只能缺省上行；上游对其校验粒度以真机实测为准。
+
 ## 5. text 模式
 
 ### 5.1 请求
