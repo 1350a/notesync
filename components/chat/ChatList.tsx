@@ -165,6 +165,7 @@ export default function ChatList({
         // 中止标记在渲染入口剥一次：正文渲染、复制源共用同一口径（doc/chat-history.md §8.3）；
         // user 消息不会有中止后缀（abort 分支只写最后一条 assistant）
         const isUser = m.role === 'user';
+        const editing = editingIndex === i;
         const { text: renderContent, aborted } = isUser
           ? { text: m.content, aborted: false }
           : stripAbortedSuffix(m.content);
@@ -185,17 +186,27 @@ export default function ChatList({
             <div
               className={
                 isUser
-                  ? 'max-w-full rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm'
+                  ? editing
+                    ? // 编辑态换成中性编辑面：编辑框控件按中性底配色（主色文字/灰字），
+                      // 留在主色填充上会让「保存并重发」整字隐形、灰字暗压暗成幽灵字
+                      'w-full rounded-lg p-2 text-sm'
+                    : 'max-w-full rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm'
                   : 'w-full text-sm'
               }
               style={
                 isUser
-                  ? {
-                      backgroundColor: 'var(--primary)',
-                      color: 'var(--primary-foreground)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }
+                  ? editing
+                    ? {
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text)',
+                      }
+                    : {
+                        backgroundColor: 'var(--primary)',
+                        color: 'var(--primary-foreground)',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }
                   : {
                       backgroundColor: 'transparent',
                       color: 'var(--text)',
@@ -317,7 +328,7 @@ export default function ChatList({
                       </span>
                     </div>
                   ) : null}
-                  {editingIndex === i ? (
+                  {editing ? (
                     <MessageEditor
                       initial={m.content}
                       onCancel={() => setEditingIndex(null)}
@@ -334,7 +345,7 @@ export default function ChatList({
             </div>
 
             {/* 操作条：气泡外、正文下方一行图标（doc/chat-history.md §8.3）。生成中整条隐藏 */}
-            {editingIndex !== i && !loading ? (
+            {!editing && !loading ? (
               <MessageActions
                 role={m.role}
                 canRegenerate={m.role === 'assistant' && i === messages.length - 1 && Boolean(onRegenerate)}
