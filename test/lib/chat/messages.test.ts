@@ -287,3 +287,32 @@ describe('stripAbortedSuffix', () => {
     expect(text).toBe('');
   });
 });
+
+describe('buildProviderMessages 的思考回传映射', () => {
+  // doc/tool-protocol.md §4.3：assistant 历史的 reasoning 上行后映射为 reasoning_content，
+  // DeepSeek 思考模式 + tools 硬校验必需；字段原样透传不截断（官方要求完整传回）
+  it('assistant 的合法 reasoning 原样映射为 reasoning_content（不截断）', () => {
+    const { messages } = buildProviderMessages({
+      messages: [
+        { role: 'user', content: '你好' },
+        { role: 'assistant', content: '回答', reasoning: '  思考全文  ' },
+      ],
+    });
+    const assistant = messages.find((m) => m.role === 'assistant');
+    expect(assistant?.reasoning_content).toBe('  思考全文  ');
+  });
+
+  it('reasoning 非字符串或纯空白视为未携带，不产出该字段', () => {
+    const { messages } = buildProviderMessages({
+      messages: [
+        { role: 'assistant', content: 'a', reasoning: '   ' },
+        { role: 'assistant', content: 'b', reasoning: 123 as unknown as string },
+        { role: 'assistant', content: 'c' },
+        // user 消息即使带了 reasoning 也不映射（字段只对 assistant 有语义）
+        { role: 'user', content: 'd', reasoning: '伪思考' },
+      ],
+    });
+    expect(messages.some((m) => 'reasoning_content' in m)).toBe(false);
+    expect(messages.map((m) => m.role)).toEqual(['assistant', 'assistant', 'assistant', 'user']);
+  });
+});
