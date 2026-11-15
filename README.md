@@ -139,7 +139,7 @@ npm run start
 
 - **当前工作分支**：`dev`（集成分支，CI 与 PR 默认目标；`main` 仅在发版时同步）。浏览器本地能力（本地 OCR + 浏览器端 embedding/RAG）已并入 `dev`。协议文档中若出现历史分支名 `beta/browser-ocr-planb` 或更早的 `feat/browser-ai-inference`，均指同一方向的历史命名。
 - **质量门禁**（`AGENTS.md` §5）：`npm run lint` 与 `npm run build` **均须退出码 0** 才算完成；提交前另跑 `npx tsc --noEmit`。任一失败先修，禁止只跑一项就宣称完成。
-- **冒烟脚本**（除 `smoke:ocr` 外均零依赖，`node --experimental-strip-types` 直跑）：`smoke:tools` / `smoke:adapters` / `smoke:loop` / `smoke:files` / `smoke:intake` / `smoke:chat` / `smoke:settings` / `smoke:ocr` / `smoke:rag` / `smoke:safety` / `smoke:xss` 共 11 项，另有 `scan:xss`（静态扫描，非同批冒烟）。其中 `smoke:ocr` 需真实云端 OCR API Key 与网络，**不进 CI**；CI 实跑其余 10 项。
+- **冒烟脚本**（除 `smoke:ocr` 外均零依赖，`node --experimental-strip-types` 直跑）：`smoke:tools` / `smoke:adapters` / `smoke:loop` / `smoke:files` / `smoke:intake` / `smoke:chat` / `smoke:settings` / `smoke:ocr` / `smoke:tts` / `smoke:rag` / `smoke:safety` / `smoke:xss` 共 12 项，另有 `scan:xss`（静态扫描，非同批冒烟）。其中 `smoke:ocr` 需真实云端 OCR API Key 与网络，**不进 CI**；CI 实跑其余 11 项。
 - **提交纪律**（`AGENTS.md` §6）：一文件一 commit；`git add` 与 `git commit` 分两行执行；message 形如 `<type>(<scope>): <中文描述>`（`<scope>` 可省略，省略时退化为 `<type>: <中文描述>`），`<type>` ∈ `feat|fix|refactor|style|docs|test|chore|revert`，`<scope>` 取改动落点目录或领域、小写不带路径分隔符。完整细则（正文与 footer 写法、禁提交项）见 [doc/git-commit-convention.md](./doc/git-commit-convention.md)。
 - **类型纪律**（§3）：`strict` 不放松，禁 `any` 与 `@ts-ignore`。
 - **协议先行**（§9）：诊断流程、API 契约、事件结构、数据模型等业务协议写在 `doc/`，**改协议先改 doc 再改代码**。
