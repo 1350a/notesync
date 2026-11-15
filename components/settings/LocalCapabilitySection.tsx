@@ -3,17 +3,17 @@
 /*
  * 设置 - 本地能力分区（doc/browser-local-inference.md §7）
  *
- * 四行结构：图片处理（OCR）/ 知识检索（RAG）/ 本地引擎 / 本地对话。
+ * 三行结构：图片处理（OCR）/ 知识检索（RAG）/ 本地引擎。
  * - 图片处理行＝转写引擎选择（本地/云端，默认云端；2026-11-14 起取代旧
  *   「自动/优先本地OCR」+「识别引擎」两行），全站唯一入口；
  * - 知识检索与本地引擎两行取 dev 侧实现（资产就绪门禁 + 引擎状态机），
  *   预加载入口收敛到「本地引擎」行唯一一处；
- * - 本地对话为 v2 占位（诚实接线，AGENTS.md §8）。
+ * - 本地对话占位行已下线（2026-11-15 用户要求，原样存档见文末注释）。
  */
 
 import { useCallback, useState } from 'react';
 
-import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
+import SettingsRow from './SettingsRow';
 import { useLocalEngine } from '@/hooks/useLocalEngine';
 import { useModels } from '@/hooks/useModels';
 import type { LocalEngineStatus } from '@/lib/local/engine';
@@ -194,7 +194,9 @@ export default function LocalCapabilitySection() {
         </div>
       </SettingsRow>
 
-      {/* 未实装占位：v1 仅云端推理，本地对话按 doc §7 挂账（AGENTS.md §8 诚实接线） */}
+      {/* 本地对话占位行已下线（2026-11-15 用户要求，v2 接入前不再展示）。
+          恢复时除取消注释外，还需回补 './SettingsRow' 的
+          NotWiredBadge / DISABLED_SELECT_CLASS 导入：
       <SettingsRow
         label="本地对话"
         badge={<NotWiredBadge />}
@@ -203,7 +205,7 @@ export default function LocalCapabilitySection() {
         <select disabled className={DISABLED_SELECT_CLASS}>
           <option>暂不可选</option>
         </select>
-      </SettingsRow>
+      </SettingsRow> */}
     </div>
   );
 }
