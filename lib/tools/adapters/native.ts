@@ -45,6 +45,7 @@ export class NativeAdapter implements ToolAdapter {
     onReasoning: (delta: string) => void
   ): Promise<ExtractedToolCalls> {
     let rawContent = '';
+    let rawReasoning = '';
     let rawFinishReason: string | undefined;
     // 按 index 累积 tool_calls 增量
     const toolCallsMap = new Map<number, { id: string; name: string; argsBuf: string }>();
@@ -58,6 +59,7 @@ export class NativeAdapter implements ToolAdapter {
         onContent(delta.content);
       }
       if (delta.reasoning) {
+        rawReasoning += delta.reasoning;
         onReasoning(delta.reasoning);
       }
       if (delta.toolCall) {
@@ -85,14 +87,22 @@ export class NativeAdapter implements ToolAdapter {
       }
     }
 
-    return { calls, raw: rawContent, parseError, finishReason: rawFinishReason };
+    return {
+      calls,
+      raw: rawContent,
+      // 思考全文随结果带出：appendResults 回填历史时挂 reasoning_content（§4.3 思考回传）
+      ...(rawReasoning ? { reasoning: rawReasoning } : {}),
+      parseError,
+      finishReason: rawFinishReason,
+    };
   }
 
   appendResults(
     messages: ProviderMessage[],
     calls: ExtractedToolCall[],
     results: ToolInvocation[],
-    assistantText?: string
+    assistantText?: string,
+    assistantReasoning?: string
   ): void {
     if (calls.length === 0) return;
 
@@ -108,10 +118,12 @@ export class NativeAdapter implements ToolAdapter {
 
     // 本轮正文必须随 tool_calls 一并回填（P0：曾置空导致模型看不到自己已写的画像而重写一份）
     // 正文已通过 SSE 流式下发过，这里只写历史、不再下发，不会造成前端重复显示。
+    // 思考过程同理：DeepSeek 思考模式 + tools 下缺失回传会被上游 400（doc/tool-protocol.md §4.3）
     messages.push({
       role: 'assistant',
       content: assistantText?.trim() ? assistantText : '',
       tool_calls: providerCalls,
+      ...(assistantReasoning?.trim() ? { reasoning_content: assistantReasoning } : {}),
     });
 
     // 2. 拼入 tool 结果
