@@ -204,3 +204,24 @@ export interface DiagnoseRequestPayload {
   context?: DiagnoseContext;
   event?: DiagnoseRequestEvent;
 }
+
+/** 整卷结果面板的步骤条目（doc/diagnose-paper.md §3 paper_step） */
+export interface PaperStep {
+  text: string;
+  current?: number;
+  total?: number;
+}
+
+/** 整卷切题分类后一组共享诊断的结果（同类题只诊断一次，doc/diagnose-paper.md §4） */
+export interface PaperGroupResult {
+  result: DiagnosisResult;
+  questionNumbers: string[];
+  groupCode: string;
+}
+
+/** 整卷诊断结果面板的完整视图态（PaperResultPanel 渲染输入；doc/diagnose-paper.md §8 暂存快照同形状） */
+export interface PaperViewState {
+  steps: PaperStep[];
+  results: PaperGroupResult[];
+  summary: string;
+}
