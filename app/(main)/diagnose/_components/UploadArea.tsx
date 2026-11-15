@@ -621,11 +621,13 @@ export default function UploadArea() {
                       <span className="text-sm text-foreground truncate max-w-50">{row.name}</span>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* 标签全是中文短词：CJK 可逐字断行，flex 收缩会把整组压成一字宽竖排
+                          （窄屏曾渲染成标签竖排列，2026-11-15）， nowrap 让最小宽度=整词宽 */}
                       <div className="flex flex-wrap items-center justify-end gap-1.5">
                         {selectedTags.map((tag) => (
                           <span
                             key={tag.id}
-                            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium ${tag.color}`}
+                            className={`inline-flex items-center gap-1 whitespace-nowrap text-xs px-2 py-1 rounded-lg border font-medium ${tag.color}`}
                           >
                             {tag.label}
                             <button
@@ -646,25 +648,33 @@ export default function UploadArea() {
                               onClick={() =>
                                 setTagPickerRowId((prev) => (prev === row.id ? null : row.id))
                               }
-                              className="text-xs px-2 py-1 rounded-lg border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                              className="whitespace-nowrap text-xs px-2 py-1 rounded-lg border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                               title="给这个文件再加一个标签"
                               aria-expanded={tagPickerRowId === row.id}
                             >
                               + 添加标签
                             </button>
                             {tagPickerRowId === row.id && (
-                              <div className="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1 p-1 rounded-lg border border-border bg-background shadow-lg">
-                                {remainingTags.map((item) => (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => addCategory(row.id, item.id)}
-                                    className={`text-xs px-2 py-1 rounded-md border text-left font-medium ${item.color}`}
-                                  >
-                                    {item.label}
-                                  </button>
-                                ))}
-                              </div>
+                              <>
+                                {/* 透明点击层：点气泡外任意处收起，避免一直叠压在开始诊断按钮上
+                                    （与上传方式菜单同一手法） */}
+                                <div
+                                  className="fixed inset-0 z-10"
+                                  onClick={() => setTagPickerRowId(null)}
+                                />
+                                <div className="absolute right-0 top-full mt-1 z-20 flex flex-col gap-1 p-1 rounded-lg border border-border bg-background shadow-lg">
+                                  {remainingTags.map((item) => (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      onClick={() => addCategory(row.id, item.id)}
+                                      className={`whitespace-nowrap text-xs px-2 py-1 rounded-md border text-left font-medium ${item.color}`}
+                                    >
+                                      {item.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
                             )}
                           </div>
                         )}
