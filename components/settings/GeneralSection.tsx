@@ -1,7 +1,15 @@
 'use client';
 
-import SettingsRow, { DISABLED_SELECT_CLASS, NotWiredBadge } from './SettingsRow';
+import { useEffect, useState } from 'react';
+import SettingsRow from './SettingsRow';
 import { useModels } from '@/hooks/useModels';
+import {
+  defaultTtsVoice,
+  engineHasVoice,
+  getTtsEngine,
+  TTS_ENGINES,
+  type TtsEngineId,
+} from '@/lib/tts/catalog';
 import { MAX_TOKENS_PRESETS, type ThemePreference } from '@/lib/settings/types';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -27,9 +35,35 @@ export default function GeneralSection() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultModel = useSettingsStore((s) => s.settings.defaultModel);
   const generation = useSettingsStore((s) => s.settings.generation);
+  const tts = useSettingsStore((s) => s.settings.tts);
   const updateSettings = useSettingsStore((s) => s.update);
   // 分区挂载时才拉模型列表（弹窗关闭时本组件不渲染，不产生请求）
   const { models, loading } = useModels();
+  // 引擎可用性（key 是否配置）来自 GET /api/tts；探测失败不阻塞下拉——
+  // 照常可选，朗读时由 503 unconfigured 明确报错（doc/tts.md §2）
+  const [ttsEngines, setTtsEngines] = useState<Record<TtsEngineId, boolean> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/tts')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: unknown) => {
+        if (cancelled || !data || typeof data !== 'object') return;
+        const engines = (data as { engines?: unknown }).engines;
+        if (!engines || typeof engines !== 'object') return;
+        const record = engines as Record<string, unknown>;
+        setTtsEngines({
+          zhipu: record.zhipu === true,
+          deepseek: record.deepseek === true,
+        });
+      })
+      .catch(() => {
+        // 探测失败保持 null：下拉照常展示，不猜引擎可用性
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // store.update 是浅合并：必须展开现有 generation，否则思考档位等参数会被整体清掉
   const setMaxTokens = (raw: string) => {
@@ -37,6 +71,13 @@ export default function GeneralSection() {
     if (raw === '') delete next.maxTokens;
     else next.maxTokens = Number(raw);
     updateSettings({ generation: next });
+  };
+
+  // 切引擎时音色随迁：旧引擎音色不属于新引擎目录则回落其默认音色（doc/tts.md §5）
+  const setTtsEngine = (engine: TtsEngineId) => {
+    updateSettings({
+      tts: { engine, voice: engineHasVoice(engine, tts.voice) ? tts.voice : defaultTtsVoice(engine) },
+    });
   };
 
   return (
@@ -102,12 +143,36 @@ export default function GeneralSection() {
         </select>
       </SettingsRow>
 
-      {/* 未实装占位：仅展示不可交互（诚实接线，协议 doc/user-settings.md §5/§6）。
-          图片处理行已迁入「本地能力」分区（doc/browser-local-inference.md §7）；
-          语言行已删（2026-11-14 砍掉多语言方向，见 doc/user-settings.md §6） */}
-      <SettingsRow label="朗读音色" badge={<NotWiredBadge />} hint="TTS 能力尚未接入">
-        <select disabled className={DISABLED_SELECT_CLASS}>
-          <option>暂不可选</option>
+      {/* 朗读引擎 + 朗读音色（doc/tts.md §5，2026-11-15 实装）：音色随引擎联动；
+          未配置密钥的引擎禁用并标注（诚实接线，AGENTS.md §8） */}
+      <SettingsRow label="朗读引擎" hint="消息气泡朗读按钮使用的合成服务">
+        <select
+          value={tts.engine}
+          onChange={(e) => setTtsEngine(e.target.value as TtsEngineId)}
+          className="max-w-56 cursor-pointer truncate rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:max-w-full"
+        >
+          {TTS_ENGINES.map((engine) => {
+            const unavailable = ttsEngines !== null && !ttsEngines[engine.id];
+            return (
+              <option key={engine.id} value={engine.id} disabled={unavailable}>
+                {engine.label}
+                {unavailable ? '（未配置密钥）' : ''}
+              </option>
+            );
+          })}
+        </select>
+      </SettingsRow>
+      <SettingsRow label="朗读音色" hint="随朗读引擎联动；切换引擎时自动回落默认音色">
+        <select
+          value={tts.voice}
+          onChange={(e) => updateSettings({ tts: { engine: tts.engine, voice: e.target.value } })}
+          className="max-w-56 cursor-pointer truncate rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:max-w-full"
+        >
+          {getTtsEngine(tts.engine)?.voices.map((voice) => (
+            <option key={voice.id} value={voice.id}>
+              {voice.label}
+            </option>
+          ))}
         </select>
       </SettingsRow>
     </div>
