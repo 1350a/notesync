@@ -103,6 +103,15 @@ export default function ChatPage() {
   useEffect(() => {
     if (seenUrlSessionRef.current === undefined) {
       seenUrlSessionRef.current = currentSessionId;
+      // 重入态对齐：store 已有当前会话但地址栏无参（从其他页点开"已是当前"的会话跳回、
+      // SPA 返回聊天页）——此场景 loadSession 目标即当前会话，id 不变化、永远等不到变化
+      // 写入，须按 store 补齐。地址栏已有 ?s= 时不写：读取 effect 正在按参数恢复，不能抢跑
+      if (
+        currentSessionId &&
+        !new URLSearchParams(window.location.search).get('s')
+      ) {
+        window.history.replaceState(null, '', `/chat?s=${encodeURIComponent(currentSessionId)}`);
+      }
       return;
     }
     if (seenUrlSessionRef.current === currentSessionId) return;
