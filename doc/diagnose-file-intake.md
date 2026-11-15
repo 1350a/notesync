@@ -37,6 +37,16 @@
 组装顺序固定为 origin → wrong → correct → analysis，与上传顺序无关。
 每个非空分组先写一行锚点（含该组文件数），再挂该组文件内容。
 
+**2026-11-15 起标签可为多值（同一文件可同时标「错误答案 + 正确答案」等）：**
+
+- 一个附件携带多个标签时，按**首标签（主标签）**决定它落进哪个分组与哪行锚点，
+  该组文件数仍按**文件条数**计（不是标签数），锚点文案与引入多值前完全一致；
+- 附件其余标签只以文字写进该文件的描述行，形如
+  `[文件名 · 错误答案/正确答案]`（按存储顺序、斜杠分隔，单标签时只写一个中文名）；
+  图片与文本内容**只投喂一次**，不会因多标签重复上行；
+- 上传区交互：初始只显示「+ 添加标签」按钮；已选标签显示为彩色 chip，点 `×` 移除；
+  添加气泡只列尚未选中的类别；四类全选后隐藏按钮；同一文件不允许出现重复标签。
+
 ## 3. 判定规则（detect）
 
 2026-11-14 起 detect 委派 `lib/intake/detect.ts`（魔数判定规则、编码与图片契约
@@ -85,7 +95,10 @@ interface ChatRequest {
 
 interface DiagnoseAttachment {
   name: string;                              // 文件名，用于告警文案
-  category: 'origin' | 'wrong' | 'correct' | 'analysis';
+  /** 标签，可多值且不可重复；首项为主标签，决定组装分组与锚点计数。缺省按 ['origin'] 兜底 */
+  categories?: Array<'origin' | 'wrong' | 'correct' | 'analysis'>;
+  /** @deprecated 旧单值字段，仅保留一个版本做兼容解析：无 categories 但有该字段时包成单元素数组 */
+  category?: 'origin' | 'wrong' | 'correct' | 'analysis';
   dataUrl?: string;                          // 图片，data:image/...;base64
   text?: string;                             // PDF / 纯文本提取结果
   warning?: string;                          // 提取阶段降级原因
@@ -96,7 +109,11 @@ interface DiagnoseAttachment {
 服务端校验：
 
 - `attachments` 非数组 → 视作空数组。
-- 单项缺 `name`、`category` 不在四类内 → 丢弃该项（`console.warn`），不影响其它项。
+- 单项缺 `name` → 丢弃该项（`console.warn`），不影响其它项。
+- 标签按项过滤（`normalizeCategories`）：先取 `categories`，缺省回退旧 `category`；
+  非数组按单值接住；逐项查四类白名单并去重，**非法标签只剔除该项标签**；
+  全部非法则该附件整条丢弃并 `console.warn`（告警带文件名）；未传任何标签按 `['origin']` 兜底。
+- 出参同时写 `categories`（归一后的数组）与 `category`（`categories[0]`），旧消费方照旧可读。
 - `dataUrl` 不以 `data:image/` 开头 → 丢弃该字段（若同时带 `text` 则保留 `text`）。
 - `dataUrl` 长度 > 12MB → 丢弃该项，防止请求体撑爆内存。
 - 既无 `dataUrl` 也无 `text` → 丢弃该项。
