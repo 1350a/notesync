@@ -7,6 +7,7 @@ import UploadPrivacyNotice from '@/components/upload/UploadPrivacyNotice';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useModels } from '@/hooks/useModels';
 import { detectFile } from '@/lib/diagnose/detect';
+import { appendCategoryTag, removeCategoryTag } from '@/lib/diagnose/category-tags';
 import { extractAttachment } from '@/lib/diagnose/extract';
 import type { DiagnoseKind, DiagnosisResult, ReviseCategory } from '@/lib/diagnose/types';
 import type { OcrEngine } from '@/lib/settings/types';
@@ -215,17 +216,14 @@ export default function UploadArea() {
 
   /**
    * 追加一个标签（多值，不可重复）：
-   * includes 判重放在状态更新回调里，拿的是最新数组，避免连点或与移除交错时重复写入。
-   * 已达 4 个（四类标签全选）时按钮本身不渲染，这里再兜一层防越界。
+   * 判重与上限都由 appendCategoryTag 负责，且放在状态更新回调里拿最新数组，
+   * 避免连点或与移除交错时写入重复项。
    */
   const addCategory = (id: string, category: ReviseCategory) => {
     setRows((prev) =>
-      prev.map((row) => {
-        if (row.id !== id) return row;
-        if (row.categories.includes(category)) return row;
-        if (row.categories.length >= CATEGORIES.length) return row;
-        return { ...row, categories: [...row.categories, category] };
-      })
+      prev.map((row) =>
+        row.id === id ? { ...row, categories: appendCategoryTag(row.categories, category) } : row
+      )
     );
     setTagPickerRowId(null);
   };
@@ -234,9 +232,7 @@ export default function UploadArea() {
   const removeCategory = (id: string, category: ReviseCategory) => {
     setRows((prev) =>
       prev.map((row) =>
-        row.id === id
-          ? { ...row, categories: row.categories.filter((item) => item !== category) }
-          : row
+        row.id === id ? { ...row, categories: removeCategoryTag(row.categories, category) } : row
       )
     );
   };

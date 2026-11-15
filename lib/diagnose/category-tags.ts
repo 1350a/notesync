@@ -68,3 +68,26 @@ export function primaryCategory(item: {
 }): ReviseCategory | undefined {
   return attachmentCategories(item)[0];
 }
+
+/**
+ * 追加一个标签（上传区「+ 添加标签」）：已存在则原样返回，满四类也原样返回。
+ * 抽成纯函数是为了让「不可重复 / 不超上限」这条规则可单测——
+ * 组件测试需要 jsdom，仓库测试环境是 node（vitest.config.mts）。
+ */
+export function appendCategoryTag(
+  current: ReviseCategory[],
+  next: ReviseCategory
+): ReviseCategory[] {
+  if (!isReviseCategory(next)) return current;
+  if (current.includes(next)) return current;
+  if (current.length >= CATEGORY_IDS.length) return current;
+  return [...current, next];
+}
+
+/** 移除一个标签：其余标签保持原顺序，首项被移除后下一项自动递补为主标签 */
+export function removeCategoryTag(
+  current: ReviseCategory[],
+  target: ReviseCategory
+): ReviseCategory[] {
+  return current.filter((item) => item !== target);
+}
