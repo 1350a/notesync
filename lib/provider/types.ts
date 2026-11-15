@@ -118,6 +118,11 @@ export interface CompleteDetailedResult {
   content: string;
   /** 模型思考过程（DeepSeek 等返回 reasoning_content / reasoning） */
   reasoning?: string;
+  /**
+   * 上游拒答说明（DeepSeek safety_check 开启后：图片未过审时在 message.refusal
+   * 指出被拦图片位置，safety-protocol.md §3.2）。仅证据增强，判定走 finishReason 路径。
+   */
+  refusal?: string;
   /** native 模式下模型返回的工具调用（非流式） */
   toolCalls?: ProviderToolCall[];
   /** OpenAI finish_reason（"stop" | "tool_calls" | "length" | "content_filter" 等） */
@@ -130,6 +135,12 @@ export interface CompleteDetailedResult {
 export interface StreamDelta {
   content?: string;
   reasoning?: string;
+  /**
+   * 上游拒答说明（DeepSeek safety_check 开启后：流式时随最后一个 chunk 的
+   * delta.refusal 下发，图片未过审时指出被拦位置，safety-protocol.md §3.2）。
+   * 仅证据增强，拦截判定走 finishReason 路径。
+   */
+  refusal?: string;
   /**
    * 流终止原因（随流透传，以最后一次出现的为准）。
    * content_filter 等异常值是上游拦截判定路径之一（safety-protocol.md §3）。
