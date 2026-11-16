@@ -37,6 +37,11 @@
 
 :root,
 [data-theme='light'] {
+  /* color-scheme 决定原生控件弹出层（select 下拉、日期、滚动条等）的底色：
+     不声明时浏览器一律按浅色渲染弹层，而 option 文字继承 select 的主题前景色，
+     深色主题下浅灰字落白底就成了幽灵字（移动端选模型复现，电脑端 bbe2967
+     同病根：文字与承载底色不成对）。浅色档显式声明 light 锁死口径。 */
+  color-scheme: light;
   --radius: 0.5rem;
   --background: oklch(0.978 0.002 260);
   --foreground: oklch(0.21 0.006 260);
@@ -64,6 +69,9 @@
 
 [data-theme='dark'],
 .dark {
+  /* 弹出层跟深色：option 浅灰字与深色弹层底成对，修移动端深色主题
+     原生 select 弹层幽灵字（浅灰字落浏览器默认白底，截图截不到弹层） */
+  color-scheme: dark;
   --background: oklch(0.305 0.008 250);
   --foreground: oklch(0.95 0 0);
   --card: oklch(0.355 0.009 250);
@@ -88,6 +96,7 @@
 }
 
 [data-theme='sky'] {
+  color-scheme: light;
   --background: oklch(0.972 0.016 235);
   --foreground: oklch(0.22 0.02 240);
   --card: oklch(0.993 0.006 235);
@@ -112,6 +121,7 @@
 }
 
 [data-theme='mint'] {
+  color-scheme: light;
   --background: oklch(0.972 0.019 160);
   --foreground: oklch(0.22 0.02 165);
   --card: oklch(0.993 0.008 160);
