@@ -1,6 +1,6 @@
 # notesync — 错题认知诊断引擎
 
-版本 v1.0.1 · 当前工作分支 `demo` · AI Web 大赛参赛作品
+版本 v1.0.1 · 当前工作分支 `dev` · AI Web 大赛参赛作品
 
 ## 1. 项目简介
 
@@ -9,7 +9,7 @@ notesync 面向数学错题做**认知诊断**，而不是搜题给答案：用�
 边界：
 
 - **诊断而非答疑**：产出是错因、策略与复习建议，不直接代做题目。
-- **本地优先**：OCR 与向量检索在浏览器内跑（Web Worker），模型与 wasm 自托管，不引用 CDN；对话生成由云端 Provider 承担，密钥只在服务端。
+- **端侧可控**：向量检索在浏览器内跑（Web Worker），支持本地 OCR（默认云端识别，可一键切本地）；模型与 wasm 自托管，不引用 CDN；对话生成由云端 Provider 承担，密钥只在服务端。
 
 判断与展示口径以源码与 [doc/implementation-status.md](./doc/implementation-status.md) 为准；本文件与 `doc/` 冲突时，以代码与 `doc/` 为准。
 
@@ -37,14 +37,14 @@ notesync 面向数学错题做**认知诊断**，而不是搜题给答案：用�
 
 | 分层       | 实现与落点                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 框架       | Next.js 16.4.3（App Router + Turbopack）+ React 19.3.0                                                                                                        |
+| 框架       | Next.js 16.4.6（App Router + Turbopack）+ React 19.3.0                                                                                                        |
 | 语言与样式 | TypeScript 5（strict，禁 `any` / `@ts-ignore`）、Tailwind CSS 4 + 自建 shadcn 风格组件                                                                        |
 | 前端编排   | `hooks/useChat.ts` 消费 SSE，驱动七态诊断状态机与拦截回滚                                                                                                     |
 | 服务端     | `app/api/` 六条路由：`chat`（SSE 主入口）、`diagnose-paper`、`models`、`ocr`、`parse-doc`、`tts`                                                              |
 | 诊断核心   | `lib/diagnose/`：状态机、runtime 编排、错因表、策略卡、按态提示词装配、提交前校验                                                                             |
 | 模型接入   | `lib/provider/`：DeepSeek、智谱 BigModel、自定义 OpenAI 兼容端点；密钥仅服务端环境变量注入                                                                    |
 | 端侧推理   | `lib/local/`（Transformers.js + onnxruntime-web，bge-small-zh-v1.5，512 维，WebGPU 优先、回退 WASM）、`lib/ocr/local.ts`（tesseract.js 7 LSTM wasm + Worker） |
-| 文件接入   | `lib/intake/`（PDF 文字层、DOCX、XLSX 等统一提取）、`lib/parse/`                                                                                              |
+| 文件接入   | `lib/intake/`（PDF 文字层、DOCX 等统一提取）、`lib/parse/`                                                                                                    |
 | 存储       | localStorage（设置、会话、trace）+ IndexedDB（RAG 向量、模型缓存）                                                                                            |
 | 安全       | `lib/safety/`：`content_blocked` 归一判定、三级处置话术、提示注入特征、导出脱敏；`next.config.ts` CSP 基线                                                    |
 
@@ -55,7 +55,7 @@ notesync 面向数学错题做**认知诊断**，而不是搜题给答案：用�
 | 对话模型 | DeepSeek（`deepseek-flash`、`deepseek-v4-pro`）、智谱（`glm-5.3-flash`、`glm-5.3-flashx`、`glm-5.3`）、自定义 OpenAI 兼容模型 |
 | 本地 OCR | tesseract.js 7（LSTM，纯 wasm，Web Worker，chi_sim）                                                                          |
 | 本地嵌入 | @huggingface/transformers 4.3.2 + onnxruntime-web 1.31.0-dev.20260914-8d85527a0，bge-small-zh-v1.5                            |
-| 文档解析 | pdfjs-dist 5.6.205、mammoth、xlsx、word-extractor                                                                             |
+| 文档解析 | pdfjs-dist 5.6.205、mammoth、word-extractor                                                                                   |
 | 渲染     | react-markdown + KaTeX（数学公式）+ rehype-sanitize（净化）                                                                   |
 | 测试     | vitest（58 个测试文件）                                                                                                       |
 
