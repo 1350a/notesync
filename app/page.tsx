@@ -11,8 +11,8 @@ const HERO_ENTER =
   'motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:fill-mode-backwards motion-safe:duration-700';
 
 // badge 与特性条只写已实装事实：无账号体系、对话与设置存本机（doc/product-vision.md、doc/safety-protocol.md）
-const BADGE = '本地优先 · 无需账号 · 对话仅存本机';
-const FEATURES = ['单题对话', '整卷批量', '本地识别', '本地检索'];
+const BADGE = '端侧可切 · 无需账号 · 对话仅存本机';
+const FEATURES = ['单题对话', '整卷批量', '支持本地识别', '本地检索'];
 
 // 能力卡文案只写已实装能力（对照 doc/product-vision.md §2 与总账状态列）；
 // /ocr 与 /local 现状是浏览器内能力演示页，措辞标明「演示」（Wiring Honesty）。
@@ -26,19 +26,19 @@ const CAPABILITIES = [
   {
     href: '/diagnose',
     title: '整卷批量：一张卷一份报告',
-    desc: '上传整卷自动切题，按错因聚类共享诊断，输出逐题诊断与汇总报告，20 题的模型调用压到个位数。',
+    desc: '上传整卷自动切题，按错因分组共享诊断，输出逐题诊断与汇总报告；调用次数与题量解耦（预算 = 组数 + 2）。',
     linkText: '进入整卷上传',
   },
   {
     href: '/ocr',
-    title: '本地识别：原图不出设备',
-    desc: '图片默认在浏览器内完成本地识别，仅发送文字；需要原图理解时显式切换多模态档，外发当次明示。',
+    title: '本地识别：可切、可验',
+    desc: '图片默认经本站代理交云端识别（质量优先），可在「设置 › 本地能力」一键切到浏览器内 tesseract；切本地后原图不出设备，本地不可用即阻断发送、不静默回落。',
     linkText: '查看本地识别演示',
   },
   {
     href: '/local',
     title: '本地检索：向量化在浏览器',
-    desc: '题目文本在浏览器内完成向量化与相似检索，历史错题可被本地召回；演示页可逐环节自检。',
+    desc: '题目文本在浏览器内完成向量化与相似检索，命中本机知识卡后随消息附给模型；演示页可逐环节自检。',
     linkText: '查看本地检索演示',
   },
 ];
@@ -47,7 +47,7 @@ const STEPS = [
   {
     step: '01',
     title: '上传题目',
-    desc: '拍照或上传单题、整卷，图片默认走本地识别，文字直接粘贴也行。',
+    desc: '拍照或上传单题、整卷，图片支持本地识别（默认云端、可切换），文字直接粘贴也行。',
   },
   {
     step: '02',
@@ -72,8 +72,8 @@ const PRINCIPLES = [
     desc: '定位 → 方向 → 关键步骤三级阶梯；你不主动要，绝不降级代答。',
   },
   {
-    title: '本地优先',
-    desc: '无账号体系，对话与设置仅存本机；图片默认本地识别，外发当次明示。',
+    title: '端侧可控',
+    desc: '无账号体系，对话与设置仅存本机；图片外发当次明示，可切本地识别。',
   },
 ];
 
@@ -226,7 +226,7 @@ export default function Home() {
         {/* 理念：立场宣言 + 三条底线 */}
         <section className="mx-auto w-full max-w-5xl px-6 py-28 sm:py-36">
           <Reveal>
-            <h2 className="text-3xl font-bold sm:text-4xl">错因优先，本地优先</h2>
+            <h2 className="text-3xl font-bold sm:text-4xl">错因优先，端侧可控</h2>
             <blockquote className="mt-8 border-l-2 border-primary/40 pl-6 text-xl font-medium sm:text-2xl">
               不替你解题，先定位你为什么会错，再按需给出分级提示。
             </blockquote>
@@ -246,7 +246,7 @@ export default function Home() {
 
       <footer className="border-t border-border py-8">
         <p className="text-center text-xs text-muted-foreground">
-          Notesync · 对话与设置仅存于本机浏览器，无需账号 · 图片默认本地识别
+          Notesync · 对话与设置仅存于本机浏览器，无需账号 · 图片识别可切本地
         </p>
       </footer>
     </div>
