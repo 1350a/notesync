@@ -16,3 +16,6 @@
 *.woff2 binary
 *.ttf binary
 *.pdf binary
+
+# Windows 批处理必须保持 CRLF（cmd 对 LF 的 label 解析有坑）
+*.bat text eol=crlf
