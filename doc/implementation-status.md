@@ -102,7 +102,7 @@ AIGC:
 | 设置存储抽象 + normalize | 已实装 | ✅ | `lib/settings/storage.ts` |
 | 主题三选 + 水合 + 反闪烁 | 已实装 | ✅ | `lib/settings/theme.ts` |
 | 默认模型下拉 | 已实装 | ✅ | `components/ModelSelect.tsx` |
-| 取消首次引导，改默认档 | 已实装：不弹首次引导，冷启即保守档（图片默认先本地转文字，原图不出端；只有显式 `false` 才切外发） | ✅ | `lib/settings/types.ts`、`test/lib/settings/defaults.test.ts` |
+| 取消首次引导，改默认档 | 已实装：不弹首次引导，冷启即质量档（图片默认经本站代理走云端识别，像素出端；可一键切本地，本地不可用即阻断） | ✅ | `lib/settings/types.ts`、`test/lib/settings/defaults.test.ts` |
 | 效率/质量档位字段 | 已实装：`thinkingEffort` 四档（off/low/medium/high），设置面板与聊天输入区均全档可选；off 档文案随 Provider 变（deepseek「关闭」、其余「默认」），仅改文案不锁档 | ✅ | `lib/settings/types.ts` |
 | 档位映射 `thinking` / `reasoning_effort` | 已实装：`mapThinkingParam` 按 Provider 映射，`off` 在所有 Provider 均不下发参数（zhipu 的 `disabled` 实测关不掉思考，2026-11-15 摘除） | ✅ | `lib/provider/openaiCompat.ts` |
 | 思考预算 `maxTokens` | 已实装：`normalizeMaxTokens` 归一（≤0/NaN/非数值视为未设置，超上限钳制），`mapMaxTokens` 按 Provider 分流下发 `max_tokens`（**custom 恒不发**，未知字段严格校验风险），经工具循环与收敛请求一并透传；设置页「思考预算」下拉提供跟随模型默认 / 1024 / 4096 / 8192 | ✅ | `lib/settings/types.ts`、`lib/provider/openaiCompat.ts`、`lib/tools/loop.ts` |
@@ -176,8 +176,8 @@ AIGC:
 | 图片路径自动路由：多模态直传 / 纯文本 OCR 转写（2026-11-14 重构，混合档下线；`lib/ocr/image-handling.ts`、`components/chat/ChatInput.tsx`、整卷 `UploadArea.tsx`） | `product-vision.md` P4 | ✅ |
 | `explain` 掌握度回路（明白了 / 还不懂） | `agent-workflow.md` §4.3(a) | ✅ |
 | 成本计量口径（每次诊断调用次数、token 区间） | 交付边界 D | ✅ |
-| 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ✅（落点 `doc/demo-script.md`：开场 15s → 单题 55s → 整卷 55s → 本地优先与代价 30s → 收尾 15s，含讲者禁忌表与四类事故兜底） |
-| 首页视觉重构 | 空白 #6 | ✅（结构层级已定稿：删占位卡，改为对话诊断 / 整卷批量 / 本地优先三卖点卡 +「上传 → 追问 → 报告」流程三栏，各带入口；视觉打磨另议） |
+| 演示脚本按「评委 3 分钟看懂诊断≠搜题」编排 | `product-vision.md` §3.3 | ✅（落点 `doc/demo-script.md`：开场 15s → 单题 55s → 整卷 55s → 端侧可控与代价 30s → 收尾 15s，含讲者禁忌表与四类事故兜底） |
+| 首页视觉重构 | 空白 #6 | ✅（结构层级已定稿：删占位卡，改为对话诊断 / 整卷批量 / 端侧可控三卖点卡 +「上传 → 追问 → 报告」流程三栏，各带入口；视觉打磨另议） |
 | 上下文裁剪（不设硬边界，长会话只保留当前题相关） | 空白 #5 | ✅ |
 
 > 2026-11-14 重构：档位不再提供手选，`resolveImageSendMode` 按模型能力自动派生
